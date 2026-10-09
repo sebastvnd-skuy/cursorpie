@@ -1,0 +1,444 @@
+//! Data model, defaults, migration from the v1 format, and persistence.
+//!
+//! Layout of a config:
+//!   Config -> profiles[] -> items[] -> (Mode | Run | Submenu(items[]))
+//! A profile with an empty `apps` list is the fallback for every app that has no profile of its own.
+
+use crate::keys::*;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+pub const CONFIG_VERSION: u32 = 2;
+/// Max slices per ring.
+pub const MAX_ITEMS: usize = 8;
+/// Max menu levels (top level counts as 1).
+pub const MAX_DEPTH: usize = 3;
+pub const MAX_PROFILES: usize = 16;
+
+// ---------------------------------------------------------------------- model
+
+/// Something CursorPie can do.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
+pub enum Action {
+    /// Do nothing (for side buttons: let the click pass through to the app).
+    #[default]
+    Nothing,
+    Key(Shortcut),
+    /// App name ("Safari") or path ("/Applications/Safari.app"), passed to `open -a`.
+    OpenApp(String),
+    /// URL or file path, passed to `open`.
+    OpenUrl(String),
+    /// Shell command, run with `/bin/sh -c`.
+    Command(String),
+    Sequence(Vec<Action>),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum ItemKind {
+    /// Selecting it makes the side buttons (back/forward) send these actions.
+    Mode { back: Action, forward: Action },
+    /// Runs the action when you release the button over the slice.
+    Run(Action),
+    /// Drag outward across the rim to open it.
+    Submenu(Vec<Item>),
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Item {
+    pub name: String,
+    /// Text / emoji, or an image path (.png .jpg .jpeg .webp), e.g. "~/Pictures/undo.png"
+    pub icon: String,
+    pub kind: ItemKind,
+}
+
+impl Item {
+    pub fn mode(name: &str, icon: &str, back: Shortcut, forward: Shortcut) -> Self {
+        Self {
+            name: name.into(),
+            icon: icon.into(),
+            kind: ItemKind::Mode { back: Action::Key(back), forward: Action::Key(forward) },
+        }
+    }
+    pub fn run(name: &str, icon: &str, action: Action) -> Self {
+        Self { name: name.into(), icon: icon.into(), kind: ItemKind::Run(action) }
+    }
+    pub fn submenu(name: &str, icon: &str, items: Vec<Item>) -> Self {
+        Self { name: name.into(), icon: icon.into(), kind: ItemKind::Submenu(items) }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Profile {
+    pub name: String,
+    /// Bundle identifiers, e.g. "com.apple.Safari". Empty = fallback profile.
+    pub apps: Vec<String>,
+    pub items: Vec<Item>,
+    /// Path (indices) of the item whose side-button actions are currently active.
+    pub active: Vec<usize>,
+}
+
+impl Profile {
+    pub fn active_item(&self) -> Option<&Item> {
+        item_at(&self.items, &self.active)
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(default)]
+pub struct Config {
+    pub version: u32,
+    pub profiles: Vec<Profile>,
+    pub pie_hold_ms: u64,
+    pub settings_hold_ms: u64,
+    pub pie_size: f32,
+    pub accent: [u8; 3],
+    /// Mouse button that opens the pie: 2 = middle, 5/6/7 = extra buttons.
+    pub trigger_button: i64,
+    /// Dragging right after pressing opens the pie instantly (disables middle-drag pass-through).
+    pub flick: bool,
+    pub sound: bool,
+    pub launch_at_login: bool,
+}
+
+// -------------------------------------------------------------- tree helpers
+
+pub fn items_at<'a>(items: &'a [Item], path: &[usize]) -> Option<&'a [Item]> {
+    let mut cur = items;
+    for &i in path {
+        match &cur.get(i)?.kind {
+            ItemKind::Submenu(children) => cur = children.as_slice(),
+            _ => return None,
+        }
+    }
+    Some(cur)
+}
+
+pub fn item_at<'a>(items: &'a [Item], path: &[usize]) -> Option<&'a Item> {
+    let (last, parents) = path.split_last()?;
+    items_at(items, parents)?.get(*last)
+}
+
+pub fn item_at_mut<'a>(items: &'a mut Vec<Item>, path: &[usize]) -> Option<&'a mut Item> {
+    let (first, rest) = path.split_first()?;
+    let item = items.get_mut(*first)?;
+    if rest.is_empty() {
+        return Some(item);
+    }
+    match &mut item.kind {
+        ItemKind::Submenu(children) => item_at_mut(children, rest),
+        _ => None,
+    }
+}
+
+fn first_mode(items: &[Item]) -> Option<Vec<usize>> {
+    for (i, it) in items.iter().enumerate() {
+        match &it.kind {
+            ItemKind::Mode { .. } => return Some(vec![i]),
+            ItemKind::Submenu(c) => {
+                if let Some(mut p) = first_mode(c) {
+                    p.insert(0, i);
+                    return Some(p);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn clean_items(items: &mut Vec<Item>, depth: usize) {
+    items.truncate(MAX_ITEMS);
+    for it in items.iter_mut() {
+        if let ItemKind::Submenu(c) = &mut it.kind {
+            if depth + 1 >= MAX_DEPTH {
+                c.clear();
+            } else {
+                clean_items(c, depth + 1);
+            }
+        }
+    }
+}
+
+/// true if any action in the tree runs a shell command (used to warn after importing a config).
+pub fn has_commands(cfg: &Config) -> bool {
+    fn act(a: &Action) -> bool {
+        match a {
+            Action::Command(_) => true,
+            Action::Sequence(v) => v.iter().any(act),
+            _ => false,
+        }
+    }
+    fn items(v: &[Item]) -> bool {
+        v.iter().any(|i| match &i.kind {
+            ItemKind::Mode { back, forward } => act(back) || act(forward),
+            ItemKind::Run(a) => act(a),
+            ItemKind::Submenu(c) => items(c),
+        })
+    }
+    cfg.profiles.iter().any(|p| items(&p.items))
+}
+
+// ------------------------------------------------------------------- presets
+
+/// Side-button mode presets (the original eight).
+pub fn presets() -> Vec<Item> {
+    vec![
+        Item::mode("History", "<>", Shortcut::new(key::Z, MOD_CMD), Shortcut::new(key::Z, MOD_CMD | MOD_SHIFT)),
+        Item::mode("Brackets", "[ ]", Shortcut::new(key::LBRACKET, 0), Shortcut::new(key::RBRACKET, 0)),
+        Item::mode("Clipboard", "C/V", Shortcut::new(key::C, MOD_CMD), Shortcut::new(key::V, MOD_CMD)),
+        Item::mode("Browser", "< >", Shortcut::new(key::LBRACKET, MOD_CMD), Shortcut::new(key::RBRACKET, MOD_CMD)),
+        Item::mode("Tabs", "Tab", Shortcut::new(key::LBRACKET, MOD_CMD | MOD_SHIFT), Shortcut::new(key::RBRACKET, MOD_CMD | MOD_SHIFT)),
+        Item::mode("Zoom", "+/-", Shortcut::new(key::MINUS, MOD_CMD), Shortcut::new(key::EQUAL, MOD_CMD)),
+        Item::mode("Scroll", "Pg", Shortcut::new(key::PAGE_UP, 0), Shortcut::new(key::PAGE_DOWN, 0)),
+        Item::mode("Edit", "Ret", Shortcut::new(key::RETURN, 0), Shortcut::new(key::DELETE, 0)),
+    ]
+}
+
+/// Ready-made "run on release" slices.
+pub fn quick_actions() -> Vec<Item> {
+    vec![
+        Item::run("Screenshot", "Shot", Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT))),
+        Item::run("Mission Ctrl", "MC", Action::Key(Shortcut::new(key::UP, MOD_CTRL))),
+        Item::run("Spotlight", "Find", Action::Key(Shortcut::new(key::SPACE, MOD_CMD))),
+        Item::run("Emoji", ":)", Action::Key(Shortcut::new(key::SPACE, MOD_CMD | MOD_CTRL))),
+        Item::run("Lock", "Lock", Action::Key(Shortcut::new(key::Q, MOD_CMD | MOD_CTRL))),
+    ]
+}
+
+/// Blank slices for the "+ Add item" menu.
+pub fn blank_items(allow_submenu: bool) -> Vec<Item> {
+    let mut v = vec![
+        Item::run("Shortcut", "Key", Action::Key(Shortcut::new(key::F13, 0))),
+        Item::run("Open app", "App", Action::OpenApp(String::new())),
+        Item::run("Open URL", "URL", Action::OpenUrl(String::new())),
+        Item::run("Command", ">_", Action::Command(String::new())),
+    ];
+    if allow_submenu {
+        v.push(Item::submenu("Submenu", "...", Vec::new()));
+    }
+    v
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        let p = presets();
+        let launch = Item::submenu(
+            "Launch",
+            "Go",
+            vec![
+                Item::run("Finder", "F", Action::OpenApp("Finder".into())),
+                Item::run("Terminal", ">_", Action::OpenApp("Terminal".into())),
+                Item::run("Safari", "S", Action::OpenApp("Safari".into())),
+                Item::run("Shot", "Shot", Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT))),
+            ],
+        );
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        Self {
+            version: CONFIG_VERSION,
+            profiles: vec![
+                Profile {
+                    name: "Default".into(),
+                    apps: vec![],
+                    items: vec![p[0].clone(), p[2].clone(), p[1].clone(), launch],
+                    active: vec![0],
+                },
+                Profile {
+                    name: "Browsers".into(),
+                    apps: s(&[
+                        "com.apple.Safari",
+                        "com.google.Chrome",
+                        "org.mozilla.firefox",
+                        "company.thebrowser.Browser",
+                        "com.brave.Browser",
+                        "com.microsoft.edgemac",
+                    ]),
+                    items: vec![p[3].clone(), p[4].clone(), p[5].clone(), p[6].clone()],
+                    active: vec![0],
+                },
+                Profile {
+                    name: "Code".into(),
+                    apps: s(&["com.microsoft.VSCode", "com.apple.dt.Xcode"]),
+                    items: vec![p[0].clone(), p[1].clone(), p[7].clone()],
+                    active: vec![0],
+                },
+            ],
+            pie_hold_ms: 500,
+            settings_hold_ms: 1200,
+            pie_size: 200.0,
+            accent: [64, 156, 255],
+            trigger_button: 2,
+            flick: false,
+            sound: false,
+            launch_at_login: false,
+        }
+    }
+}
+
+impl Config {
+    pub fn sanitize(mut self) -> Self {
+        self.version = CONFIG_VERSION;
+        if self.profiles.is_empty() {
+            self.profiles = Config::default().profiles;
+        }
+        self.profiles.truncate(MAX_PROFILES);
+        for p in &mut self.profiles {
+            if p.items.is_empty() {
+                p.items = vec![presets().remove(0)];
+            }
+            clean_items(&mut p.items, 0);
+            let ok = matches!(
+                item_at(&p.items, &p.active).map(|i| &i.kind),
+                Some(ItemKind::Mode { .. })
+            );
+            if !ok {
+                p.active = first_mode(&p.items).unwrap_or_default();
+            }
+        }
+        self.pie_hold_ms = self.pie_hold_ms.clamp(150, 2000);
+        self.settings_hold_ms = self.settings_hold_ms.max(self.pie_hold_ms + 300);
+        self.pie_size = self.pie_size.clamp(140.0, 360.0);
+        if !matches!(self.trigger_button, 2 | 5 | 6 | 7) {
+            self.trigger_button = 2;
+        }
+        self
+    }
+
+    /// Which profile applies for the given frontmost app.
+    pub fn profile_for(&self, bundle: Option<&str>) -> usize {
+        if let Some(b) = bundle {
+            if let Some(i) = self.profiles.iter().position(|p| p.apps.iter().any(|a| a == b)) {
+                return i;
+            }
+        }
+        self.profiles.iter().position(|p| p.apps.is_empty()).unwrap_or(0)
+    }
+}
+
+// ------------------------------------------------------------------ migration
+
+/// Reads the v1 format (`modes`, `active_mode`, ...) and converts it to a single "Default" profile.
+fn migrate_v1(v: &serde_json::Value) -> Option<Config> {
+    let mut items = Vec::new();
+    for m in v.get("modes")?.as_array()? {
+        let back: Shortcut = serde_json::from_value(m.get("back")?.clone()).ok()?;
+        let forward: Shortcut = serde_json::from_value(m.get("forward")?.clone()).ok()?;
+        items.push(Item {
+            name: m.get("name")?.as_str()?.to_string(),
+            icon: m.get("icon")?.as_str()?.to_string(),
+            kind: ItemKind::Mode { back: Action::Key(back), forward: Action::Key(forward) },
+        });
+    }
+    let mut cfg = Config::default();
+    let active = v.get("active_mode").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+    cfg.profiles = vec![Profile { name: "Default".into(), apps: vec![], items, active: vec![active] }];
+    if let Some(x) = v.get("pie_hold_ms").and_then(|x| x.as_u64()) {
+        cfg.pie_hold_ms = x;
+    }
+    if let Some(x) = v.get("settings_hold_ms").and_then(|x| x.as_u64()) {
+        cfg.settings_hold_ms = x;
+    }
+    if let Some(x) = v.get("pie_size").and_then(|x| x.as_f64()) {
+        cfg.pie_size = x as f32;
+    }
+    if let Some(a) = v.get("accent").and_then(|x| serde_json::from_value::<[u8; 3]>(x.clone()).ok()) {
+        cfg.accent = a;
+    }
+    Some(cfg)
+}
+
+/// Returns (config, was_migrated).
+pub fn parse_config(text: &str) -> Option<(Config, bool)> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    if v.get("version").and_then(|x| x.as_u64()).is_some() {
+        serde_json::from_value::<Config>(v).ok().map(|c| (c.sanitize(), false))
+    } else {
+        migrate_v1(&v).map(|c| (c.sanitize(), true))
+    }
+}
+
+// -------------------------------------------------------------------- storage
+
+pub fn home() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()))
+}
+
+pub fn config_path() -> PathBuf {
+    let mut p = home();
+    p.push("Library");
+    p.push("Application Support");
+    p.push("CursorPie");
+    fs::create_dir_all(&p).ok();
+    p.push("config.json");
+    p
+}
+
+pub fn load_config() -> Config {
+    let path = config_path();
+    let Ok(text) = fs::read_to_string(&path) else {
+        return Config::default();
+    };
+    match parse_config(&text) {
+        Some((cfg, migrated)) => {
+            if migrated {
+                // keep the old file around, just in case
+                fs::copy(&path, path.with_file_name("config.v1.backup.json")).ok();
+                save_config(&cfg);
+            }
+            cfg
+        }
+        None => {
+            fs::copy(&path, path.with_file_name("config.broken.json")).ok();
+            Config::default()
+        }
+    }
+}
+
+pub fn save_config(config: &Config) {
+    if let Ok(data) = serde_json::to_string_pretty(config) {
+        fs::write(config_path(), data).ok();
+    }
+}
+
+/// Writes ~/Downloads/cursorpie-config.json and returns its path.
+pub fn export_config(config: &Config) -> std::io::Result<PathBuf> {
+    let mut p = home();
+    p.push("Downloads");
+    fs::create_dir_all(&p)?;
+    p.push("cursorpie-config.json");
+    let data = serde_json::to_string_pretty(config).map_err(std::io::Error::other)?;
+    fs::write(&p, data)?;
+    Ok(p)
+}
+
+// -------------------------------------------------------------------- globals
+
+static CONFIG: OnceLock<Mutex<Config>> = OnceLock::new();
+
+/// Locks a mutex and recovers from poisoning (the event tap must never panic because of a lock).
+pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The live config (shared between the UI thread and the event tap thread).
+pub fn cfg() -> MutexGuard<'static, Config> {
+    lock(CONFIG.get_or_init(|| Mutex::new(load_config())))
+}
+
+/// Remembers which mode is active for a profile (saved on a worker thread, never inside the tap callback).
+pub fn set_active(profile: usize, path: Vec<usize>) {
+    let snapshot = {
+        let mut c = cfg();
+        match c.profiles.get_mut(profile) {
+            Some(p) => {
+                p.active = path;
+                Some(c.clone())
+            }
+            None => None,
+        }
+    };
+    if let Some(c) = snapshot {
+        std::thread::spawn(move || save_config(&c));
+    }
+}
