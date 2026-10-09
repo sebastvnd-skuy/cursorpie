@@ -6,7 +6,7 @@ rust-version = "1.88"
 description = "Hold-to-open pie menu for macOS: per-app profiles, shortcuts, launchers and submenus."
 license = "MIT"
 
-authors = ["Your Name sebastvnd@gmail.com"]
+authors = ["sebastvnd@gmail.com"]
 repository = "https://github.com/sebastvnd/cursorpie"
 
 [dependencies]

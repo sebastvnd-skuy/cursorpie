@@ -8,7 +8,7 @@ use core_graphics::event::{
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
 use std::process::Command;
-use std::sync::{mpsc, OnceLock};
+use std::sync::{OnceLock, mpsc};
 use std::time::Duration;
 
 /// Marks events we posted ourselves so the event tap ignores them.
@@ -107,12 +107,12 @@ fn post_key(src: &CGEventSource, code: CGKeyCode, down: bool, flags: CGEventFlag
 
 /// Re-posts a swallowed mouse press/release (used when a quick click must reach the app after all).
 pub fn post_mouse(pos: CGPoint, ty: CGEventType, button: i64) {
-    if let Ok(src) = CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
-        if let Ok(ev) = CGEvent::new_mouse_event(src, ty, pos, CGMouseButton::Center) {
-            ev.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, button);
-            ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
-            ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, SYNTH_TAG);
-            ev.post(CGEventTapLocation::HID);
-        }
+    if let Ok(src) = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        && let Ok(ev) = CGEvent::new_mouse_event(src, ty, pos, CGMouseButton::Center)
+    {
+        ev.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, button);
+        ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
+        ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, SYNTH_TAG);
+        ev.post(CGEventTapLocation::HID);
     }
 }

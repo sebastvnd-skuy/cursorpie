@@ -4,7 +4,7 @@ use crate::about::*;
 use crate::app::App;
 use crate::config::*;
 use crate::gfx::*;
-use crate::keys::{key, Shortcut};
+use crate::keys::{Shortcut, key};
 use crate::msg::Msg;
 use crate::system;
 use crate::tap::{RECORDING, SWALLOW_KEY, TAP_ACTIVE};
@@ -47,7 +47,13 @@ pub struct Ed {
 
 impl Ed {
     pub fn new() -> Self {
-        Self { tab: Tab::Menu, profile: 0, recording: None, icons: HashMap::new(), new_app: String::new() }
+        Self {
+            tab: Tab::Menu,
+            profile: 0,
+            recording: None,
+            icons: HashMap::new(),
+            new_app: String::new(),
+        }
     }
 
     pub fn stop_recording(&mut self) {
@@ -85,7 +91,14 @@ struct Env<'a> {
 
 // ------------------------------------------------------------ action editing
 
-const ACTION_KINDS: [&str; 6] = ["None", "Shortcut", "Open app", "Open URL / file", "Shell command", "Sequence"];
+const ACTION_KINDS: [&str; 6] = [
+    "None",
+    "Shortcut",
+    "Open app",
+    "Open URL / file",
+    "Shell command",
+    "Sequence",
+];
 
 fn action_index(a: &Action) -> usize {
     match a {
@@ -110,7 +123,13 @@ fn make_action(i: usize) -> Action {
 }
 
 /// Type selector + value editor for one action. Returns true when the shortcut button was clicked.
-fn action_editor(ui: &mut egui::Ui, id: &str, a: &mut Action, recording: bool, accent: Color32) -> bool {
+fn action_editor(
+    ui: &mut egui::Ui,
+    id: &str,
+    a: &mut Action,
+    recording: bool,
+    accent: Color32,
+) -> bool {
     let mut clicked = false;
     ui.horizontal(|ui| {
         let now = action_index(a);
@@ -133,16 +152,31 @@ fn action_editor(ui: &mut egui::Ui, id: &str, a: &mut Action, recording: bool, a
                 }
             }
             Action::OpenApp(s) => {
-                ui.add(egui::TextEdit::singleline(s).desired_width(200.0).hint_text("Safari  or  /Applications/X.app"));
+                ui.add(
+                    egui::TextEdit::singleline(s)
+                        .desired_width(200.0)
+                        .hint_text("Safari  or  /Applications/X.app"),
+                );
             }
             Action::OpenUrl(s) => {
-                ui.add(egui::TextEdit::singleline(s).desired_width(200.0).hint_text("https://...  or a file path"));
+                ui.add(
+                    egui::TextEdit::singleline(s)
+                        .desired_width(200.0)
+                        .hint_text("https://...  or a file path"),
+                );
             }
             Action::Command(s) => {
-                ui.add(egui::TextEdit::singleline(s).desired_width(200.0).hint_text("shell command"));
+                ui.add(
+                    egui::TextEdit::singleline(s)
+                        .desired_width(200.0)
+                        .hint_text("shell command"),
+                );
             }
             Action::Sequence(v) => {
-                muted(ui, &format!("{} steps (edit config.json to change them)", v.len()));
+                muted(
+                    ui,
+                    &format!("{} steps (edit config.json to change them)", v.len()),
+                );
             }
             Action::Nothing => muted(ui, "click passes through to the app"),
         }
@@ -174,7 +208,11 @@ fn start_rec(ed: &mut Ed, profile: usize, path: &[usize], slot: Slot) {
     } else {
         SWALLOW_KEY.store(-1, Ordering::SeqCst);
         RECORDING.store(true, Ordering::SeqCst);
-        ed.recording = Some(Rec { profile, path: path.to_vec(), slot });
+        ed.recording = Some(Rec {
+            profile,
+            path: path.to_vec(),
+            slot,
+        });
     }
 }
 
@@ -182,14 +220,24 @@ fn pick_icon(env: &Env, path: &[usize]) {
     let (tx, ctx, profile, path) = (env.tx.clone(), env.ctx.clone(), env.profile, path.to_vec());
     std::thread::spawn(move || {
         if let Some(file) = system::choose_file("public.image", "Choose an icon image") {
-            let _ = tx.send(Msg::IconPicked { profile, path, file });
+            let _ = tx.send(Msg::IconPicked {
+                profile,
+                path,
+                file,
+            });
             ctx.request_repaint();
         }
     });
 }
 
 /// Edits one ring of items; submenus recurse.
-fn items_editor(ui: &mut egui::Ui, ed: &mut Ed, env: &Env, items: &mut Vec<Item>, path: &mut Vec<usize>) {
+fn items_editor(
+    ui: &mut egui::Ui,
+    ed: &mut Ed,
+    env: &Env,
+    items: &mut Vec<Item>,
+    path: &mut Vec<usize>,
+) {
     let depth = path.len();
     let n = items.len();
     let mut remove: Option<usize> = None;
@@ -200,7 +248,10 @@ fn items_editor(ui: &mut egui::Ui, ed: &mut Ed, env: &Env, items: &mut Vec<Item>
         let uid = format!(
             "{}_{}",
             env.profile,
-            path.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("-")
+            path.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join("-")
         );
         let rec_back = is_rec(ed, env.profile, path, Slot::Back);
         let rec_fwd = is_rec(ed, env.profile, path, Slot::Forward);
@@ -215,11 +266,26 @@ fn items_editor(ui: &mut egui::Ui, ed: &mut Ed, env: &Env, items: &mut Vec<Item>
 
                 // row 1: number, icon preview, name, kind, preset
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("{}", i + 1)).color(env.accent).strong());
+                    ui.label(
+                        RichText::new(format!("{}", i + 1))
+                            .color(env.accent)
+                            .strong(),
+                    );
                     let tex = ed.icon_for(env.ctx, &item.icon);
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(32.0), egui::Sense::hover());
-                    ui.painter().rect_filled(rect, CornerRadius::same(8), Color32::from_rgb(14, 15, 18));
-                    draw_icon(ui.painter(), tex.as_ref(), &item.icon, rect.center(), 22.0, 255);
+                    ui.painter().rect_filled(
+                        rect,
+                        CornerRadius::same(8),
+                        Color32::from_rgb(14, 15, 18),
+                    );
+                    draw_icon(
+                        ui.painter(),
+                        tex.as_ref(),
+                        &item.icon,
+                        rect.center(),
+                        22.0,
+                        255,
+                    );
 
                     ui.add(egui::TextEdit::singleline(&mut item.name).desired_width(120.0));
 
@@ -272,10 +338,16 @@ fn items_editor(ui: &mut egui::Ui, ed: &mut Ed, env: &Env, items: &mut Vec<Item>
                     if ui.add_enabled(i > 0, egui::Button::new("Up")).clicked() {
                         swap = Some((i, i - 1));
                     }
-                    if ui.add_enabled(i + 1 < n, egui::Button::new("Down")).clicked() {
+                    if ui
+                        .add_enabled(i + 1 < n, egui::Button::new("Down"))
+                        .clicked()
+                    {
                         swap = Some((i, i + 1));
                     }
-                    if ui.add_enabled(n > 1 || depth > 0, egui::Button::new("Remove")).clicked() {
+                    if ui
+                        .add_enabled(n > 1 || depth > 0, egui::Button::new("Remove"))
+                        .clicked()
+                    {
                         remove = Some(i);
                     }
                 });
@@ -300,12 +372,15 @@ fn items_editor(ui: &mut egui::Ui, ed: &mut Ed, env: &Env, items: &mut Vec<Item>
                     }
                     ItemKind::Submenu(children) => {
                         muted(ui, "Drag outward across the rim of this slice to open it");
-                        egui::CollapsingHeader::new(format!("Items in this submenu ({})", children.len()))
-                            .id_salt(format!("{uid}_sub"))
-                            .default_open(true)
-                            .show(ui, |ui| {
-                                items_editor(ui, ed, env, children, path);
-                            });
+                        egui::CollapsingHeader::new(format!(
+                            "Items in this submenu ({})",
+                            children.len()
+                        ))
+                        .id_salt(format!("{uid}_sub"))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            items_editor(ui, ed, env, children, path);
+                        });
                     }
                 }
             });
@@ -386,7 +461,10 @@ impl App {
                             ui.selectable_value(&mut ed.profile, i, name.as_str());
                         }
                     });
-                if ui.add_enabled(edit.profiles.len() < MAX_PROFILES, egui::Button::new("New")).clicked() {
+                if ui
+                    .add_enabled(edit.profiles.len() < MAX_PROFILES, egui::Button::new("New"))
+                    .clicked()
+                {
                     edit.profiles.push(Profile {
                         name: "New profile".into(),
                         apps: vec![],
@@ -396,14 +474,19 @@ impl App {
                     ed.profile = edit.profiles.len() - 1;
                     ed.stop_recording();
                 }
-                if ui.add_enabled(edit.profiles.len() > 1, egui::Button::new("Delete")).clicked() {
+                if ui
+                    .add_enabled(edit.profiles.len() > 1, egui::Button::new("Delete"))
+                    .clicked()
+                {
                     edit.profiles.remove(pi);
                     ed.profile = pi.saturating_sub(1);
                     ed.stop_recording();
                 }
             });
 
-            let Some(prof) = edit.profiles.get_mut(ed.profile) else { return };
+            let Some(prof) = edit.profiles.get_mut(ed.profile) else {
+                return;
+            };
             ui.horizontal(|ui| {
                 muted(ui, "Name");
                 ui.add(egui::TextEdit::singleline(&mut prof.name).desired_width(220.0));
@@ -445,8 +528,10 @@ impl App {
                 if ui.button("Pick app...").clicked() {
                     let (tx, ctx, profile) = (tx.clone(), ctx.clone(), ed.profile);
                     std::thread::spawn(move || {
-                        let Some(file) = system::choose_file("com.apple.application-bundle", "Choose an application")
-                        else {
+                        let Some(file) = system::choose_file(
+                            "com.apple.application-bundle",
+                            "Choose an application",
+                        ) else {
                             return;
                         };
                         if let Some(bundle) = system::bundle_id_of(&file) {
@@ -460,10 +545,18 @@ impl App {
 
         ui.add_space(14.0);
         section_title(ui, "Menu items");
-        muted(ui, "Hold the trigger button, drag to a slice and release. Side buttons use the active mode.");
+        muted(
+            ui,
+            "Hold the trigger button, drag to a slice and release. Side buttons use the active mode.",
+        );
         ui.add_space(4.0);
 
-        let env = Env { ctx, tx, accent, profile: ed.profile };
+        let env = Env {
+            ctx,
+            tx,
+            accent,
+            profile: ed.profile,
+        };
         if let Some(prof) = edit.profiles.get_mut(ed.profile) {
             let mut path = Vec::new();
             items_editor(ui, ed, &env, &mut prof.items, &mut path);
@@ -475,42 +568,51 @@ impl App {
         let cfg = &mut self.edit;
         card().show(ui, |ui| {
             ui.set_width(ui.available_width());
-            egui::Grid::new("behavior_grid").num_columns(2).spacing([16.0, 10.0]).show(ui, |ui| {
-                muted(ui, "Trigger button");
-                let name = |b: i64| match b {
-                    2 => "Middle button",
-                    5 => "Extra button 6",
-                    6 => "Extra button 7",
-                    _ => "Extra button 8",
-                };
-                egui::ComboBox::from_id_salt("trigger_button")
-                    .selected_text(name(cfg.trigger_button))
-                    .show_ui(ui, |ui| {
-                        for b in [2i64, 5, 6, 7] {
-                            ui.selectable_value(&mut cfg.trigger_button, b, name(b));
-                        }
-                    });
-                ui.end_row();
+            egui::Grid::new("behavior_grid")
+                .num_columns(2)
+                .spacing([16.0, 10.0])
+                .show(ui, |ui| {
+                    muted(ui, "Trigger button");
+                    let name = |b: i64| match b {
+                        2 => "Middle button",
+                        5 => "Extra button 6",
+                        6 => "Extra button 7",
+                        _ => "Extra button 8",
+                    };
+                    egui::ComboBox::from_id_salt("trigger_button")
+                        .selected_text(name(cfg.trigger_button))
+                        .show_ui(ui, |ui| {
+                            for b in [2i64, 5, 6, 7] {
+                                ui.selectable_value(&mut cfg.trigger_button, b, name(b));
+                            }
+                        });
+                    ui.end_row();
 
-                muted(ui, "Hold to open pie");
-                ui.add(egui::Slider::new(&mut cfg.pie_hold_ms, 150..=1500).suffix(" ms"));
-                ui.end_row();
+                    muted(ui, "Hold to open pie");
+                    ui.add(egui::Slider::new(&mut cfg.pie_hold_ms, 150..=1500).suffix(" ms"));
+                    ui.end_row();
 
-                muted(ui, "Hold to open settings");
-                ui.add(egui::Slider::new(&mut cfg.settings_hold_ms, 500..=4000).suffix(" ms"));
-                ui.end_row();
+                    muted(ui, "Hold to open settings");
+                    ui.add(egui::Slider::new(&mut cfg.settings_hold_ms, 500..=4000).suffix(" ms"));
+                    ui.end_row();
 
-                muted(ui, "Pie size");
-                ui.add(egui::Slider::new(&mut cfg.pie_size, 140.0..=360.0).suffix(" px"));
-                ui.end_row();
+                    muted(ui, "Pie size");
+                    ui.add(egui::Slider::new(&mut cfg.pie_size, 140.0..=360.0).suffix(" px"));
+                    ui.end_row();
 
-                muted(ui, "Accent color");
-                ui.color_edit_button_srgb(&mut cfg.accent);
-                ui.end_row();
-            });
+                    muted(ui, "Accent color");
+                    ui.color_edit_button_srgb(&mut cfg.accent);
+                    ui.end_row();
+                });
             ui.add_space(4.0);
-            ui.checkbox(&mut cfg.flick, "Open the pie instantly when I drag (disables middle-drag in apps)");
-            ui.checkbox(&mut cfg.sound, "Play a soft tick when the selection changes");
+            ui.checkbox(
+                &mut cfg.flick,
+                "Open the pie instantly when I drag (disables middle-drag in apps)",
+            );
+            ui.checkbox(
+                &mut cfg.sound,
+                "Play a soft tick when the selection changes",
+            );
             ui.checkbox(&mut cfg.launch_at_login, "Launch at login");
         });
     }
@@ -545,7 +647,10 @@ impl App {
                     system::open_input_monitoring_settings();
                 }
             });
-            muted(ui, "If it still says 'Not running' after granting access, quit and reopen CursorPie.");
+            muted(
+                ui,
+                "If it still says 'Not running' after granting access, quit and reopen CursorPie.",
+            );
         });
 
         ui.add_space(14.0);
@@ -595,11 +700,11 @@ impl App {
         if smooth_approach(&mut self.settings_anim, target, dt, 14.0) {
             ctx.request_repaint();
         }
-        if let Some(save) = self.closing {
-            if self.settings_anim <= 0.02 {
-                self.close_settings(&ctx, save);
-                return;
-            }
+        if let Some(save) = self.closing
+            && self.settings_anim <= 0.02
+        {
+            self.close_settings(&ctx, save);
+            return;
         }
         // keep permission status fresh while the window is open
         ctx.request_repaint_after(Duration::from_millis(1000));
@@ -608,10 +713,17 @@ impl App {
         let slide = (1.0 - t) * (1.0 - t) * 26.0;
 
         // Esc (when not recording) = cancel
-        if self.closing.is_none() && self.ed.recording.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if self.closing.is_none()
+            && self.ed.recording.is_none()
+            && ctx.input(|i| i.key_pressed(egui::Key::Escape))
+        {
             self.closing = Some(false);
         }
-        if self.toast.as_ref().is_some_and(|(_, at)| at.elapsed() > Duration::from_secs(6)) {
+        if self
+            .toast
+            .as_ref()
+            .is_some_and(|(_, at)| at.elapsed() > Duration::from_secs(6))
+        {
             self.toast = None;
         }
 
@@ -621,7 +733,8 @@ impl App {
 
         // card + shadow, always centered in the window
         let full = ui.max_rect();
-        let card_rect = egui::Rect::from_center_size(full.center(), self.card_size).translate(Vec2::new(0.0, slide));
+        let card_rect = egui::Rect::from_center_size(full.center(), self.card_size)
+            .translate(Vec2::new(0.0, slide));
         for k in 1..=6 {
             let g = k as f32 * 3.0;
             let alpha = (24.0 - k as f32 * 3.6).max(2.0) as u8;
@@ -631,14 +744,24 @@ impl App {
                 Color32::from_black_alpha(alpha),
             );
         }
-        ui.painter().rect_filled(card_rect, CornerRadius::same(16), BG);
-        ui.painter().rect_stroke(card_rect, CornerRadius::same(16), Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+        ui.painter()
+            .rect_filled(card_rect, CornerRadius::same(16), BG);
+        ui.painter().rect_stroke(
+            card_rect,
+            CornerRadius::same(16),
+            Stroke::new(1.0, BORDER),
+            egui::StrokeKind::Inside,
+        );
 
         let inner = card_rect.shrink(18.0);
 
         // dragging the title area moves the window
         let title_rect = egui::Rect::from_min_size(inner.min, Vec2::new(inner.width(), 56.0));
-        let drag = ui.interact(title_rect, egui::Id::new("settings_drag"), egui::Sense::click_and_drag());
+        let drag = ui.interact(
+            title_rect,
+            egui::Id::new("settings_drag"),
+            egui::Sense::click_and_drag(),
+        );
         if drag.drag_started() {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
@@ -730,7 +853,12 @@ fn link_row(ui: &mut egui::Ui, label: &str, text: &str, url: &str) {
 fn about_tab(ui: &mut egui::Ui) {
     card().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.label(RichText::new(format!("{APP_NAME}  v{VERSION}")).size(20.0).strong().color(TEXT));
+        ui.label(
+            RichText::new(format!("{APP_NAME}  v{VERSION}"))
+                .size(20.0)
+                .strong()
+                .color(TEXT),
+        );
         muted(ui, TAGLINE);
     });
     ui.add_space(10.0);
@@ -739,7 +867,12 @@ fn about_tab(ui: &mut egui::Ui) {
     card().show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.label(RichText::new(AUTHOR_NAME).size(16.0).strong());
-        link_row(ui, "GitHub", &format!("@{AUTHOR_GITHUB_USER}"), AUTHOR_GITHUB_URL);
+        link_row(
+            ui,
+            "GitHub",
+            &format!("@{AUTHOR_GITHUB_USER}"),
+            AUTHOR_GITHUB_URL,
+        );
         link_row(ui, "Email", AUTHOR_EMAIL, &format!("mailto:{AUTHOR_EMAIL}"));
     });
     ui.add_space(10.0);

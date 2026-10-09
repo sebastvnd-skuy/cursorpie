@@ -13,7 +13,7 @@ Hold the middle mouse button, drag to a slice, release. Per-app profiles, shortc
 - **Instant flick** (optional): drag right after pressing to open the pie with no hold delay.
 - Menu bar icon: Settings, About, Pause, Launch at login, Quit. No Dock icon.
 - Image icons (png/jpg/webp), accent color, pie size, timings, optional hover sound.
-- Export / import your setup as JSON. Configs from the first version migrate automatically.
+- Export / import your setup as JSON.
 
 ## Build
 Requires Rust 1.88+ and macOS 11+.

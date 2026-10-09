@@ -1,6 +1,8 @@
 //! The eframe application: owns UI state and reacts to messages from the other threads.
 
-use crate::config::{self, cfg, has_commands, item_at_mut, parse_config, Action, Config, ItemKind, MAX_ITEMS};
+use crate::config::{
+    self, Action, Config, ItemKind, MAX_ITEMS, cfg, has_commands, item_at_mut, parse_config,
+};
 use crate::gfx::screen_rect_at;
 use crate::msg::Msg;
 use crate::settings::{Ed, Slot, Tab};
@@ -114,7 +116,9 @@ impl App {
         let w = self.win;
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize([w, w].into()));
         ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(true));
-        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
+        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+            egui::WindowLevel::AlwaysOnTop,
+        ));
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
     }
 
@@ -149,7 +153,9 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(win_sz));
         ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(false));
-        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::Normal));
+        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+            egui::WindowLevel::Normal,
+        ));
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(top_left));
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
@@ -207,7 +213,12 @@ impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
-                Msg::ShowPie { x, y, profile, path } => {
+                Msg::ShowPie {
+                    x,
+                    y,
+                    profile,
+                    path,
+                } => {
                     if self.settings_open {
                         continue;
                     }
@@ -226,7 +237,9 @@ impl eframe::App for App {
                     ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize([w, w].into()));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(true));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                        egui::WindowLevel::AlwaysOnTop,
+                    ));
                     ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                         x as f32 - w / 2.0,
                         y as f32 - w / 2.0,
@@ -259,8 +272,12 @@ impl eframe::App for App {
                         if let Some(p) = self.edit.profiles.get_mut(rec.profile) {
                             if let Some(item) = item_at_mut(&mut p.items, &rec.path) {
                                 match (&mut item.kind, rec.slot) {
-                                    (ItemKind::Mode { back, .. }, Slot::Back) => *back = Action::Key(sc),
-                                    (ItemKind::Mode { forward, .. }, Slot::Forward) => *forward = Action::Key(sc),
+                                    (ItemKind::Mode { back, .. }, Slot::Back) => {
+                                        *back = Action::Key(sc)
+                                    }
+                                    (ItemKind::Mode { forward, .. }, Slot::Forward) => {
+                                        *forward = Action::Key(sc)
+                                    }
                                     (ItemKind::Run(a), Slot::Run) => *a = Action::Key(sc),
                                     _ => {}
                                 }
@@ -269,7 +286,11 @@ impl eframe::App for App {
                     }
                 }
                 Msg::RecordCancelled => self.ed.recording = None,
-                Msg::IconPicked { profile, path, file } => {
+                Msg::IconPicked {
+                    profile,
+                    path,
+                    file,
+                } => {
                     if let Some(p) = self.edit.profiles.get_mut(profile) {
                         if let Some(item) = item_at_mut(&mut p.items, &path) {
                             item.icon = file;
@@ -287,7 +308,7 @@ impl eframe::App for App {
                     .ok()
                     .and_then(|t| parse_config(&t))
                 {
-                    Some((cfg_in, _)) => {
+                    Some(cfg_in) => {
                         let warn = has_commands(&cfg_in);
                         self.edit = cfg_in;
                         self.ed.profile = 0;

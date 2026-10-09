@@ -1,5 +1,3 @@
-//! Data model, defaults, migration from the v1 format, and persistence.
-//!
 //! Layout of a config:
 //!   Config -> profiles[] -> items[] -> (Mode | Run | Submenu(items[]))
 //! A profile with an empty `apps` list is the fallback for every app that has no profile of its own.
@@ -14,7 +12,7 @@ pub const CONFIG_VERSION: u32 = 2;
 /// Max slices per ring.
 pub const MAX_ITEMS: usize = 8;
 /// Max menu levels (top level counts as 1).
-pub const MAX_DEPTH: usize = 3;
+pub const MAX_DEPTH: usize = 5;
 pub const MAX_PROFILES: usize = 16;
 
 // ---------------------------------------------------------------------- model
@@ -58,14 +56,25 @@ impl Item {
         Self {
             name: name.into(),
             icon: icon.into(),
-            kind: ItemKind::Mode { back: Action::Key(back), forward: Action::Key(forward) },
+            kind: ItemKind::Mode {
+                back: Action::Key(back),
+                forward: Action::Key(forward),
+            },
         }
     }
     pub fn run(name: &str, icon: &str, action: Action) -> Self {
-        Self { name: name.into(), icon: icon.into(), kind: ItemKind::Run(action) }
+        Self {
+            name: name.into(),
+            icon: icon.into(),
+            kind: ItemKind::Run(action),
+        }
     }
     pub fn submenu(name: &str, icon: &str, items: Vec<Item>) -> Self {
-        Self { name: name.into(), icon: icon.into(), kind: ItemKind::Submenu(items) }
+        Self {
+            name: name.into(),
+            icon: icon.into(),
+            kind: ItemKind::Submenu(items),
+        }
     }
 }
 
@@ -185,25 +194,85 @@ pub fn has_commands(cfg: &Config) -> bool {
 /// Side-button mode presets (the original eight).
 pub fn presets() -> Vec<Item> {
     vec![
-        Item::mode("History", "<>", Shortcut::new(key::Z, MOD_CMD), Shortcut::new(key::Z, MOD_CMD | MOD_SHIFT)),
-        Item::mode("Brackets", "[ ]", Shortcut::new(key::LBRACKET, 0), Shortcut::new(key::RBRACKET, 0)),
-        Item::mode("Clipboard", "C/V", Shortcut::new(key::C, MOD_CMD), Shortcut::new(key::V, MOD_CMD)),
-        Item::mode("Browser", "< >", Shortcut::new(key::LBRACKET, MOD_CMD), Shortcut::new(key::RBRACKET, MOD_CMD)),
-        Item::mode("Tabs", "Tab", Shortcut::new(key::LBRACKET, MOD_CMD | MOD_SHIFT), Shortcut::new(key::RBRACKET, MOD_CMD | MOD_SHIFT)),
-        Item::mode("Zoom", "+/-", Shortcut::new(key::MINUS, MOD_CMD), Shortcut::new(key::EQUAL, MOD_CMD)),
-        Item::mode("Scroll", "Pg", Shortcut::new(key::PAGE_UP, 0), Shortcut::new(key::PAGE_DOWN, 0)),
-        Item::mode("Edit", "Ret", Shortcut::new(key::RETURN, 0), Shortcut::new(key::DELETE, 0)),
+        Item::mode(
+            "History",
+            "<>",
+            Shortcut::new(key::Z, MOD_CMD),
+            Shortcut::new(key::Z, MOD_CMD | MOD_SHIFT),
+        ),
+        Item::mode(
+            "Brackets",
+            "[ ]",
+            Shortcut::new(key::LBRACKET, 0),
+            Shortcut::new(key::RBRACKET, 0),
+        ),
+        Item::mode(
+            "Clipboard",
+            "C/V",
+            Shortcut::new(key::C, MOD_CMD),
+            Shortcut::new(key::V, MOD_CMD),
+        ),
+        Item::mode(
+            "Browser",
+            "< >",
+            Shortcut::new(key::LBRACKET, MOD_CMD),
+            Shortcut::new(key::RBRACKET, MOD_CMD),
+        ),
+        Item::mode(
+            "Tabs",
+            "Tab",
+            Shortcut::new(key::LBRACKET, MOD_CMD | MOD_SHIFT),
+            Shortcut::new(key::RBRACKET, MOD_CMD | MOD_SHIFT),
+        ),
+        Item::mode(
+            "Zoom",
+            "+/-",
+            Shortcut::new(key::MINUS, MOD_CMD),
+            Shortcut::new(key::EQUAL, MOD_CMD),
+        ),
+        Item::mode(
+            "Scroll",
+            "Pg",
+            Shortcut::new(key::PAGE_UP, 0),
+            Shortcut::new(key::PAGE_DOWN, 0),
+        ),
+        Item::mode(
+            "Edit",
+            "Ret",
+            Shortcut::new(key::RETURN, 0),
+            Shortcut::new(key::DELETE, 0),
+        ),
     ]
 }
 
 /// Ready-made "run on release" slices.
 pub fn quick_actions() -> Vec<Item> {
     vec![
-        Item::run("Screenshot", "Shot", Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT))),
-        Item::run("Mission Ctrl", "MC", Action::Key(Shortcut::new(key::UP, MOD_CTRL))),
-        Item::run("Spotlight", "Find", Action::Key(Shortcut::new(key::SPACE, MOD_CMD))),
-        Item::run("Emoji", ":)", Action::Key(Shortcut::new(key::SPACE, MOD_CMD | MOD_CTRL))),
-        Item::run("Lock", "Lock", Action::Key(Shortcut::new(key::Q, MOD_CMD | MOD_CTRL))),
+        Item::run(
+            "Screenshot",
+            "Shot",
+            Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT)),
+        ),
+        Item::run(
+            "Mission Ctrl",
+            "MC",
+            Action::Key(Shortcut::new(key::UP, MOD_CTRL)),
+        ),
+        Item::run(
+            "Spotlight",
+            "Find",
+            Action::Key(Shortcut::new(key::SPACE, MOD_CMD)),
+        ),
+        Item::run(
+            "Emoji",
+            ":)",
+            Action::Key(Shortcut::new(key::SPACE, MOD_CMD | MOD_CTRL)),
+        ),
+        Item::run(
+            "Lock",
+            "Lock",
+            Action::Key(Shortcut::new(key::Q, MOD_CMD | MOD_CTRL)),
+        ),
     ]
 }
 
@@ -231,7 +300,11 @@ impl Default for Config {
                 Item::run("Finder", "F", Action::OpenApp("Finder".into())),
                 Item::run("Terminal", ">_", Action::OpenApp("Terminal".into())),
                 Item::run("Safari", "S", Action::OpenApp("Safari".into())),
-                Item::run("Shot", "Shot", Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT))),
+                Item::run(
+                    "Shot",
+                    "Shot",
+                    Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT)),
+                ),
             ],
         );
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
@@ -307,55 +380,28 @@ impl Config {
 
     /// Which profile applies for the given frontmost app.
     pub fn profile_for(&self, bundle: Option<&str>) -> usize {
-        if let Some(b) = bundle {
-            if let Some(i) = self.profiles.iter().position(|p| p.apps.iter().any(|a| a == b)) {
-                return i;
-            }
+        if let Some(b) = bundle
+            && let Some(i) = self
+                .profiles
+                .iter()
+                .position(|p| p.apps.iter().any(|a| a == b))
+        {
+            return i;
         }
-        self.profiles.iter().position(|p| p.apps.is_empty()).unwrap_or(0)
+        self.profiles
+            .iter()
+            .position(|p| p.apps.is_empty())
+            .unwrap_or(0)
     }
 }
 
-// ------------------------------------------------------------------ migration
-
-/// Reads the v1 format (`modes`, `active_mode`, ...) and converts it to a single "Default" profile.
-fn migrate_v1(v: &serde_json::Value) -> Option<Config> {
-    let mut items = Vec::new();
-    for m in v.get("modes")?.as_array()? {
-        let back: Shortcut = serde_json::from_value(m.get("back")?.clone()).ok()?;
-        let forward: Shortcut = serde_json::from_value(m.get("forward")?.clone()).ok()?;
-        items.push(Item {
-            name: m.get("name")?.as_str()?.to_string(),
-            icon: m.get("icon")?.as_str()?.to_string(),
-            kind: ItemKind::Mode { back: Action::Key(back), forward: Action::Key(forward) },
-        });
-    }
-    let mut cfg = Config::default();
-    let active = v.get("active_mode").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
-    cfg.profiles = vec![Profile { name: "Default".into(), apps: vec![], items, active: vec![active] }];
-    if let Some(x) = v.get("pie_hold_ms").and_then(|x| x.as_u64()) {
-        cfg.pie_hold_ms = x;
-    }
-    if let Some(x) = v.get("settings_hold_ms").and_then(|x| x.as_u64()) {
-        cfg.settings_hold_ms = x;
-    }
-    if let Some(x) = v.get("pie_size").and_then(|x| x.as_f64()) {
-        cfg.pie_size = x as f32;
-    }
-    if let Some(a) = v.get("accent").and_then(|x| serde_json::from_value::<[u8; 3]>(x.clone()).ok()) {
-        cfg.accent = a;
-    }
-    Some(cfg)
-}
-
-/// Returns (config, was_migrated).
-pub fn parse_config(text: &str) -> Option<(Config, bool)> {
+/// Parses a config file. None = not valid JSON or not a CursorPie config.
+pub fn parse_config(text: &str) -> Option<Config> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
-    if v.get("version").and_then(|x| x.as_u64()).is_some() {
-        serde_json::from_value::<Config>(v).ok().map(|c| (c.sanitize(), false))
-    } else {
-        migrate_v1(&v).map(|c| (c.sanitize(), true))
-    }
+    v.get("version").and_then(|x| x.as_u64())?; // no "version" = old v1 format, rejected
+    serde_json::from_value::<Config>(v)
+        .ok()
+        .map(Config::sanitize)
 }
 
 // -------------------------------------------------------------------- storage
@@ -380,14 +426,7 @@ pub fn load_config() -> Config {
         return Config::default();
     };
     match parse_config(&text) {
-        Some((cfg, migrated)) => {
-            if migrated {
-                // keep the old file around, just in case
-                fs::copy(&path, path.with_file_name("config.v1.backup.json")).ok();
-                save_config(&cfg);
-            }
-            cfg
-        }
+        Some(cfg) => cfg,
         None => {
             fs::copy(&path, path.with_file_name("config.broken.json")).ok();
             Config::default()
