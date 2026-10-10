@@ -3,14 +3,17 @@
 use crate::keys::Shortcut;
 use core_graphics::display::CGDisplay;
 use core_graphics::geometry::CGPoint;
-use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Pos2, RichText, Shape, Stroke, Vec2};
+use eframe::egui::{
+    self, Align2, Color32, CornerRadius, FontId, Pos2, RichText, Shape, Stroke, Vec2,
+};
 use std::f32::consts::{PI, TAU};
 use std::path::PathBuf;
 
 // Settings palette (change here to re-theme)
-pub const BG: Color32 = Color32::from_rgb(18, 19, 23);
-pub const CARD: Color32 = Color32::from_rgb(27, 29, 35);
-pub const BORDER: Color32 = Color32::from_rgb(46, 49, 58);
+
+pub const BG: Color32 = Color32::from_rgb(15, 16, 21);
+pub const CARD: Color32 = Color32::from_rgb(24, 26, 33);
+pub const BORDER: Color32 = Color32::from_rgb(40, 43, 54);
 pub const TEXT: Color32 = Color32::from_rgb(230, 232, 238);
 pub const MUTED: Color32 = Color32::from_rgb(140, 146, 160);
 pub const GOOD: Color32 = Color32::from_rgb(90, 200, 120);
@@ -52,7 +55,9 @@ pub fn slice_at(center: CGPoint, p: CGPoint, total: usize, dead_zone: f32) -> Op
 pub fn icon_path(s: &str) -> Option<PathBuf> {
     let s = s.trim();
     let lower = s.to_lowercase();
-    let is_img = [".png", ".jpg", ".jpeg", ".webp"].iter().any(|e| lower.ends_with(e));
+    let is_img = [".png", ".jpg", ".jpeg", ".webp"]
+        .iter()
+        .any(|e| lower.ends_with(e));
     if !is_img {
         return None;
     }
@@ -71,7 +76,14 @@ pub fn load_icon(ctx: &egui::Context, path: &PathBuf, name: &str) -> Option<egui
 }
 
 /// Draws an icon (image or text) centered at `c` in a box of `size`.
-pub fn draw_icon(painter: &egui::Painter, tex: Option<&egui::TextureHandle>, icon: &str, c: Pos2, size: f32, alpha: u8) {
+pub fn draw_icon(
+    painter: &egui::Painter,
+    tex: Option<&egui::TextureHandle>,
+    icon: &str,
+    c: Pos2,
+    size: f32,
+    alpha: u8,
+) {
     if let Some(t) = tex {
         let sz = t.size_vec2();
         let k = size / sz.x.max(sz.y).max(1.0);
@@ -81,7 +93,13 @@ pub fn draw_icon(painter: &egui::Painter, tex: Option<&egui::TextureHandle>, ico
     } else {
         // an image path that failed to load shows "?" so the problem is visible
         let text = if icon_path(icon).is_some() { "?" } else { icon };
-        painter.text(c, Align2::CENTER_CENTER, text, FontId::proportional(size * 0.8), Color32::from_white_alpha(alpha));
+        painter.text(
+            c,
+            Align2::CENTER_CENTER,
+            text,
+            FontId::proportional(size * 0.8),
+            Color32::from_white_alpha(alpha),
+        );
     }
 }
 
@@ -165,9 +183,39 @@ pub fn ring_slice(c: Pos2, r0: f32, r1: f32, a0: f32, a1: f32, color: Color32) -
 pub fn card() -> egui::Frame {
     egui::Frame::new()
         .fill(CARD)
-        .corner_radius(CornerRadius::same(10))
-        .inner_margin(egui::Margin::same(12))
+        .corner_radius(CornerRadius::same(14))
+        .inner_margin(egui::Margin::same(14))
         .stroke(Stroke::new(1.0, BORDER))
+}
+
+/// Kontrol pill "a | b | c" (pengganti selectable_value / ComboBox kecil).
+pub fn segmented(ui: &mut egui::Ui, cur: &mut usize, labels: &[&str], accent: Color32) -> bool {
+    let mut changed = false;
+    egui::Frame::new()
+        .fill(Color32::from_rgb(10, 11, 14))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(egui::Margin::same(3))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for (i, l) in labels.iter().enumerate() {
+                    let on = *cur == i;
+                    let b = egui::Button::new(RichText::new(*l).strong().color(if on {
+                        Color32::WHITE
+                    } else {
+                        MUTED
+                    }))
+                    .fill(if on { accent } else { Color32::TRANSPARENT })
+                    .stroke(Stroke::NONE)
+                    .corner_radius(CornerRadius::same(9));
+                    if ui.add(b).clicked() && !on {
+                        *cur = i;
+                        changed = true;
+                    }
+                }
+            });
+        });
+    changed
 }
 
 pub fn section_title(ui: &mut egui::Ui, text: &str) {
@@ -188,7 +236,7 @@ pub fn style_settings(ui: &mut egui::Ui, accent: Color32) {
     v.selection.bg_fill = accent.gamma_multiply(0.55);
     v.selection.stroke = Stroke::new(1.0, accent);
 
-    let r = CornerRadius::same(8);
+    let r = CornerRadius::same(10);
     let idle = Color32::from_rgb(38, 41, 49);
     let hot = Color32::from_rgb(54, 58, 70);
     v.widgets.noninteractive.corner_radius = r;
@@ -198,6 +246,7 @@ pub fn style_settings(ui: &mut egui::Ui, accent: Color32) {
     v.widgets.open.corner_radius = r;
     v.widgets.inactive.bg_fill = idle;
     v.widgets.inactive.weak_bg_fill = idle;
+    v.widgets.inactive.bg_stroke = Stroke::NONE;
     v.widgets.hovered.bg_fill = hot;
     v.widgets.hovered.weak_bg_fill = hot;
     v.widgets.active.bg_fill = accent;
@@ -205,12 +254,18 @@ pub fn style_settings(ui: &mut egui::Ui, accent: Color32) {
 
     let sp = ui.spacing_mut();
     sp.item_spacing = Vec2::new(8.0, 8.0);
-    sp.button_padding = Vec2::new(12.0, 6.0);
+    sp.button_padding = Vec2::new(14.0, 8.0);
 }
 
-pub fn shortcut_button(ui: &mut egui::Ui, sc: &Shortcut, recording: bool, accent: Color32) -> egui::Response {
+pub fn shortcut_button(
+    ui: &mut egui::Ui,
+    sc: &Shortcut,
+    recording: bool,
+    accent: Color32,
+) -> egui::Response {
     let btn = if recording {
-        egui::Button::new(RichText::new("Press any key...  (Esc = cancel)").color(Color32::WHITE)).fill(accent)
+        egui::Button::new(RichText::new("Press any key...  (Esc = cancel)").color(Color32::WHITE))
+            .fill(accent)
     } else {
         egui::Button::new(RichText::new(sc.label()).monospace())
     };

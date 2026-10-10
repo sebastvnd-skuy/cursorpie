@@ -4,8 +4,9 @@ use crate::app::App;
 use crate::config::*;
 use crate::gfx::*;
 use crate::msg::Msg;
+use crate::settings::items_editor::{Env, add_panel, item_inspector};
+use crate::settings::pie_designer::{Designer, pie_designer};
 use crate::system;
-use crate::settings::items_editor::{Env, items_editor};
 use eframe::egui::{self, RichText};
 
 impl App {
@@ -20,6 +21,7 @@ impl App {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 let names: Vec<String> = edit.profiles.iter().map(|p| p.name.clone()).collect();
+                let before = ed.profile;
                 egui::ComboBox::from_id_salt("profile_select")
                     .width(170.0)
                     .selected_text(names[pi].clone())
@@ -28,6 +30,9 @@ impl App {
                             ui.selectable_value(&mut ed.profile, i, name.as_str());
                         }
                     });
+                if ed.profile != before {
+                    ed.reset_nav();
+                }
                 if ui
                     .add_enabled(edit.profiles.len() < MAX_PROFILES, egui::Button::new("New"))
                     .clicked()
@@ -39,6 +44,7 @@ impl App {
                         active: vec![0],
                     });
                     ed.profile = edit.profiles.len() - 1;
+                    ed.reset_nav();
                     ed.stop_recording();
                 }
                 if ui
@@ -47,6 +53,7 @@ impl App {
                 {
                     edit.profiles.remove(pi);
                     ed.profile = pi.saturating_sub(1);
+                    ed.reset_nav();
                     ed.stop_recording();
                 }
             });
@@ -111,22 +118,76 @@ impl App {
         });
 
         ui.add_space(14.0);
-        section_title(ui, "Menu items");
+        section_title(ui, "Your pie");
         muted(
             ui,
-            "Hold the trigger button, drag to a slice and release. Side buttons use the active mode.",
+            "Click a slice to edit · click + to add · click the center to go back.",
         );
-        ui.add_space(4.0);
 
+        let accent_rgb = edit.accent;
+        let Some(prof) = edit.profiles.get_mut(ed.profile) else {
+            return;
+        };
+        if items_at(&prof.items, &ed.nav).is_none() {
+            ed.reset_nav();
+        } // path basi setelah hapus item
+        let nav = ed.nav.clone();
+
+        // breadcrumb: Default › Launch › ...
+        ui.horizontal_wrapped(|ui| {
+            let mut go: Option<usize> = None;
+            if ui.link(RichText::new(&prof.name).strong()).clicked() {
+                go = Some(0);
+            }
+            for d in 0..nav.len() {
+                ui.label("›");
+                let name = item_at(&prof.items, &nav[..=d])
+                    .map(|i| i.name.as_str())
+                    .unwrap_or("?");
+                if ui.link(name).clicked() {
+                    go = Some(d + 1);
+                }
+            }
+            if let Some(k) = go {
+                ed.nav.truncate(k);
+                ed.sel = None;
+                ed.adding = false;
+            }
+        });
+
+        let res = {
+            let ring = items_at(&prof.items, &nav).unwrap_or(&[]);
+            ui.vertical_centered(|ui| pie_designer(ui, ed, ctx, ring, accent_rgb))
+                .inner
+        };
+        match res {
+            Designer::Enter(i) => {
+                ed.nav.push(i);
+                ed.sel = None;
+            }
+            Designer::Up => {
+                ed.sel = ed.nav.pop();
+            } // langsung memilih submenu asalnya
+            Designer::AddClicked => {
+                ed.adding = true;
+                ed.sel = None;
+            }
+            Designer::None => {}
+        }
+
+        let nav = ed.nav.clone(); // bisa berubah barusan
         let env = Env {
             ctx,
             tx,
             accent,
             profile: ed.profile,
         };
-        if let Some(prof) = edit.profiles.get_mut(ed.profile) {
-            let mut path = Vec::new();
-            items_editor(ui, ed, &env, &mut prof.items, &mut path);
+        if let Some(ring) = ring_mut(&mut prof.items, &nav) {
+            if ed.adding {
+                add_panel(ui, ed, ring, nav.len());
+            } else {
+                item_inspector(ui, ed, &env, ring, &nav);
+            }
         }
     }
 }

@@ -3,12 +3,13 @@
 use super::action_editor::action_editor;
 use super::state::{Ed, Rec, Slot};
 use crate::config::*;
+use crate::gfx::segmented;
 use crate::gfx::*;
 use crate::keys::{Shortcut, key};
 use crate::msg::Msg;
 use crate::system;
 use crate::tap::{RECORDING, SWALLOW_KEY};
-use eframe::egui::{self, Color32, CornerRadius, RichText, Vec2};
+use eframe::egui::{self, Color32, CornerRadius, Vec2};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 
@@ -19,8 +20,6 @@ pub(super) struct Env<'a> {
     pub accent: Color32,
     pub profile: usize,
 }
-
-const KIND_NAMES: [&str; 3] = ["Side-button mode", "Action", "Submenu"];
 
 fn default_kind(k: usize) -> ItemKind {
     match k {
@@ -64,211 +63,200 @@ fn pick_icon(env: &Env, path: &[usize]) {
     });
 }
 
-/// Edits one ring of items; submenus recurse.
-pub(super) fn items_editor(
+pub(super) fn item_inspector(
     ui: &mut egui::Ui,
     ed: &mut Ed,
     env: &Env,
-    items: &mut Vec<Item>,
-    path: &mut Vec<usize>,
+    ring: &mut Vec<Item>,
+    nav: &[usize],
 ) {
-    let depth = path.len();
-    let n = items.len();
-    let mut remove: Option<usize> = None;
-    let mut swap: Option<(usize, usize)> = None;
+    let Some(i) = ed.sel.filter(|&i| i < ring.len()) else {
+        muted(ui, "Click a slice on the circle to choose what it does.");
+        return;
+    };
+    let n = ring.len();
+    let mut path = nav.to_vec();
+    path.push(i);
+    let uid = format!(
+        "insp_{}_{}",
+        env.profile,
+        path.iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<_>>()
+            .join("-")
+    );
+    let (rb, rf, rr) = (
+        is_rec(ed, env.profile, &path, Slot::Back),
+        is_rec(ed, env.profile, &path, Slot::Forward),
+        is_rec(ed, env.profile, &path, Slot::Run),
+    );
+    let (mut start, mut pick, mut remove, mut enter, mut shift) =
+        (None::<Slot>, false, false, false, 0i32);
 
-    for i in 0..n {
-        path.push(i);
-        let uid = format!(
-            "{}_{}",
-            env.profile,
-            path.iter()
-                .map(|x| x.to_string())
-                .collect::<Vec<_>>()
-                .join("-")
-        );
-        let rec_back = is_rec(ed, env.profile, path, Slot::Back);
-        let rec_fwd = is_rec(ed, env.profile, path, Slot::Forward);
-        let rec_run = is_rec(ed, env.profile, path, Slot::Run);
-        let mut start: Option<Slot> = None;
-        let mut pick = false;
+    card().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        let item = &mut ring[i];
 
-        ui.push_id(uid.clone(), |ui| {
-            card().show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                let item = &mut items[i];
-
-                // row 1: number, icon preview, name, kind, preset
+        // nama + ikon
+        ui.horizontal(|ui| {
+            let tex = ed.icon_for(env.ctx, &item.icon);
+            let (r, _) = ui.allocate_exact_size(Vec2::splat(44.0), egui::Sense::hover());
+            ui.painter()
+                .rect_filled(r, CornerRadius::same(12), Color32::from_rgb(14, 15, 18));
+            draw_icon(
+                ui.painter(),
+                tex.as_ref(),
+                &item.icon,
+                r.center(),
+                28.0,
+                255,
+            );
+            ui.vertical(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut item.name)
+                        .desired_width(220.0)
+                        .hint_text("Name"),
+                );
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!("{}", i + 1))
-                            .color(env.accent)
-                            .strong(),
-                    );
-                    let tex = ed.icon_for(env.ctx, &item.icon);
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(32.0), egui::Sense::hover());
-                    ui.painter().rect_filled(
-                        rect,
-                        CornerRadius::same(8),
-                        Color32::from_rgb(14, 15, 18),
-                    );
-                    draw_icon(
-                        ui.painter(),
-                        tex.as_ref(),
-                        &item.icon,
-                        rect.center(),
-                        22.0,
-                        255,
-                    );
-
-                    ui.add(egui::TextEdit::singleline(&mut item.name).desired_width(120.0));
-
-                    let now = match &item.kind {
-                        ItemKind::Mode { .. } => 0,
-                        ItemKind::Run(_) => 1,
-                        ItemKind::Submenu(_) => 2,
-                    };
-                    let mut sel = now;
-                    egui::ComboBox::from_id_salt(format!("{uid}_type"))
-                        .width(115.0)
-                        .selected_text(KIND_NAMES[now])
-                        .show_ui(ui, |ui| {
-                            for (k, name) in KIND_NAMES.iter().enumerate() {
-                                if k == 2 && depth + 1 >= MAX_DEPTH {
-                                    continue; // no deeper submenus
-                                }
-                                ui.selectable_value(&mut sel, k, *name);
-                            }
-                        });
-                    if sel != now {
-                        item.kind = default_kind(sel);
-                    }
-
-                    if now == 0 {
-                        egui::ComboBox::from_id_salt(format!("{uid}_preset"))
-                            .width(60.0)
-                            .selected_text("Preset")
-                            .show_ui(ui, |ui| {
-                                for p in presets() {
-                                    if ui.selectable_label(false, p.name.clone()).clicked() {
-                                        *item = p;
-                                    }
-                                }
-                            });
-                    }
-                });
-
-                // row 2: icon text + browse + order/remove
-                ui.horizontal_wrapped(|ui| {
-                    muted(ui, "Icon");
                     ui.add(
                         egui::TextEdit::singleline(&mut item.icon)
-                            .desired_width(150.0)
-                            .hint_text("text, emoji or image path"),
+                            .desired_width(110.0)
+                            .hint_text("Icon (text/emoji)"),
                     );
-                    if ui.button("Browse...").clicked() {
+                    if ui.button("Pick image…").clicked() {
                         pick = true;
                     }
-                    if ui.add_enabled(i > 0, egui::Button::new("Up")).clicked() {
-                        swap = Some((i, i - 1));
-                    }
-                    if ui
-                        .add_enabled(i + 1 < n, egui::Button::new("Down"))
-                        .clicked()
-                    {
-                        swap = Some((i, i + 1));
-                    }
-                    if ui
-                        .add_enabled(n > 1 || depth > 0, egui::Button::new("Remove"))
-                        .clicked()
-                    {
-                        remove = Some(i);
-                    }
                 });
-
-                // row 3: what the item does
-                match &mut item.kind {
-                    ItemKind::Mode { back, forward } => {
-                        muted(ui, "Back side button");
-                        if action_editor(ui, &format!("{uid}_b"), back, rec_back, env.accent) {
-                            start = Some(Slot::Back);
-                        }
-                        muted(ui, "Forward side button");
-                        if action_editor(ui, &format!("{uid}_f"), forward, rec_fwd, env.accent) {
-                            start = Some(Slot::Forward);
-                        }
-                    }
-                    ItemKind::Run(a) => {
-                        muted(ui, "Runs when you release the button over this slice");
-                        if action_editor(ui, &format!("{uid}_r"), a, rec_run, env.accent) {
-                            start = Some(Slot::Run);
-                        }
-                    }
-                    ItemKind::Submenu(children) => {
-                        muted(ui, "Drag outward across the rim of this slice to open it");
-                        egui::CollapsingHeader::new(format!(
-                            "Items in this submenu ({})",
-                            children.len()
-                        ))
-                        .id_salt(format!("{uid}_sub"))
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            items_editor(ui, ed, env, children, path);
-                        });
-                    }
-                }
             });
         });
 
-        if let Some(slot) = start {
-            start_rec(ed, env.profile, path, slot);
-        }
-        if pick {
-            pick_icon(env, path);
-        }
-        path.pop();
+        // jenis (tombol segmented, bahasa awam)
         ui.add_space(6.0);
-    }
+        muted(ui, "What should this slice do?");
+        let now = match &item.kind {
+            ItemKind::Run(_) => 0,
+            ItemKind::Mode { .. } => 1,
+            ItemKind::Submenu(_) => 2,
+        };
+        let mut sel = now;
+        let labels: &[&str] = if nav.len() + 1 < MAX_DEPTH {
+            &["Do something", "Side buttons", "Open submenu"]
+        } else {
+            &["Do something", "Side buttons"]
+        };
+        if segmented(ui, &mut sel, labels, env.accent) {
+            item.kind = match sel {
+                0 => default_kind(1),
+                1 => default_kind(0),
+                _ => default_kind(2),
+            };
+        }
 
-    if let Some((a, b)) = swap {
-        items.swap(a, b);
+        match &mut item.kind {
+            ItemKind::Run(a) => {
+                muted(ui, "Runs when you release the button over this slice.");
+                if action_editor(ui, &format!("{uid}_r"), a, rr, env.accent) {
+                    start = Some(Slot::Run);
+                }
+            }
+            ItemKind::Mode { back, forward } => {
+                muted(
+                    ui,
+                    "While this slice is active, your mouse side buttons send:",
+                );
+                muted(ui, "Back button");
+                if action_editor(ui, &format!("{uid}_b"), back, rb, env.accent) {
+                    start = Some(Slot::Back);
+                }
+                muted(ui, "Forward button");
+                if action_editor(ui, &format!("{uid}_f"), forward, rf, env.accent) {
+                    start = Some(Slot::Forward);
+                }
+            }
+            ItemKind::Submenu(ch) => {
+                muted(
+                    ui,
+                    &format!(
+                        "{} slices inside. Drag outward over this slice to open it.",
+                        ch.len()
+                    ),
+                );
+                if ui.button("Edit submenu  ›").clicked() {
+                    enter = true;
+                }
+            }
+        }
+
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            if ui.add_enabled(i > 0, egui::Button::new("‹ Move")).clicked() {
+                shift = -1;
+            }
+            if ui
+                .add_enabled(i + 1 < n, egui::Button::new("Move ›"))
+                .clicked()
+            {
+                shift = 1;
+            }
+            if ui
+                .add_enabled(n > 1 || !nav.is_empty(), egui::Button::new("Delete"))
+                .clicked()
+            {
+                remove = true;
+            }
+        });
+    });
+
+    if let Some(slot) = start {
+        start_rec(ed, env.profile, &path, slot);
+    }
+    if pick {
+        pick_icon(env, &path);
+    }
+    if shift != 0 {
+        let j = (i as i32 + shift) as usize;
+        ring.swap(i, j);
+        ed.sel = Some(j);
         ed.stop_recording();
     }
-    if let Some(i) = remove {
-        items.remove(i);
+    if remove {
+        ring.remove(i);
+        ed.sel = None;
         ed.stop_recording();
     }
+    if enter {
+        ed.nav.push(i);
+        ed.sel = None;
+    }
+}
 
-    if items.len() < MAX_ITEMS {
-        let mut add: Option<Item> = None;
-        egui::ComboBox::from_id_salt(format!("add_{}_{}", env.profile, path.len()))
-            .selected_text("+ Add item")
-            .show_ui(ui, |ui| {
-                muted(ui, "Side-button modes");
-                for p in presets() {
-                    if ui.selectable_label(false, p.name.clone()).clicked() {
-                        add = Some(p);
-                    }
-                }
-                ui.separator();
-                muted(ui, "Quick actions");
-                for q in quick_actions() {
-                    if ui.selectable_label(false, q.name.clone()).clicked() {
-                        add = Some(q);
-                    }
-                }
-                ui.separator();
-                muted(ui, "Custom");
-                for b in blank_items(depth + 1 < MAX_DEPTH) {
-                    if ui.selectable_label(false, b.name.clone()).clicked() {
-                        add = Some(b);
+pub(super) fn add_panel(ui: &mut egui::Ui, ed: &mut Ed, ring: &mut Vec<Item>, depth: usize) {
+    let mut picked: Option<Item> = None;
+    card().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        section_title(ui, "Add a slice");
+        let groups: [(&str, Vec<Item>); 3] = [
+            ("Quick actions", quick_actions()),
+            ("Side-button modes", presets()),
+            ("Custom", blank_items(depth + 1 < MAX_DEPTH)),
+        ];
+        for (title, list) in groups {
+            muted(ui, title);
+            ui.horizontal_wrapped(|ui| {
+                for it in list {
+                    if ui.button(format!("{}  {}", it.icon, it.name)).clicked() {
+                        picked = Some(it);
                     }
                 }
             });
-        if let Some(it) = add {
-            items.push(it);
         }
-    } else {
-        muted(ui, &format!("Maximum {MAX_ITEMS} items per ring reached."));
+        if ui.button("Cancel").clicked() {
+            ed.adding = false;
+        }
+    });
+    if let Some(it) = picked {
+        ring.push(it);
+        ed.sel = Some(ring.len() - 1);
+        ed.adding = false;
     }
 }

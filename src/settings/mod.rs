@@ -9,6 +9,7 @@
 
 mod action_editor;
 mod items_editor;
+mod pie_designer;
 mod state;
 mod tabs;
 mod window;

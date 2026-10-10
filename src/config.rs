@@ -51,6 +51,15 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum AppGesture {
+    /// Cara lama: tahan = pie milik app di depan (kalau ada).
+    Merged,
+    /// Baru: tahan = pie umum, klik dua kali = pie milik app.
+    #[default]
+    DoubleClick,
+}
+
 impl Item {
     pub fn mode(name: &str, icon: &str, back: Shortcut, forward: Shortcut) -> Self {
         Self {
@@ -109,6 +118,8 @@ pub struct Config {
     pub flick: bool,
     pub sound: bool,
     pub launch_at_login: bool,
+    pub app_gesture: AppGesture,
+    pub double_click_ms: u64,
 }
 
 // -------------------------------------------------------------- tree helpers
@@ -345,6 +356,8 @@ impl Default for Config {
             flick: false,
             sound: false,
             launch_at_login: false,
+            app_gesture: AppGesture::DoubleClick,
+            double_click_ms: 260,
         }
     }
 }
@@ -356,6 +369,7 @@ impl Config {
             self.profiles = Config::default().profiles;
         }
         self.profiles.truncate(MAX_PROFILES);
+        self.double_click_ms = self.double_click_ms.clamp(150, 500);
         for p in &mut self.profiles {
             if p.items.is_empty() {
                 p.items = vec![presets().remove(0)];
@@ -376,6 +390,20 @@ impl Config {
             self.trigger_button = 2;
         }
         self
+    }
+
+    pub fn global_profile(&self) -> usize {
+        self.profiles
+            .iter()
+            .position(|p| p.apps.is_empty())
+            .unwrap_or(0)
+    }
+
+    pub fn app_profile_for(&self, bundle: Option<&str>) -> Option<usize> {
+        let b = bundle?;
+        self.profiles
+            .iter()
+            .position(|p| p.apps.iter().any(|a| a == b))
     }
 
     /// Which profile applies for the given frontmost app.
@@ -479,5 +507,16 @@ pub fn set_active(profile: usize, path: Vec<usize>) {
     };
     if let Some(c) = snapshot {
         std::thread::spawn(move || save_config(&c));
+    }
+}
+
+/// Cincin (daftar item) pada path tertentu; path kosong = level atas.
+pub fn ring_mut<'a>(items: &'a mut Vec<Item>, path: &[usize]) -> Option<&'a mut Vec<Item>> {
+    if path.is_empty() {
+        return Some(items);
+    }
+    match &mut item_at_mut(items, path)?.kind {
+        ItemKind::Submenu(c) => Some(c),
+        _ => None,
     }
 }

@@ -3,15 +3,17 @@
 //! Safety rules for an active HID tap: never block in the callback, never panic out of it
 //! (we `catch_unwind` and fail open), and keep retrying if the permission is missing.
 
-use crate::actions::{self, post_mouse, SYNTH_TAG};
-use crate::config::{self, cfg, item_at, items_at, lock, Action, Item, ItemKind, MAX_DEPTH};
+use crate::actions::{self, SYNTH_TAG, post_mouse};
+use crate::config::{
+    self, Action, AppGesture, Item, ItemKind, MAX_DEPTH, cfg, item_at, items_at, lock,
+};
 use crate::gfx::{pie_inner, pie_outer, slice_at};
-use crate::keys::{mods_from_flags, Shortcut};
+use crate::keys::{Shortcut, mods_from_flags};
 use crate::msg::{Msg, Notifier};
 use crate::system;
 use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortRef;
-use core_foundation::runloop::{kCFRunLoopCommonModes, CFRunLoop};
+use core_foundation::runloop::{CFRunLoop, kCFRunLoopCommonModes};
 use core_graphics::event::{
     CGEvent, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
     CallbackResult, EventField,
@@ -19,7 +21,7 @@ use core_graphics::event::{
 use core_graphics::geometry::CGPoint;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const SIDE_BACK: i64 = 3;
 const SIDE_FORWARD: i64 = 4;
@@ -48,12 +50,30 @@ unsafe extern "C" {
 
 enum Gesture {
     Idle,
-    Pending { id: u64, pos: CGPoint, profile: usize },
-    ActivePie { id: u64, center: CGPoint, profile: usize, path: Vec<usize>, hover: Option<usize> },
+    // `profile` = yang dibuka saat TAHAN, `app` = profil khusus app (untuk klik dua kali)
+    Pending {
+        id: u64,
+        pos: CGPoint,
+        profile: usize,
+        app: Option<usize>,
+    },
+    // klik pertama sudah dilepas, menunggu tekan kedua
+    WaitSecond {
+        id: u64,
+        pos: CGPoint,
+        app: usize,
+        at: Instant,
+    },
+    ActivePie {
+        id: u64,
+        center: CGPoint,
+        profile: usize,
+        path: Vec<usize>,
+        hover: Option<usize>,
+    },
     InSettings,
     Passthrough,
 }
-
 // ------------------------------------------------------------------- startup
 
 /// Starts the tap on its own thread and keeps retrying until the permission is granted.
@@ -111,7 +131,12 @@ pub fn spawn(notifier: Notifier) {
         .expect("failed to spawn event tap thread");
 }
 
-fn guarded(state: &Arc<Mutex<Gesture>>, n: &Notifier, t: CGEventType, e: &CGEvent) -> CallbackResult {
+fn guarded(
+    state: &Arc<Mutex<Gesture>>,
+    n: &Notifier,
+    t: CGEventType,
+    e: &CGEvent,
+) -> CallbackResult {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handle(state, n, t, e)))
         .unwrap_or(CallbackResult::Keep)
 }
@@ -127,15 +152,23 @@ struct Hit {
 fn eval(profile: usize, path: &[usize], center: CGPoint, p: CGPoint) -> Hit {
     let c = cfg();
     let win = c.pie_size;
-    let Some(items) = c.profiles.get(profile).and_then(|pr| items_at(&pr.items, path)) else {
-        return Hit { hover: None, enter: false };
+    let Some(items) = c
+        .profiles
+        .get(profile)
+        .and_then(|pr| items_at(&pr.items, path))
+    else {
+        return Hit {
+            hover: None,
+            enter: false,
+        };
     };
     let hover = slice_at(center, p, items.len(), pie_inner(win));
     let dist = ((p.x - center.x) as f32).hypot((p.y - center.y) as f32);
     let enter = match hover.and_then(|h| items.get(h)) {
-        Some(Item { kind: ItemKind::Submenu(ch), .. }) => {
-            !ch.is_empty() && dist > pie_outer(win) && path.len() + 1 < MAX_DEPTH
-        }
+        Some(Item {
+            kind: ItemKind::Submenu(ch),
+            ..
+        }) => !ch.is_empty() && dist > pie_outer(win) && path.len() + 1 < MAX_DEPTH,
         _ => false,
     };
     Hit { hover, enter }
@@ -162,11 +195,36 @@ fn select(profile: usize, path: &[usize], index: usize) {
     }
 }
 
-fn resolve_profile() -> usize {
+/// (profil untuk TAHAN, profil khusus app untuk KLIK DUA KALI)
+fn resolve_profiles() -> (usize, Option<usize>) {
     let bundle = system::frontmost_bundle_id();
-    cfg().profile_for(bundle.as_deref())
+    let c = cfg();
+    match c.app_gesture {
+        AppGesture::Merged => (c.profile_for(bundle.as_deref()), None),
+        AppGesture::DoubleClick => (c.global_profile(), c.app_profile_for(bundle.as_deref())),
+    }
 }
 
+fn spawn_double_timer(st: Arc<Mutex<Gesture>>, id: u64, button: i64, ms: u64) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(ms));
+        let replay = {
+            let mut g = lock(&st);
+            let found = match &*g {
+                Gesture::WaitSecond { id: cur, pos, .. } if *cur == id => Some(*pos),
+                _ => None,
+            };
+            if found.is_some() {
+                *g = Gesture::Idle;
+            }
+            found
+        };
+        if let Some(p) = replay {
+            post_mouse(p, CGEventType::OtherMouseDown, button);
+            post_mouse(p, CGEventType::OtherMouseUp, button);
+        }
+    });
+}
 // ------------------------------------------------------------------ handlers
 
 fn handle_key(notifier: &Notifier, etype: CGEventType, event: &CGEvent) -> CallbackResult {
@@ -208,7 +266,12 @@ fn handle_side(state: &Arc<Mutex<Gesture>>, etype: CGEventType, button: i64) -> 
             let (pie_profile, hovered) = {
                 let g = lock(state);
                 match &*g {
-                    Gesture::ActivePie { profile, path, hover, .. } => {
+                    Gesture::ActivePie {
+                        profile,
+                        path,
+                        hover,
+                        ..
+                    } => {
                         let h = hover.map(|h| {
                             let mut p = path.clone();
                             p.push(h);
@@ -223,14 +286,19 @@ fn handle_side(state: &Arc<Mutex<Gesture>>, etype: CGEventType, button: i64) -> 
 
             let action = {
                 let c = cfg();
-                let pi = pie_profile.unwrap_or_else(|| c.profile_for(system::frontmost_bundle_id().as_deref()));
+                let pi = pie_profile
+                    .unwrap_or_else(|| c.profile_for(system::frontmost_bundle_id().as_deref()));
                 let item = c.profiles.get(pi).and_then(|pr| match &hovered {
                     Some(p) => item_at(&pr.items, p),
                     None => pr.active_item(),
                 });
                 match item.map(|i| &i.kind) {
                     Some(ItemKind::Mode { back, forward }) => {
-                        if idx == 0 { back.clone() } else { forward.clone() }
+                        if idx == 0 {
+                            back.clone()
+                        } else {
+                            forward.clone()
+                        }
                     }
                     _ => Action::Nothing,
                 }
@@ -268,7 +336,10 @@ fn handle(
     etype: CGEventType,
     event: &CGEvent,
 ) -> CallbackResult {
-    if matches!(etype, CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput) {
+    if matches!(
+        etype,
+        CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput
+    ) {
         let port = TAP_PORT.load(Ordering::SeqCst);
         if port != 0 {
             unsafe { CGEventTapEnable(port as CFMachPortRef, true) };
@@ -311,11 +382,55 @@ fn handle(
 
     match (etype, &mut *g) {
         (CGEventType::OtherMouseDown, _) => {
-            let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-            let profile = resolve_profile();
-            *g = Gesture::Pending { id, pos: p, profile };
-            drop(g);
+            let (hold_profile, app) = resolve_profiles();
+            let dbl_ms = cfg().double_click_ms;
 
+            // (A) tekan kedua dalam jendela waktu -> pie khusus app, langsung terbuka
+            let prev = std::mem::replace(&mut *g, Gesture::Idle);
+            let mut late: Option<CGPoint> = None;
+            if let Gesture::WaitSecond {
+                pos: first,
+                app: ap,
+                at,
+                ..
+            } = prev
+            {
+                if at.elapsed() < Duration::from_millis(dbl_ms) {
+                    let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+                    *g = Gesture::ActivePie {
+                        id,
+                        center: p,
+                        profile: ap,
+                        path: Vec::new(),
+                        hover: None,
+                    };
+                    drop(g);
+                    notifier.send(Msg::ShowPie {
+                        x: p.x,
+                        y: p.y,
+                        profile: ap,
+                        path: Vec::new(),
+                    });
+                    return CallbackResult::Drop; // tidak ada timer "buka Settings" untuk pie app
+                }
+                late = Some(first); // terlambat: klik pertama tetap harus sampai ke app
+            }
+            if let Some(first) = late {
+                drop(g);
+                post_mouse(first, CGEventType::OtherMouseDown, button);
+                post_mouse(first, CGEventType::OtherMouseUp, button);
+                g = lock(state);
+            }
+
+            // (B) tekan biasa: kode lama, hanya `Pending` dan `profile` yang berubah
+            let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+            *g = Gesture::Pending {
+                id,
+                pos: p,
+                profile: hold_profile,
+                app,
+            };
+            drop(g);
             let st = state.clone();
             let n = notifier.clone();
             std::thread::spawn(move || {
@@ -329,16 +444,32 @@ fn handle(
                 let opened = {
                     let mut gg = lock(&st);
                     let found = match &*gg {
-                        Gesture::Pending { id: cur, pos, profile } if *cur == id => Some((*pos, *profile)),
+                        Gesture::Pending {
+                            id: cur,
+                            pos,
+                            profile,
+                            ..
+                        } if *cur == id => Some((*pos, *profile)),
                         _ => None,
                     };
                     if let Some((pos, profile)) = found {
-                        *gg = Gesture::ActivePie { id, center: pos, profile, path: Vec::new(), hover: None };
+                        *gg = Gesture::ActivePie {
+                            id,
+                            center: pos,
+                            profile,
+                            path: Vec::new(),
+                            hover: None,
+                        };
                     }
                     found
                 };
                 let Some((pos, profile)) = opened else { return };
-                n.send(Msg::ShowPie { x: pos.x, y: pos.y, profile, path: Vec::new() });
+                n.send(Msg::ShowPie {
+                    x: pos.x,
+                    y: pos.y,
+                    profile,
+                    path: Vec::new(),
+                });
 
                 std::thread::sleep(Duration::from_millis(settings_ms.saturating_sub(pie_ms)));
                 let open_settings = {
@@ -353,20 +484,44 @@ fn handle(
                     go
                 };
                 if open_settings {
-                    n.send(Msg::OpenSettings { x: pos.x, y: pos.y, about: false });
+                    n.send(Msg::OpenSettings {
+                        x: pos.x,
+                        y: pos.y,
+                        about: false,
+                    });
                 }
             });
             CallbackResult::Drop
         }
-        (CGEventType::OtherMouseDragged, Gesture::Pending { id, pos, profile }) => {
+        (
+            CGEventType::OtherMouseDragged,
+            Gesture::Pending {
+                id, pos, profile, ..
+            },
+        ) => {
             let (id, start, profile) = (*id, *pos, *profile);
-            let limit = if flick { FLICK_DISTANCE } else { DRAG_TOLERANCE };
+            let limit = if flick {
+                FLICK_DISTANCE
+            } else {
+                DRAG_TOLERANCE
+            };
             if (p.x - start.x).hypot(p.y - start.y) > limit {
                 if flick {
                     // dragging right away opens the pie instantly
-                    *g = Gesture::ActivePie { id, center: start, profile, path: Vec::new(), hover: None };
+                    *g = Gesture::ActivePie {
+                        id,
+                        center: start,
+                        profile,
+                        path: Vec::new(),
+                        hover: None,
+                    };
                     drop(g);
-                    notifier.send(Msg::ShowPie { x: start.x, y: start.y, profile, path: Vec::new() });
+                    notifier.send(Msg::ShowPie {
+                        x: start.x,
+                        y: start.y,
+                        profile,
+                        path: Vec::new(),
+                    });
                 } else {
                     // a real drag: hand the gesture back to the app (e.g. panning)
                     *g = Gesture::Passthrough;
@@ -379,7 +534,16 @@ fn handle(
             }
             CallbackResult::Drop
         }
-        (CGEventType::OtherMouseDragged, Gesture::ActivePie { center, profile, path, hover, .. }) => {
+        (
+            CGEventType::OtherMouseDragged,
+            Gesture::ActivePie {
+                center,
+                profile,
+                path,
+                hover,
+                ..
+            },
+        ) => {
             let hit = eval(*profile, path, *center, p);
             if hit.enter {
                 if let Some(h) = hit.hover {
@@ -389,7 +553,12 @@ fn handle(
                     *hover = None;
                     let (pr, pa) = (*profile, path.clone());
                     drop(g);
-                    notifier.send(Msg::ShowPie { x: p.x, y: p.y, profile: pr, path: pa });
+                    notifier.send(Msg::ShowPie {
+                        x: p.x,
+                        y: p.y,
+                        profile: pr,
+                        path: pa,
+                    });
                 }
             } else if hit.hover != *hover {
                 *hover = hit.hover;
@@ -398,16 +567,38 @@ fn handle(
             }
             CallbackResult::Drop
         }
-        (CGEventType::OtherMouseUp, Gesture::Pending { pos, .. }) => {
-            // quick click: replay it so apps still get a normal press
-            let start = *pos;
-            *g = Gesture::Idle;
-            drop(g);
-            post_mouse(start, CGEventType::OtherMouseDown, button);
-            post_mouse(start, CGEventType::OtherMouseUp, button);
+        (CGEventType::OtherMouseUp, Gesture::Pending { id, pos, app, .. }) => {
+            let (id, start, app) = (*id, *pos, *app);
+            match app {
+                Some(app) => {
+                    // app ini punya profil sendiri: tunggu kemungkinan klik kedua
+                    *g = Gesture::WaitSecond {
+                        id,
+                        pos: start,
+                        app,
+                        at: Instant::now(),
+                    };
+                    drop(g);
+                    spawn_double_timer(state.clone(), id, button, cfg().double_click_ms);
+                }
+                None => {
+                    *g = Gesture::Idle;
+                    drop(g);
+                    post_mouse(start, CGEventType::OtherMouseDown, button);
+                    post_mouse(start, CGEventType::OtherMouseUp, button);
+                }
+            }
             CallbackResult::Drop
         }
-        (CGEventType::OtherMouseUp, Gesture::ActivePie { center, profile, path, .. }) => {
+        (
+            CGEventType::OtherMouseUp,
+            Gesture::ActivePie {
+                center,
+                profile,
+                path,
+                ..
+            },
+        ) => {
             let (center, profile, path) = (*center, *profile, path.clone());
             *g = Gesture::Idle;
             drop(g);

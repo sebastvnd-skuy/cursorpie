@@ -36,6 +36,9 @@ pub struct Ed {
     pub recording: Option<Rec>,
     pub icons: HashMap<String, Option<egui::TextureHandle>>,
     pub new_app: String,
+    pub nav: Vec<usize>,
+    pub sel: Option<usize>,
+    pub adding: bool,
 }
 
 impl Ed {
@@ -46,6 +49,9 @@ impl Ed {
             recording: None,
             icons: HashMap::new(),
             new_app: String::new(),
+            nav: Vec::new(),
+            sel: None,
+            adding: false,
         }
     }
 
@@ -64,5 +70,11 @@ impl Ed {
         let tex = load_icon(ctx, &path, &key);
         self.icons.insert(key, tex.clone());
         tex
+    }
+
+    pub fn reset_nav(&mut self) {
+        self.nav.clear();
+        self.sel = None;
+        self.adding = false;
     }
 }

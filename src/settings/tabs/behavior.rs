@@ -1,6 +1,7 @@
 //! Behavior tab: trigger button, timings, size, accent color, toggles.
 
 use crate::app::App;
+use crate::config::AppGesture;
 use crate::gfx::*;
 use eframe::egui;
 
@@ -46,6 +47,26 @@ impl App {
                     ui.color_edit_button_srgb(&mut cfg.accent);
                     ui.end_row();
                 });
+
+            ui.add_space(6.0);
+            muted(ui, "Pie of the app in front");
+            ui.radio_value(
+                &mut cfg.app_gesture,
+                AppGesture::DoubleClick,
+                "Hold = general pie · Double-click = pie of the app (e.g. Photoshop)",
+            );
+            ui.radio_value(
+                &mut cfg.app_gesture,
+                AppGesture::Merged,
+                "Classic: hold opens the app's own pie if it has one",
+            );
+            if cfg.app_gesture == AppGesture::DoubleClick {
+                ui.horizontal(|ui| {
+                    muted(ui, "Double-click speed");
+                    ui.add(egui::Slider::new(&mut cfg.double_click_ms, 150..=500).suffix(" ms"));
+                });
+            }
+
             ui.add_space(4.0);
             ui.checkbox(
                 &mut cfg.flick,

@@ -15,7 +15,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 /// Settings card size. The window is larger by WIN_MARGIN on each side for the drop shadow.
-pub const CARD_SIZE: [f32; 2] = [560.0, 700.0];
+pub const CARD_SIZE: [f32; 2] = [620.0, 780.0];
 pub const WIN_MARGIN: f32 = 28.0;
 
 pub struct App {
@@ -138,6 +138,7 @@ impl App {
         self.ed.stop_recording();
         self.ed.icons.clear();
         self.ed.profile = 0;
+        self.ed.reset_nav();
         self.ed.tab = if about { Tab::About } else { Tab::Menu };
         self.edit = cfg().clone();
         self.edit.launch_at_login = system::launch_at_login_enabled();
@@ -312,6 +313,7 @@ impl eframe::App for App {
                         let warn = has_commands(&cfg_in);
                         self.edit = cfg_in;
                         self.ed.profile = 0;
+                        self.ed.reset_nav();
                         self.ed.stop_recording();
                         self.ed.icons.clear();
                         self.say(if warn {

@@ -98,7 +98,7 @@ impl App {
         let mut action = UiAction::None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.label(RichText::new(APP_NAME).size(26.0).strong().color(TEXT));
-            muted(ui, "Hold the trigger button for the pie menu. Keep holding at the center to open settings.");
+            muted(ui, "Hold the middle button for your main pie · double-click it for the pie of the app in front.");
 
             if !system::is_trusted() || !TAP_ACTIVE.load(Ordering::SeqCst) {
                 ui.add_space(4.0);
@@ -111,12 +111,11 @@ impl App {
             }
 
             ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                for (t, name) in [(Tab::Menu, "Menu"), (Tab::Behavior, "Behavior"), (Tab::General, "General"), (Tab::About, "About")] {
-                    ui.selectable_value(&mut self.ed.tab, t, name);
-                }
-            });
             ui.separator();
+
+            let tabs = [(Tab::Menu, "Menu"), (Tab::Behavior, "Behavior"), (Tab::General, "General"), (Tab::About, "About")];
+            let mut idx = tabs.iter().position(|(t, _)| *t == self.ed.tab).unwrap_or(0);
+            if segmented(ui, &mut idx, &tabs.map(|t| t.1), accent) { self.ed.tab = tabs[idx].0; }
 
             let h = (ui.available_height() - 66.0).max(120.0);
             egui::ScrollArea::vertical().max_height(h).auto_shrink([false, false]).show(ui, |ui| match self.ed.tab {
