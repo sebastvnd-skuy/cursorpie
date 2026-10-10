@@ -8,17 +8,9 @@ pub const MOD_CTRL: u8 = 2;
 pub const MOD_ALT: u8 = 4;
 pub const MOD_CMD: u8 = 8;
 
-/// macOS virtual key codes (ANSI layout) used by presets.
+/// Virtual key codes that mean the same thing on every layout (no letters / digits / punctuation:
+/// those move around between layouts, use `Shortcut::ch` for them).
 pub mod key {
-    pub const MINUS: u16 = 27;
-    pub const EQUAL: u16 = 24;
-    pub const RBRACKET: u16 = 30;
-    pub const LBRACKET: u16 = 33;
-    pub const C: u16 = 8;
-    pub const V: u16 = 9;
-    pub const Z: u16 = 6;
-    pub const Q: u16 = 12;
-    pub const DIGIT4: u16 = 21;
     pub const SPACE: u16 = 49;
     pub const RETURN: u16 = 36;
     pub const DELETE: u16 = 51;
@@ -40,6 +32,17 @@ impl Shortcut {
         Self { key, mods }
     }
 
+    /// The key that *types* `c` on the current layout (AZERTY, QWERTZ, Dvorak, ...), plus any
+    /// modifier that layout needs to type it. Use for built-in presets such as Cmd+Z.
+    /// Falls back to the US/ANSI position if the layout is not available yet.
+    pub fn ch(c: char, mods: u8) -> Self {
+        let c = c.to_ascii_lowercase();
+        if let Some((code, need)) = crate::layout::find_key(&c.to_string()) {
+            return Self::new(code, mods | need);
+        }
+        Self::new(ansi_code(c).unwrap_or(0), mods)
+    }
+
     /// Display text. Shift + a symbol key shows the resulting symbol ("+" instead of "Shift + =").
     pub fn label(&self) -> String {
         let shift = self.mods & MOD_SHIFT != 0;
@@ -59,62 +62,76 @@ impl Shortcut {
             parts.push("Cmd".into());
         }
         parts.push(match sym {
-            Some(s) => s.to_string(),
+            Some(s) => s,
             None => key_name(self.key),
         });
         parts.join(" + ")
     }
 }
 
-/// Character produced by a key while Shift is held (US/ANSI layout).
-fn shifted_symbol(code: u16) -> Option<&'static str> {
-    Some(match code {
-        18 => "!",
-        19 => "@",
-        20 => "#",
-        21 => "$",
-        23 => "%",
-        22 => "^",
-        26 => "&",
-        28 => "*",
-        25 => "(",
-        29 => ")",
-        27 => "_",
-        24 => "+",
-        33 => "{",
-        30 => "}",
-        42 => "|",
-        41 => ":",
-        39 => "\"",
-        43 => "<",
-        47 => ">",
-        44 => "?",
-        50 => "~",
-        _ => return None,
-    })
+/// Symbol a key types while Shift is held on the *current* layout, when that is a symbol/digit
+/// rather than just the capital letter ("+" instead of "Shift + =").
+fn shifted_symbol(code: u16) -> Option<String> {
+    if special_name(code).is_some() {
+        return None;
+    }
+    let shifted = crate::layout::char_for(code, true)?;
+    if shifted.chars().any(|c| c.is_alphabetic()) {
+        return None;
+    }
+    if crate::layout::char_for(code, false).as_deref() == Some(shifted.as_str()) {
+        return None;
+    }
+    Some(shifted)
 }
 
-pub fn key_name(code: u16) -> String {
-    let s = match code {
-        0 => "A", 1 => "S", 2 => "D", 3 => "F", 4 => "H", 5 => "G", 6 => "Z", 7 => "X",
-        8 => "C", 9 => "V", 11 => "B", 12 => "Q", 13 => "W", 14 => "E", 15 => "R", 16 => "Y",
-        17 => "T", 18 => "1", 19 => "2", 20 => "3", 21 => "4", 22 => "6", 23 => "5", 24 => "=",
-        25 => "9", 26 => "7", 27 => "-", 28 => "8", 29 => "0", 30 => "]", 31 => "O", 32 => "U",
-        33 => "[", 34 => "I", 35 => "P", 36 => "Return", 37 => "L", 38 => "J", 39 => "'",
-        40 => "K", 41 => ";", 42 => "\\", 43 => ",", 44 => "/", 45 => "N", 46 => "M", 47 => ".",
-        48 => "Tab", 49 => "Space", 50 => "`", 51 => "Backspace", 53 => "Esc",
+/// Keys that are named the same on every layout (not produced by UCKeyTranslate).
+pub fn special_name(code: u16) -> Option<&'static str> {
+    Some(match code {
+        36 => "Return", 48 => "Tab", 49 => "Space", 51 => "Backspace", 53 => "Esc",
         64 => "F17", 65 => "Num .", 67 => "Num *", 69 => "Num +", 71 => "Num Clear",
         72 => "Volume Up", 73 => "Volume Down", 74 => "Mute", 75 => "Num /", 76 => "Num Enter",
         78 => "Num -", 79 => "F18", 80 => "F19", 81 => "Num =", 82 => "Num 0", 83 => "Num 1",
         84 => "Num 2", 85 => "Num 3", 86 => "Num 4", 87 => "Num 5", 88 => "Num 6", 89 => "Num 7",
         90 => "F20", 91 => "Num 8", 92 => "Num 9", 96 => "F5", 97 => "F6", 98 => "F7", 99 => "F3",
-        100 => "F8", 101 => "F9", 103 => "F11", 105 => "F13", 106 => "F16", 107 => "F14",
-        109 => "F10", 111 => "F12", 113 => "F15", 114 => "Help", 115 => "Home", 116 => "Page Up",
-        117 => "Delete", 118 => "F4", 119 => "End", 120 => "F2", 121 => "Page Down", 122 => "F1",
-        123 => "Left", 124 => "Right", 125 => "Down", 126 => "Up",
-        _ => return format!("Key {code}"),
-    };
-    s.to_string()
+        100 => "F8", 101 => "F9", 102 => "Eisu", 103 => "F11", 104 => "Kana", 105 => "F13",
+        106 => "F16", 107 => "F14", 109 => "F10", 111 => "F12", 113 => "F15", 114 => "Help",
+        115 => "Home", 116 => "Page Up", 117 => "Delete", 118 => "F4", 119 => "End", 120 => "F2",
+        121 => "Page Down", 122 => "F1", 123 => "Left", 124 => "Right", 125 => "Down", 126 => "Up",
+        _ => return None,
+    })
+}
+
+/// US/ANSI letters, digits and punctuation. Only a fallback for when the layout snapshot is not
+/// available (e.g. queried from another thread before `layout::init()` ran).
+const ANSI: &[(u16, &str)] = &[
+    (0, "A"), (1, "S"), (2, "D"), (3, "F"), (4, "H"), (5, "G"), (6, "Z"), (7, "X"), (8, "C"),
+    (9, "V"), (11, "B"), (12, "Q"), (13, "W"), (14, "E"), (15, "R"), (16, "Y"), (17, "T"),
+    (18, "1"), (19, "2"), (20, "3"), (21, "4"), (22, "6"), (23, "5"), (24, "="), (25, "9"),
+    (26, "7"), (27, "-"), (28, "8"), (29, "0"), (30, "]"), (31, "O"), (32, "U"), (33, "["),
+    (34, "I"), (35, "P"), (37, "L"), (38, "J"), (39, "'"), (40, "K"), (41, ";"), (42, "\\"),
+    (43, ","), (44, "/"), (45, "N"), (46, "M"), (47, "."), (50, "`"),
+];
+
+fn ansi_code(c: char) -> Option<u16> {
+    let s = c.to_string();
+    ANSI.iter().find(|(_, n)| n.eq_ignore_ascii_case(&s)).map(|(k, _)| *k)
+}
+
+/// Display name of a key on the current layout. Letters are shown uppercase ("Z", not "z").
+pub fn key_name(code: u16) -> String {
+    if let Some(s) = special_name(code) {
+        return s.to_string();
+    }
+    if let Some(s) = crate::layout::char_for(code, false) {
+        // keep "ß"-style characters as typed instead of expanding them to "SS"
+        let upper = s.to_uppercase();
+        return if upper.chars().count() == s.chars().count() { upper } else { s };
+    }
+    if let Some((_, n)) = ANSI.iter().find(|(k, _)| *k == code) {
+        return n.to_string();
+    }
+    format!("Key {code}")
 }
 
 pub fn mods_from_flags(f: CGEventFlags) -> u8 {

@@ -208,38 +208,38 @@ pub fn presets() -> Vec<Item> {
         Item::mode(
             "History",
             "<>",
-            Shortcut::new(key::Z, MOD_CMD),
-            Shortcut::new(key::Z, MOD_CMD | MOD_SHIFT),
+            Shortcut::ch('z', MOD_CMD),
+            Shortcut::ch('z', MOD_CMD | MOD_SHIFT),
         ),
         Item::mode(
             "Brackets",
             "[ ]",
-            Shortcut::new(key::LBRACKET, 0),
-            Shortcut::new(key::RBRACKET, 0),
+            Shortcut::ch('[', 0),
+            Shortcut::ch(']', 0),
         ),
         Item::mode(
             "Clipboard",
             "C/V",
-            Shortcut::new(key::C, MOD_CMD),
-            Shortcut::new(key::V, MOD_CMD),
+            Shortcut::ch('c', MOD_CMD),
+            Shortcut::ch('v', MOD_CMD),
         ),
         Item::mode(
             "Browser",
             "< >",
-            Shortcut::new(key::LBRACKET, MOD_CMD),
-            Shortcut::new(key::RBRACKET, MOD_CMD),
+            Shortcut::ch('[', MOD_CMD),
+            Shortcut::ch(']', MOD_CMD),
         ),
         Item::mode(
             "Tabs",
             "Tab",
-            Shortcut::new(key::LBRACKET, MOD_CMD | MOD_SHIFT),
-            Shortcut::new(key::RBRACKET, MOD_CMD | MOD_SHIFT),
+            Shortcut::ch('[', MOD_CMD | MOD_SHIFT),
+            Shortcut::ch(']', MOD_CMD | MOD_SHIFT),
         ),
         Item::mode(
             "Zoom",
             "+/-",
-            Shortcut::new(key::MINUS, MOD_CMD),
-            Shortcut::new(key::EQUAL, MOD_CMD),
+            Shortcut::ch('-', MOD_CMD),
+            Shortcut::ch('=', MOD_CMD),
         ),
         Item::mode(
             "Scroll",
@@ -262,7 +262,7 @@ pub fn quick_actions() -> Vec<Item> {
         Item::run(
             "Screenshot",
             "Shot",
-            Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT)),
+            Action::Key(Shortcut::ch('4', MOD_CMD | MOD_SHIFT)),
         ),
         Item::run(
             "Mission Ctrl",
@@ -282,7 +282,7 @@ pub fn quick_actions() -> Vec<Item> {
         Item::run(
             "Lock",
             "Lock",
-            Action::Key(Shortcut::new(key::Q, MOD_CMD | MOD_CTRL)),
+            Action::Key(Shortcut::ch('q', MOD_CMD | MOD_CTRL)),
         ),
     ]
 }
@@ -314,7 +314,7 @@ impl Default for Config {
                 Item::run(
                     "Shot",
                     "Shot",
-                    Action::Key(Shortcut::new(key::DIGIT4, MOD_CMD | MOD_SHIFT)),
+                    Action::Key(Shortcut::ch('4', MOD_CMD | MOD_SHIFT)),
                 ),
             ],
         );
