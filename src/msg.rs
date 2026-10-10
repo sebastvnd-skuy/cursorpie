@@ -1,22 +1,46 @@
 //! Messages sent to the UI thread (from the event tap, tray menu and file-picker threads).
 
 use crate::keys::Shortcut;
+use crate::settings::Slot;
 use eframe::egui;
 use std::sync::mpsc;
 
 pub enum Msg {
     /// Open (or re-center, for submenus) the pie for `profile` at menu level `path`.
-    ShowPie { x: f64, y: f64, profile: usize, path: Vec<usize> },
-    OpenSettings { x: f64, y: f64, about: bool },
+    ShowPie {
+        x: f64,
+        y: f64,
+        profile: usize,
+        path: Vec<usize>,
+    },
+    OpenSettings {
+        x: f64,
+        y: f64,
+        about: bool,
+    },
     Hover(Option<usize>),
     HidePie,
     KeyCaptured(Shortcut),
     RecordCancelled,
-    IconPicked { profile: usize, path: Vec<usize>, file: String },
-    AppPicked { profile: usize, bundle: String },
+    IconPicked {
+        profile: usize,
+        path: Vec<usize>,
+        file: String,
+    },
+    AppPicked {
+        profile: usize,
+        bundle: String,
+    },
     ImportPicked(String),
     /// Menu bar item clicked (the menu item id).
     Tray(String),
+    Refocus,
+    ActionAppPicked {
+        profile: usize,
+        path: Vec<usize>,
+        slot: Slot,
+        app: String,
+    },
 }
 
 #[derive(Clone)]

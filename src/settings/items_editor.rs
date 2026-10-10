@@ -3,7 +3,6 @@
 use super::action_editor::action_editor;
 use super::state::{Ed, Rec, Slot};
 use crate::config::*;
-use crate::gfx::segmented;
 use crate::gfx::*;
 use crate::keys::{Shortcut, key};
 use crate::msg::Msg;
@@ -12,6 +11,7 @@ use crate::tap::{RECORDING, SWALLOW_KEY};
 use eframe::egui::{self, Color32, CornerRadius, Vec2};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 /// Read-only things the recursive editor needs.
 pub(super) struct Env<'a> {
@@ -58,8 +58,29 @@ fn pick_icon(env: &Env, path: &[usize]) {
                 path,
                 file,
             });
-            ctx.request_repaint();
         }
+        std::thread::sleep(Duration::from_millis(120)); // beri waktu macOS selesai pindah fokus
+        let _ = tx.send(Msg::Refocus);
+        ctx.request_repaint();
+    });
+}
+
+fn pick_app_for_action(env: &Env, path: &[usize], slot: Slot) {
+    let (tx, ctx, profile, path) = (env.tx.clone(), env.ctx.clone(), env.profile, path.to_vec());
+    std::thread::spawn(move || {
+        if let Some(app) =
+            system::choose_file("com.apple.application-bundle", "Choose an application")
+        {
+            let _ = tx.send(Msg::ActionAppPicked {
+                profile,
+                path,
+                slot,
+                app,
+            });
+        }
+        std::thread::sleep(Duration::from_millis(120));
+        let _ = tx.send(Msg::Refocus);
+        ctx.request_repaint();
     });
 }
 
@@ -92,6 +113,7 @@ pub(super) fn item_inspector(
     );
     let (mut start, mut pick, mut remove, mut enter, mut shift) =
         (None::<Slot>, false, false, false, 0i32);
+    let mut pick_app: Option<Slot> = None;
 
     card().show(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -155,8 +177,12 @@ pub(super) fn item_inspector(
         match &mut item.kind {
             ItemKind::Run(a) => {
                 muted(ui, "Runs when you release the button over this slice.");
-                if action_editor(ui, &format!("{uid}_r"), a, rr, env.accent) {
+                let r = action_editor(ui, &format!("{uid}_r"), a, rr, env.accent);
+                if r.shortcut {
                     start = Some(Slot::Run);
+                }
+                if r.pick_app {
+                    pick_app = Some(Slot::Run);
                 }
             }
             ItemKind::Mode { back, forward } => {
@@ -165,12 +191,20 @@ pub(super) fn item_inspector(
                     "While this slice is active, your mouse side buttons send:",
                 );
                 muted(ui, "Back button");
-                if action_editor(ui, &format!("{uid}_b"), back, rb, env.accent) {
+                let r = action_editor(ui, &format!("{uid}_b"), back, rb, env.accent);
+                if r.shortcut {
                     start = Some(Slot::Back);
                 }
+                if r.pick_app {
+                    pick_app = Some(Slot::Back);
+                }
                 muted(ui, "Forward button");
-                if action_editor(ui, &format!("{uid}_f"), forward, rf, env.accent) {
+                let r = action_editor(ui, &format!("{uid}_f"), forward, rf, env.accent);
+                if r.shortcut {
                     start = Some(Slot::Forward);
+                }
+                if r.pick_app {
+                    pick_app = Some(Slot::Forward);
                 }
             }
             ItemKind::Submenu(ch) => {
@@ -186,7 +220,6 @@ pub(super) fn item_inspector(
                 }
             }
         }
-
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             if ui.add_enabled(i > 0, egui::Button::new("‹ Move")).clicked() {
@@ -209,6 +242,9 @@ pub(super) fn item_inspector(
 
     if let Some(slot) = start {
         start_rec(ed, env.profile, &path, slot);
+    }
+    if let Some(slot) = pick_app {
+        pick_app_for_action(env, &path, slot);
     }
     if pick {
         pick_icon(env, &path);

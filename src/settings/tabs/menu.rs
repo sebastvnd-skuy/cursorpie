@@ -102,16 +102,17 @@ impl App {
                 if ui.button("Pick app...").clicked() {
                     let (tx, ctx, profile) = (tx.clone(), ctx.clone(), ed.profile);
                     std::thread::spawn(move || {
-                        let Some(file) = system::choose_file(
+                        if let Some(file) = system::choose_file(
                             "com.apple.application-bundle",
                             "Choose an application",
-                        ) else {
-                            return;
-                        };
-                        if let Some(bundle) = system::bundle_id_of(&file) {
-                            let _ = tx.send(Msg::AppPicked { profile, bundle });
-                            ctx.request_repaint();
+                        ) {
+                            if let Some(bundle) = system::bundle_id_of(&file) {
+                                let _ = tx.send(Msg::AppPicked { profile, bundle });
+                            }
                         }
+                        std::thread::sleep(std::time::Duration::from_millis(120));
+                        let _ = tx.send(Msg::Refocus);
+                        ctx.request_repaint();
                     });
                 }
             });

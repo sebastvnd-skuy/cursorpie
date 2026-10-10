@@ -36,15 +36,20 @@ fn make_action(i: usize) -> Action {
     }
 }
 
-/// Type selector + value editor for one action. Returns true when the shortcut button was clicked.
+#[derive(Default)]
+pub(super) struct ActionClick {
+    pub shortcut: bool,
+    pub pick_app: bool,
+}
+
 pub(super) fn action_editor(
     ui: &mut egui::Ui,
     id: &str,
     a: &mut Action,
     recording: bool,
     accent: Color32,
-) -> bool {
-    let mut clicked = false;
+) -> ActionClick {
+    let mut out = ActionClick::default();
     ui.horizontal(|ui| {
         let now = action_index(a);
         let mut sel = now;
@@ -62,15 +67,18 @@ pub(super) fn action_editor(
         match a {
             Action::Key(sc) => {
                 if shortcut_button(ui, sc, recording, accent).clicked() {
-                    clicked = true;
+                    out.shortcut = true;
                 }
             }
             Action::OpenApp(s) => {
                 ui.add(
                     egui::TextEdit::singleline(s)
-                        .desired_width(200.0)
+                        .desired_width(140.0)
                         .hint_text("Safari  or  /Applications/X.app"),
                 );
+                if ui.button("Pick app…").clicked() {
+                    out.pick_app = true;
+                }
             }
             Action::OpenUrl(s) => {
                 ui.add(
@@ -95,5 +103,5 @@ pub(super) fn action_editor(
             Action::Nothing => muted(ui, "click passes through to the app"),
         }
     });
-    clicked
+    out
 }

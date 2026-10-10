@@ -264,6 +264,7 @@ impl eframe::App for App {
                     }
                     self.hover = h;
                 }
+                Msg::Refocus => ctx.send_viewport_cmd(egui::ViewportCommand::Focus),
                 Msg::HidePie => {
                     self.hover = None;
                     self.pie_open = false;
@@ -325,6 +326,27 @@ impl eframe::App for App {
                     None => self.say("That file is not a valid CursorPie config."),
                 },
                 Msg::Tray(id) => self.handle_tray(ctx, &id),
+                Msg::ActionAppPicked {
+                    profile,
+                    path,
+                    slot,
+                    app,
+                } => {
+                    if let Some(p) = self.edit.profiles.get_mut(profile) {
+                        if let Some(item) = item_at_mut(&mut p.items, &path) {
+                            match (&mut item.kind, slot) {
+                                (ItemKind::Run(a), Slot::Run) => *a = Action::OpenApp(app),
+                                (ItemKind::Mode { back, .. }, Slot::Back) => {
+                                    *back = Action::OpenApp(app)
+                                }
+                                (ItemKind::Mode { forward, .. }, Slot::Forward) => {
+                                    *forward = Action::OpenApp(app)
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
             }
         }
 
