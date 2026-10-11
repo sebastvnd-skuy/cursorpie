@@ -39,6 +39,12 @@ pub struct Ed {
     pub nav: Vec<usize>,
     pub sel: Option<usize>,
     pub adding: bool,
+    /// panel pemilih ikon sedang terbuka (menggantikan inspector)
+    pub picking_icon: bool,
+    pub icon_query: String,
+    /// 0 = semua, 1..=N = kategori, N+1 = ikon milik pengguna
+    pub icon_cat: usize,
+    pub user_icons: Vec<String>,
 }
 
 impl Ed {
@@ -52,6 +58,10 @@ impl Ed {
             nav: Vec::new(),
             sel: None,
             adding: false,
+            picking_icon: false,
+            icon_query: String::new(),
+            icon_cat: 0,
+            user_icons: Vec::new(),
         }
     }
 
@@ -76,5 +86,6 @@ impl Ed {
         self.nav.clear();
         self.sel = None;
         self.adding = false;
+        self.picking_icon = false;
     }
 }

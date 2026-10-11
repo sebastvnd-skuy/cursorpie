@@ -2,6 +2,7 @@
 
 use crate::config::Action;
 use crate::keys::*;
+use crate::system;
 use core_graphics::event::{
     CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGKeyCode, CGMouseButton, EventField,
 };
@@ -44,13 +45,13 @@ fn execute(action: &Action) {
         Action::Nothing => {}
         Action::Key(sc) => press(*sc),
         Action::OpenApp(app) if !app.trim().is_empty() => {
-            Command::new("open").arg("-a").arg(app.trim()).spawn().ok();
+            system::spawn_reaped(Command::new("open").arg("-a").arg(app.trim()));
         }
         Action::OpenUrl(target) if !target.trim().is_empty() => {
-            Command::new("open").arg(target.trim()).spawn().ok();
+            system::spawn_reaped(Command::new("open").arg(target.trim()));
         }
         Action::Command(cmd) if !cmd.trim().is_empty() => {
-            Command::new("/bin/sh").arg("-c").arg(cmd).spawn().ok();
+            system::spawn_reaped(Command::new("/bin/sh").arg("-c").arg(cmd));
         }
         Action::Sequence(steps) => {
             for s in steps {

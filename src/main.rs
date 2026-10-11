@@ -6,6 +6,7 @@ mod actions;
 mod app;
 mod config;
 mod gfx;
+mod icons;
 mod keys;
 mod layout;
 mod msg;
@@ -46,7 +47,10 @@ fn main() -> eframe::Result<()> {
             // runs on the main thread inside the running event loop
             system::set_accessory_policy(); // no Dock icon
             layout::init(); // keyboard-layout snapshot (TIS must run on the main thread)
-            let notifier = Notifier { tx: tx.clone(), ctx: cc.egui_ctx.clone() };
+            let notifier = Notifier {
+                tx: tx.clone(),
+                ctx: cc.egui_ctx.clone(),
+            };
             tap::spawn(notifier.clone());
             let tray = tray::build(&notifier);
             Ok(Box::new(App::new(rx, tx, win, tray)))

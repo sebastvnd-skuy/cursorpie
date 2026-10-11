@@ -227,6 +227,33 @@ pub fn muted(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).color(MUTED));
 }
 
+/// Sama seperti `segmented`, tetapi diletakkan di tengah baris.
+pub fn segmented_centered(
+    ui: &mut egui::Ui,
+    cur: &mut usize,
+    labels: &[&str],
+    accent: Color32,
+) -> bool {
+    // ukur lebar pill: teks + padding tiap tombol + jarak antar tombol + margin Frame (3*2)
+    let pad = ui.spacing().button_padding.x;
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let mut w = 6.0 + 2.0 * (labels.len().saturating_sub(1)) as f32;
+    for l in labels {
+        let g = ui
+            .painter()
+            .layout_no_wrap(l.to_string(), font.clone(), Color32::WHITE);
+        w += g.size().x + pad * 2.0;
+    }
+    let spacing = ui.spacing().item_spacing.x;
+    let indent = ((ui.available_width() - w) / 2.0 - spacing).max(0.0);
+
+    ui.horizontal(|ui| {
+        ui.add_space(indent);
+        segmented(ui, cur, labels, accent)
+    })
+    .inner
+}
+
 pub fn style_settings(ui: &mut egui::Ui, accent: Color32) {
     // force the dark theme so the card doesn't follow macOS light/dark
     *ui.visuals_mut() = egui::Visuals::dark();

@@ -48,7 +48,13 @@ pub fn build(n: &Notifier) -> Option<TrayHandles> {
     let settings = MenuItem::with_id("settings", "Settings...", true, None);
     let about = MenuItem::with_id("about", format!("About {APP_NAME}"), true, None);
     let pause = CheckMenuItem::with_id("pause", format!("Pause {APP_NAME}"), true, false, None);
-    let login = CheckMenuItem::with_id("login", "Launch at login", true, system::launch_at_login_enabled(), None);
+    let login = CheckMenuItem::with_id(
+        "login",
+        "Launch at login",
+        true,
+        system::launch_at_login_enabled(),
+        None,
+    );
     let quit = MenuItem::with_id("quit", format!("Quit {APP_NAME}"), true, None);
 
     let _ = menu.append(&settings);
@@ -79,7 +85,11 @@ pub fn build(n: &Notifier) -> Option<TrayHandles> {
         .with_icon_as_template(true)
         .build()
     {
-        Ok(tray) => Some(TrayHandles { _icon: tray, pause, login }),
+        Ok(tray) => Some(TrayHandles {
+            _icon: tray,
+            pause,
+            login,
+        }),
         Err(e) => {
             eprintln!("CursorPie: could not create menu bar icon: {e}");
             None

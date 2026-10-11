@@ -24,8 +24,8 @@ pub(super) fn pie_designer(
     ctx: &egui::Context,
     items: &[Item],
     accent: [u8; 3],
+    size: f32,
 ) -> Designer {
-    let size = 300.0;
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     let painter = ui.painter_at(rect);
     let c = rect.center();

@@ -29,7 +29,7 @@ pub fn open_input_monitoring_settings() {
 }
 
 fn open_raw(target: &str) {
-    Command::new("open").arg(target).spawn().ok();
+    spawn_reaped(Command::new("open").arg(target));
 }
 
 // ------------------------------------------------------------ frontmost app
@@ -66,7 +66,10 @@ pub fn cursor_pos() -> Option<(f64, f64)> {
 // ----------------------------------------------------------- launch at login
 
 fn agent_path() -> PathBuf {
-    home().join("Library").join("LaunchAgents").join(format!("{BUNDLE_ID}.plist"))
+    home()
+        .join("Library")
+        .join("LaunchAgents")
+        .join(format!("{BUNDLE_ID}.plist"))
 }
 
 pub fn launch_at_login_enabled() -> bool {
@@ -74,7 +77,9 @@ pub fn launch_at_login_enabled() -> bool {
 }
 
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Installs / removes a LaunchAgent. It takes effect at the next login (we don't start a second copy now).
@@ -112,10 +117,24 @@ pub fn set_launch_at_login(on: bool) -> std::io::Result<()> {
 
 // ------------------------------------------------------------------- helpers
 
+/// Menjalankan proses lalu "memanen" statusnya di thread kecil, supaya tidak jadi zombie.
+pub fn spawn_reaped(cmd: &mut Command) {
+    if let Ok(mut child) = cmd.spawn() {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
+}
+
 /// Native file chooser through osascript (no extra dependency). `uti` e.g. "public.image".
 pub fn choose_file(uti: &str, prompt: &str) -> Option<String> {
-    let script = format!(r#"POSIX path of (choose file of type {{"{uti}"}} with prompt "{prompt}")"#);
-    let out = Command::new("osascript").arg("-e").arg(script).output().ok()?;
+    let script =
+        format!(r#"POSIX path of (choose file of type {{"{uti}"}} with prompt "{prompt}")"#);
+    let out = Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None; // cancelled
     }
@@ -134,13 +153,10 @@ pub fn bundle_id_of(app_path: &str) -> Option<String> {
 }
 
 pub fn reveal_in_finder(path: &std::path::Path) {
-    Command::new("open").arg("-R").arg(path).spawn().ok();
+    spawn_reaped(Command::new("open").arg("-R").arg(path));
 }
 
 /// Soft tick used as hover feedback (afplay ships with macOS).
 pub fn tick() {
-    Command::new("afplay")
-        .args(["-v", "0.25", "/System/Library/Sounds/Tink.aiff"])
-        .spawn()
-        .ok();
+    spawn_reaped(Command::new("afplay").args(["-v", "0.25", "/System/Library/Sounds/Tink.aiff"]));
 }

@@ -85,7 +85,7 @@ impl App {
         let inner = card_rect.shrink(18.0);
 
         // dragging the title area moves the window
-        let title_rect = egui::Rect::from_min_size(inner.min, Vec2::new(inner.width(), 56.0));
+        let title_rect = egui::Rect::from_min_size(inner.min, Vec2::new(inner.width(), 36.0));
         let drag = ui.interact(
             title_rect,
             egui::Id::new("settings_drag"),
@@ -95,35 +95,60 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
 
+        let content_w = inner.width();
         let mut action = UiAction::None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.label(RichText::new(APP_NAME).size(26.0).strong().color(TEXT));
-            muted(ui, "Hold the middle button for your main pie · double-click it for the pie of the app in front.");
-
-            if !system::is_trusted() || !TAP_ACTIVE.load(Ordering::SeqCst) {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Accessibility permission needed.").color(BAD));
+            // judul + (kalau perlu) peringatan izin, satu baris
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(APP_NAME).size(22.0).strong().color(TEXT));
+                ui.label(RichText::new("ℹ").color(MUTED)).on_hover_text(
+                    "Hold the middle button for your main pie.\nDouble-click it for the pie of the app in front.",
+                );
+                if !system::is_trusted() || !TAP_ACTIVE.load(Ordering::SeqCst) {
+                    ui.label(RichText::new("⚠ Accessibility permission needed").color(BAD));
                     if ui.small_button("Open System Settings").clicked() {
                         system::open_accessibility_settings();
                     }
-                });
-            }
+                }
+            });
 
-            ui.add_space(6.0);
+            ui.add_space(2.0);
             ui.separator();
 
-            let tabs = [(Tab::Menu, "Menu"), (Tab::Behavior, "Behavior"), (Tab::General, "General"), (Tab::About, "About")];
+            let tabs = [
+                (Tab::Menu, "🍕 Menu"),
+                (Tab::Behavior, "🎚 Behavior"),
+                (Tab::General, "⚙ General"),
+                (Tab::About, "ℹ About"),
+            ];
             let mut idx = tabs.iter().position(|(t, _)| *t == self.ed.tab).unwrap_or(0);
-            if segmented(ui, &mut idx, &tabs.map(|t| t.1), accent) { self.ed.tab = tabs[idx].0; }
+            if segmented_centered(ui, &mut idx, &tabs.map(|t| t.1), accent) {
+                self.ed.tab = tabs[idx].0;
+                self.ed.picking_icon = false;
+            }
 
             let h = (ui.available_height() - 66.0).max(120.0);
-            egui::ScrollArea::vertical().max_height(h).auto_shrink([false, false]).show(ui, |ui| match self.ed.tab {
-                Tab::Menu => self.menu_tab(ui, &ctx),
-                Tab::Behavior => self.behavior_tab(ui),
-                Tab::General => self.general_tab(ui),
-                Tab::About => about_tab(ui),
-            });
+            if self.ed.tab == Tab::Menu {
+                // Menu: dua kolom, tanpa scroll luar
+                ui.allocate_ui(Vec2::new(content_w, h), |ui| {
+                    ui.set_min_height(h);
+                    ui.set_max_width(content_w);
+                    self.menu_tab(ui, &ctx, content_w);
+                });
+            } else {
+                egui::ScrollArea::vertical()
+                    .max_height(h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| match self.ed.tab {
+                        Tab::Behavior => self.behavior_tab(ui),
+                        Tab::General => self.general_tab(ui),
+                        Tab::About => about_tab(ui),
+                        Tab::Menu => {}
+                    });
+            }
+
+            // kembalikan lebar kartu (kalau ada widget yang sempat meluber) supaya footer rata dengan tepi kanan
+            ui.set_max_width(content_w);
 
             if let Some((msg, _)) = &self.toast {
                 ui.label(RichText::new(msg).color(accent));

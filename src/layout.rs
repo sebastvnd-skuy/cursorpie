@@ -184,7 +184,13 @@ fn build() -> Option<Table> {
     }
 }
 
-extern "C" fn on_layout_changed(_c: CFTypeRef, _o: *mut c_void, _n: CFTypeRef, _obj: CFTypeRef, _u: CFTypeRef) {
+extern "C" fn on_layout_changed(
+    _c: CFTypeRef,
+    _o: *mut c_void,
+    _n: CFTypeRef,
+    _obj: CFTypeRef,
+    _u: CFTypeRef,
+) {
     refresh();
 }
 
