@@ -28,7 +28,12 @@ objc2-app-kit = { version = "0.3", features = [
     "NSResponder",
     "NSRunningApplication",
     "NSWorkspace",
+    "NSImage",
 ] }
+# App icons: NSWorkspace hands out the icon as TIFF data (NSString / NSURL / NSData for the calls)
+objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSData"] }
+# Reads that TIFF (a page per icon size). Only the codecs macOS uses are enabled.
+tiff = { version = "0.11", default-features = false, features = ["lzw", "deflate"] }
 
 # Config + icons
 serde = { version = "1", features = ["derive"] }

@@ -60,6 +60,26 @@ pub enum AppGesture {
     DoubleClick,
 }
 
+/// Which pie the side buttons follow in an app that has a pie of its own, until you choose another.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum SideTarget {
+    /// The app's own pie.
+    #[default]
+    App,
+    /// The general pie, even inside an app that has its own.
+    General,
+}
+
+/// How CursorPie decides which app a gesture is about.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum TargetApp {
+    /// The app in front (the one with keyboard focus).
+    Focused,
+    /// The app whose window is under the pointer, even if it is not in front.
+    #[default]
+    UnderCursor,
+}
+
 impl Item {
     pub fn mode(name: &str, icon: &str, back: Shortcut, forward: Shortcut) -> Self {
         Self {
@@ -120,6 +140,26 @@ pub struct Config {
     pub launch_at_login: bool,
     pub app_gesture: AppGesture,
     pub double_click_ms: u64,
+    /// Which app picks the pie (and gets the shortcuts): the one in front or the one under the pointer.
+    pub target_app: TargetApp,
+    /// With `UnderCursor`: bring that app to the front before sending it a shortcut.
+    pub focus_target: bool,
+    /// Which pie the side buttons follow in an app that has its own pie, until you choose another.
+    pub side_default: SideTarget,
+    /// Choosing a side-button mode in a pie makes the side buttons follow that pie.
+    pub side_adopt: bool,
+    /// Forget that choice when another app becomes the target.
+    pub side_forget: bool,
+    /// Right-click while the pie is open to switch which pie the side buttons follow.
+    pub right_click_switch: bool,
+    /// Ring color tells which pie the side buttons follow: accent = this one, `inactive_color` = the other.
+    pub side_indicator: bool,
+    pub inactive_color: [u8; 3],
+    /// How long a pie preview stays after switching from the menu bar (0 = no preview).
+    pub preview_ms: u64,
+    /// The center of an app's own pie shows that app's icon (as a white silhouette) instead of the
+    /// icon of the active side-button mode.
+    pub center_app_icon: bool,
 }
 
 // -------------------------------------------------------------- tree helpers
@@ -358,6 +398,16 @@ impl Default for Config {
             launch_at_login: false,
             app_gesture: AppGesture::DoubleClick,
             double_click_ms: 260,
+            target_app: TargetApp::UnderCursor,
+            focus_target: true,
+            side_default: SideTarget::App,
+            side_adopt: true,
+            side_forget: false,
+            right_click_switch: true,
+            side_indicator: true,
+            inactive_color: [232, 86, 86],
+            preview_ms: 900,
+            center_app_icon: true,
         }
     }
 }
@@ -386,6 +436,7 @@ impl Config {
         self.pie_hold_ms = self.pie_hold_ms.clamp(150, 2000);
         self.settings_hold_ms = self.settings_hold_ms.max(self.pie_hold_ms + 300);
         self.pie_size = self.pie_size.clamp(140.0, 360.0);
+        self.preview_ms = self.preview_ms.min(3000);
         if !matches!(self.trigger_button, 2 | 5 | 6 | 7) {
             self.trigger_button = 2;
         }
@@ -518,5 +569,33 @@ pub fn ring_mut<'a>(items: &'a mut Vec<Item>, path: &[usize]) -> Option<&'a mut 
     match &mut item_at_mut(items, path)?.kind {
         ItemKind::Submenu(c) => Some(c),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_without_the_new_fields_still_loads() {
+        // what a v0.2.0 file looks like: none of the side-button / app-detection settings
+        let c = parse_config(r#"{"version": 2, "pie_hold_ms": 400}"#).expect("old config parses");
+        assert_eq!(c.pie_hold_ms, 400);
+        assert_eq!(c.target_app, TargetApp::UnderCursor);
+        assert_eq!(c.side_default, SideTarget::App);
+        assert!(c.focus_target && c.side_adopt && c.right_click_switch && c.side_indicator);
+        assert!(c.center_app_icon);
+        assert!(!c.side_forget);
+    }
+
+    #[test]
+    fn new_fields_round_trip_and_preview_is_clamped() {
+        let c = parse_config(
+            r#"{"version": 2, "target_app": "Focused", "side_default": "General", "preview_ms": 999999}"#,
+        )
+        .unwrap();
+        assert_eq!(c.target_app, TargetApp::Focused);
+        assert_eq!(c.side_default, SideTarget::General);
+        assert_eq!(c.preview_ms, 3000);
     }
 }

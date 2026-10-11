@@ -1,7 +1,7 @@
 //! Behavior tab: trigger button, timings, size, accent color, toggles.
 
 use crate::app::App;
-use crate::config::AppGesture;
+use crate::config::{AppGesture, SideTarget, TargetApp};
 use crate::gfx::*;
 use eframe::egui;
 
@@ -76,7 +76,76 @@ impl App {
                 &mut cfg.sound,
                 "Play a soft tick when the selection changes",
             );
+            ui.checkbox(
+                &mut cfg.center_app_icon,
+                "Show the app's icon (white) in the center of an app's own pie",
+            );
             ui.checkbox(&mut cfg.launch_at_login, "Launch at login");
+        });
+
+        ui.add_space(14.0);
+        section_title(ui, "App detection");
+        card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            muted(ui, "Which app picks the pie");
+            ui.radio_value(
+                &mut cfg.target_app,
+                TargetApp::UnderCursor,
+                "The app under the pointer: no need to click its window first",
+            );
+            ui.radio_value(
+                &mut cfg.target_app,
+                TargetApp::Focused,
+                "The app in front (the one with keyboard focus)",
+            );
+            ui.add_enabled(
+                cfg.target_app == TargetApp::UnderCursor,
+                egui::Checkbox::new(
+                    &mut cfg.focus_target,
+                    "Bring that app to the front before a slice or side button sends it a shortcut",
+                ),
+            );
+        });
+
+        ui.add_space(14.0);
+        section_title(ui, "Side buttons");
+        card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            muted(ui, "In an app that has its own pie, the side buttons follow");
+            ui.radio_value(&mut cfg.side_default, SideTarget::App, "The app's pie");
+            ui.radio_value(&mut cfg.side_default, SideTarget::General, "The general pie");
+
+            ui.add_space(4.0);
+            ui.checkbox(
+                &mut cfg.side_adopt,
+                "Choosing a side-button mode in a pie makes the side buttons follow that pie",
+            );
+            ui.checkbox(
+                &mut cfg.side_forget,
+                "Forget that choice when I switch to another app",
+            );
+            ui.checkbox(
+                &mut cfg.right_click_switch,
+                "While the pie is open, right-click switches which pie the side buttons follow",
+            );
+            ui.checkbox(
+                &mut cfg.side_indicator,
+                "Color the pie ring: accent = side buttons follow this pie, other color = the other pie",
+            );
+
+            ui.add_space(4.0);
+            egui::Grid::new("side_grid")
+                .num_columns(2)
+                .spacing([16.0, 10.0])
+                .show(ui, |ui| {
+                    muted(ui, "Other-pie color");
+                    ui.color_edit_button_srgb(&mut cfg.inactive_color);
+                    ui.end_row();
+
+                    muted(ui, "Show the pie after switching (menu bar)");
+                    ui.add(egui::Slider::new(&mut cfg.preview_ms, 0..=2000).suffix(" ms"));
+                    ui.end_row();
+                });
         });
     }
 }

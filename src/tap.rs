@@ -5,11 +5,12 @@
 
 use crate::actions::{self, SYNTH_TAG, post_mouse};
 use crate::config::{
-    self, Action, AppGesture, Item, ItemKind, MAX_DEPTH, cfg, item_at, items_at, lock,
+    self, Action, AppGesture, Item, ItemKind, MAX_DEPTH, TargetApp, cfg, item_at, items_at, lock,
 };
 use crate::gfx::{pie_inner, pie_outer, slice_at};
 use crate::keys::{Shortcut, mods_from_flags};
 use crate::msg::{Msg, Notifier};
+use crate::side;
 use crate::system;
 use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortRef;
@@ -43,6 +44,8 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 static TAP_PORT: AtomicUsize = AtomicUsize::new(0);
 /// Whether the last side-button press (back, forward) was swallowed, so its release is too.
 static SIDE_SWALLOWED: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
+/// Whether the last right-press (used to switch the side-button pie) was swallowed, so its release is too.
+static RIGHT_SWALLOWED: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" {
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
@@ -93,6 +96,9 @@ pub fn spawn(notifier: Notifier) {
                         CGEventType::OtherMouseDown,
                         CGEventType::OtherMouseUp,
                         CGEventType::OtherMouseDragged,
+                        CGEventType::RightMouseDown,
+                        CGEventType::RightMouseUp,
+                        CGEventType::RightMouseDragged,
                         CGEventType::KeyDown,
                         CGEventType::KeyUp,
                     ],
@@ -189,19 +195,103 @@ fn select(profile: usize, path: &[usize], index: usize) {
             let mut full = path.to_vec();
             full.push(index);
             config::set_active(profile, full);
+            // the side buttons now follow the pie this mode was picked in
+            let target = side::target();
+            let c = cfg();
+            if c.side_adopt {
+                side::adopt(&c, target.as_deref(), profile);
+            }
         }
-        Some(ItemKind::Run(action)) => actions::run(action),
+        Some(ItemKind::Run(action)) => run_action(action, side::target()),
         _ => {}
     }
 }
 
+/// Runs an action. If the settings say so, the target app is brought to the front first, because
+/// shortcuts always go to the app in front.
+fn run_action(action: Action, target: Option<String>) {
+    let focus = {
+        let c = cfg();
+        c.target_app == TargetApp::UnderCursor && c.focus_target
+    };
+    actions::run_in(if focus { target } else { None }, action);
+}
+
+/// The app a gesture at `p` is about: the app in front, or the app whose window is under `p`
+/// (falling back to the app in front when that cannot be told).
+fn target_bundle_at(p: CGPoint) -> Option<String> {
+    let mode = cfg().target_app;
+    match mode {
+        TargetApp::Focused => system::frontmost_bundle_id(),
+        TargetApp::UnderCursor => system::bundle_id_at(p).or_else(system::frontmost_bundle_id),
+    }
+}
+
+/// Remembers the target app for this gesture (the UI and `select` read it back from `side`).
+fn remember_target(bundle: Option<String>) {
+    let forget = cfg().side_forget;
+    side::set_target(bundle, forget);
+}
+
 /// (profil untuk TAHAN, profil khusus app untuk KLIK DUA KALI)
-fn resolve_profiles() -> (usize, Option<usize>) {
-    let bundle = system::frontmost_bundle_id();
+fn resolve_profiles(p: CGPoint) -> (usize, Option<usize>) {
+    let bundle = target_bundle_at(p);
+    remember_target(bundle.clone());
     let c = cfg();
     match c.app_gesture {
         AppGesture::Merged => (c.profile_for(bundle.as_deref()), None),
         AppGesture::DoubleClick => (c.global_profile(), c.app_profile_for(bundle.as_deref())),
+    }
+}
+
+/// Right-click while the pie is open: switch which pie (general / the app's own) the side buttons
+/// follow. The pie stays open and its ring changes color right away.
+fn handle_right(
+    state: &Arc<Mutex<Gesture>>,
+    notifier: &Notifier,
+    etype: CGEventType,
+) -> CallbackResult {
+    match etype {
+        CGEventType::RightMouseDown => {
+            let open = {
+                let g = lock(state);
+                match &*g {
+                    Gesture::ActivePie { hover, .. } => Some(*hover),
+                    _ => None,
+                }
+            };
+            let Some(hover) = open else {
+                return CallbackResult::Keep; // no pie open: a normal right-click
+            };
+            let enabled = cfg().right_click_switch;
+            if !enabled {
+                return CallbackResult::Keep;
+            }
+            RIGHT_SWALLOWED.store(true, Ordering::SeqCst);
+            let target = side::target();
+            let switched = {
+                let c = cfg();
+                side::toggle(&c, target.as_deref())
+            };
+            if switched.is_some() {
+                notifier.send(Msg::Hover(hover)); // wakes the UI so the ring is redrawn
+            }
+            CallbackResult::Drop
+        }
+        CGEventType::RightMouseUp => {
+            if RIGHT_SWALLOWED.swap(false, Ordering::SeqCst) {
+                CallbackResult::Drop
+            } else {
+                CallbackResult::Keep
+            }
+        }
+        _ => {
+            if RIGHT_SWALLOWED.load(Ordering::SeqCst) {
+                CallbackResult::Drop
+            } else {
+                CallbackResult::Keep
+            }
+        }
     }
 }
 
@@ -259,7 +349,13 @@ fn handle_key(notifier: &Notifier, etype: CGEventType, event: &CGEvent) -> Callb
 }
 
 /// Back/forward side buttons: send the active (or hovered) mode's actions, otherwise pass through.
-fn handle_side(state: &Arc<Mutex<Gesture>>, etype: CGEventType, button: i64) -> CallbackResult {
+/// Which pie they follow is decided by `side` (see there); `p` is where the pointer is.
+fn handle_side(
+    state: &Arc<Mutex<Gesture>>,
+    etype: CGEventType,
+    button: i64,
+    p: CGPoint,
+) -> CallbackResult {
     let idx = if button == SIDE_BACK { 0 } else { 1 };
     match etype {
         CGEventType::OtherMouseDown => {
@@ -284,10 +380,19 @@ fn handle_side(state: &Arc<Mutex<Gesture>>, etype: CGEventType, button: i64) -> 
             };
             let in_pie = pie_profile.is_some();
 
+            // Outside the pie, find out which app this press is about. Inside the pie it is the app
+            // the pie was opened for.
+            let target = if in_pie {
+                side::target()
+            } else {
+                let bundle = target_bundle_at(p);
+                remember_target(bundle.clone());
+                bundle
+            };
+
             let action = {
                 let c = cfg();
-                let pi = pie_profile
-                    .unwrap_or_else(|| c.profile_for(system::frontmost_bundle_id().as_deref()));
+                let pi = pie_profile.unwrap_or_else(|| side::owner(&c, target.as_deref()));
                 let item = c.profiles.get(pi).and_then(|pr| match &hovered {
                     Some(p) => item_at(&pr.items, p),
                     None => pr.active_item(),
@@ -309,7 +414,7 @@ fn handle_side(state: &Arc<Mutex<Gesture>>, etype: CGEventType, button: i64) -> 
                 return CallbackResult::Keep; // native back/forward keeps working
             }
             SIDE_SWALLOWED[idx].store(true, Ordering::SeqCst);
-            actions::run(action);
+            run_action(action, target);
             CallbackResult::Drop
         }
         CGEventType::OtherMouseUp => {
@@ -365,9 +470,16 @@ fn handle(
         return handle_key(notifier, etype, event);
     }
 
+    if matches!(
+        etype,
+        CGEventType::RightMouseDown | CGEventType::RightMouseUp | CGEventType::RightMouseDragged
+    ) {
+        return handle_right(state, notifier, etype);
+    }
+
     let button = event.get_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER);
     if button == SIDE_BACK || button == SIDE_FORWARD {
-        return handle_side(state, etype, button);
+        return handle_side(state, etype, button, event.location());
     }
     let (trigger, flick) = {
         let c = cfg();
@@ -382,7 +494,7 @@ fn handle(
 
     match (etype, &mut *g) {
         (CGEventType::OtherMouseDown, _) => {
-            let (hold_profile, app) = resolve_profiles();
+            let (hold_profile, app) = resolve_profiles(p);
             let dbl_ms = cfg().double_click_ms;
 
             // (A) tekan kedua dalam jendela waktu -> pie khusus app, langsung terbuka

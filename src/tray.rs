@@ -47,6 +47,7 @@ pub fn build(n: &Notifier) -> Option<TrayHandles> {
     let menu = Menu::new();
     let settings = MenuItem::with_id("settings", "Settings...", true, None);
     let about = MenuItem::with_id("about", format!("About {APP_NAME}"), true, None);
+    let swap = MenuItem::with_id("swap_side", "Switch side-button pie", true, None);
     let pause = CheckMenuItem::with_id("pause", format!("Pause {APP_NAME}"), true, false, None);
     let login = CheckMenuItem::with_id(
         "login",
@@ -60,6 +61,7 @@ pub fn build(n: &Notifier) -> Option<TrayHandles> {
     let _ = menu.append(&settings);
     let _ = menu.append(&about);
     let _ = menu.append(&PredefinedMenuItem::separator());
+    let _ = menu.append(&swap);
     let _ = menu.append(&pause);
     let _ = menu.append(&login);
     let _ = menu.append(&PredefinedMenuItem::separator());

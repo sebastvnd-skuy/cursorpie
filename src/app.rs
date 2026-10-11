@@ -6,6 +6,7 @@ use crate::config::{
 use crate::gfx::screen_rect_at;
 use crate::msg::Msg;
 use crate::settings::{Ed, Slot, Tab};
+use crate::side;
 use crate::system;
 use crate::tap::PAUSED;
 use crate::tray::TrayHandles;
@@ -36,6 +37,8 @@ pub struct App {
     pub pie_pos: Pos2,
     pub opened_at: Instant,
     pub last_tick: Instant,
+    /// Some while a preview (menu bar "Switch side-button pie") is on screen: when it ends
+    pub preview_until: Option<Instant>,
 
     // settings
     pub settings_open: bool,
@@ -74,6 +77,7 @@ impl App {
             pie_pos: egui::pos2(200.0, 200.0),
             opened_at: Instant::now(),
             last_tick: Instant::now(),
+            preview_until: None,
             settings_open: false,
             quitting: false,
             edit: cfg().clone(),
@@ -96,6 +100,7 @@ impl App {
             let new = self.edit.clone().sanitize();
             let login = new.launch_at_login;
             *cfg() = new.clone();
+            side::forget_all(); // a changed default should apply at once
             config::save_config(&new);
             if let Err(e) = system::set_launch_at_login(login) {
                 eprintln!("CursorPie: could not update launch-at-login: {e}");
@@ -162,6 +167,59 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     }
 
+    /// Opens the pie window for `profile` at (x, y). Submenus call this again to re-center.
+    fn show_pie(&mut self, ctx: &egui::Context, x: f64, y: f64, profile: usize, path: Vec<usize>) {
+        if self.settings_open {
+            return;
+        }
+        self.win = cfg().pie_size;
+        self.profile = profile;
+        self.path = path;
+        self.hover = None;
+        self.hover_anim = [0.0; MAX_ITEMS];
+        self.pie_open = true;
+        self.fresh = true;
+        self.anim = 0.0; // submenus "bloom" again, re-centered on the cursor
+        self.opened_at = Instant::now();
+        self.pie_pos = egui::pos2(x as f32, y as f32);
+
+        let w = self.win;
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize([w, w].into()));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+            egui::WindowLevel::AlwaysOnTop,
+        ));
+        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+            x as f32 - w / 2.0,
+            y as f32 - w / 2.0,
+        )));
+        if !self.visible {
+            self.visible = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        }
+    }
+
+    /// Menu bar item: switch which pie the side buttons follow in the app in front.
+    fn swap_side(&mut self, ctx: &egui::Context) {
+        let bundle = system::frontmost_bundle_id();
+        let (switched, general, ms) = {
+            let c = cfg();
+            (side::toggle(&c, bundle.as_deref()), c.global_profile(), c.preview_ms)
+        };
+        // an app without a pie of its own has nothing to switch: just show the one pie there is
+        let profile = switched.unwrap_or(general);
+        if ms == 0 {
+            return;
+        }
+        let at = self.cursor_or_default();
+        let center = screen_rect_at(at).map_or(at, |r| r.center());
+        self.show_pie(ctx, center.x as f64, center.y as f64, profile, Vec::new());
+        self.preview_until = Some(Instant::now() + Duration::from_millis(ms));
+        // the ring colors are computed for the app the last gesture was about
+        side::set_target(bundle, false);
+    }
+
     fn cursor_or_default(&self) -> Pos2 {
         system::cursor_pos()
             .map(|(x, y)| egui::pos2(x as f32, y as f32))
@@ -178,6 +236,7 @@ impl App {
                 let at = self.cursor_or_default();
                 self.open_settings(ctx, at, true);
             }
+            "swap_side" => self.swap_side(ctx),
             "pause" => {
                 if let Some(t) = &self.tray {
                     PAUSED.store(t.pause.is_checked(), Ordering::SeqCst);
@@ -220,35 +279,9 @@ impl eframe::App for App {
                     profile,
                     path,
                 } => {
-                    if self.settings_open {
-                        continue;
-                    }
-                    self.win = cfg().pie_size;
-                    self.profile = profile;
-                    self.path = path;
-                    self.hover = None;
-                    self.hover_anim = [0.0; MAX_ITEMS];
-                    self.pie_open = true;
-                    self.fresh = true;
-                    self.anim = 0.0; // submenus "bloom" again, re-centered on the cursor
-                    self.opened_at = Instant::now();
-                    self.pie_pos = egui::pos2(x as f32, y as f32);
-
-                    let w = self.win;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize([w, w].into()));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(true));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
-                        egui::WindowLevel::AlwaysOnTop,
-                    ));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                        x as f32 - w / 2.0,
-                        y as f32 - w / 2.0,
-                    )));
-                    if !self.visible {
-                        self.visible = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                    }
+                    // a real gesture takes over from any preview
+                    self.preview_until = None;
+                    self.show_pie(ctx, x, y, profile, path);
                 }
                 Msg::OpenSettings { x, y, about } => {
                     self.open_settings(ctx, egui::pos2(x as f32, y as f32), about);
@@ -268,6 +301,7 @@ impl eframe::App for App {
                 Msg::HidePie => {
                     self.hover = None;
                     self.pie_open = false;
+                    self.preview_until = None;
                 }
                 Msg::KeyCaptured(sc) => {
                     if let Some(rec) = self.ed.recording.take() {
@@ -347,6 +381,19 @@ impl eframe::App for App {
                         }
                     }
                 }
+            }
+        }
+
+        // end of a preview (see Msg::Preview)
+        if let Some(until) = self.preview_until {
+            let now = Instant::now();
+            if now >= until {
+                self.preview_until = None;
+                self.hover = None;
+                self.pie_open = false;
+                ctx.request_repaint();
+            } else {
+                ctx.request_repaint_after(until - now);
             }
         }
 

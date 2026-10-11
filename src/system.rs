@@ -4,6 +4,7 @@ use crate::about::BUNDLE_ID;
 use crate::config::home;
 use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+use core_graphics::geometry::CGPoint;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -43,6 +44,103 @@ pub fn frontmost_bundle_id() -> Option<String> {
     autoreleasepool(|_| {
         let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
         app.bundleIdentifier().map(|s| s.to_string())
+    })
+}
+
+/// Bundle identifier of the app that owns the topmost window at `p` (global coordinates, the same
+/// space as the cursor), whether or not that app is in front. Only regular app windows count: not
+/// the Dock, the menu bar or the desktop, and CursorPie's own windows are skipped. None when
+/// nothing suitable is under the point or the app has no bundle identifier.
+pub fn bundle_id_at(p: CGPoint) -> Option<String> {
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+    use core_foundation::number::CFNumber;
+    use core_foundation::string::CFString;
+    use core_graphics::geometry::CGRect;
+    use core_graphics::window::{
+        copy_window_info, kCGNullWindowID, kCGWindowAlpha, kCGWindowBounds, kCGWindowLayer,
+        kCGWindowListExcludeDesktopElements, kCGWindowListOptionOnScreenOnly, kCGWindowOwnerPID,
+    };
+
+    // ordered front to back
+    let windows = copy_window_info(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID,
+    )?;
+    let (k_layer, k_alpha, k_pid, k_bounds) = unsafe {
+        (
+            CFString::wrap_under_get_rule(kCGWindowLayer),
+            CFString::wrap_under_get_rule(kCGWindowAlpha),
+            CFString::wrap_under_get_rule(kCGWindowOwnerPID),
+            CFString::wrap_under_get_rule(kCGWindowBounds),
+        )
+    };
+    let me = std::process::id() as i64;
+
+    for w in windows.iter() {
+        let d: CFDictionary<CFString, CFType> =
+            unsafe { CFDictionary::wrap_under_get_rule(*w as CFDictionaryRef) };
+        let number = |k: &CFString| d.find(k).and_then(|v| v.downcast::<CFNumber>());
+
+        // layer 0 = normal windows; up to 19 also covers floating palettes and panels
+        let Some(layer) = number(&k_layer).and_then(|n| n.to_i64()) else {
+            continue;
+        };
+        if !(0..=19).contains(&layer) {
+            continue;
+        }
+        // fully transparent overlays do not count as "the window under the pointer"
+        if number(&k_alpha)
+            .and_then(|n| n.to_f64())
+            .is_some_and(|a| a < 0.01)
+        {
+            continue;
+        }
+        let Some(pid) = number(&k_pid).and_then(|n| n.to_i64()) else {
+            continue;
+        };
+        if pid == me {
+            continue;
+        }
+        let Some(bounds) = d
+            .find(&k_bounds)
+            .and_then(|v| v.downcast::<CFDictionary>())
+            .and_then(|b| CGRect::from_dict_representation(&b))
+        else {
+            continue;
+        };
+        if bounds.contains(&p) {
+            return bundle_id_of_pid(pid as i32);
+        }
+    }
+    None
+}
+
+fn bundle_id_of_pid(pid: i32) -> Option<String> {
+    use objc2::rc::autoreleasepool;
+    use objc2_app_kit::NSRunningApplication;
+
+    autoreleasepool(|_| {
+        let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
+        app.bundleIdentifier().map(|s| s.to_string())
+    })
+}
+
+/// The icon of an app as TIFF data holding every size macOS has for it (one page per size), found by
+/// bundle identifier. This is the real icon, the one the Dock and Finder show. None if no such app is
+/// installed. Meant for the main thread; the result is decoded by `appicon`.
+pub fn app_icon_tiff(bundle: &str) -> Option<Vec<u8>> {
+    use objc2::rc::autoreleasepool;
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+
+    autoreleasepool(|_| {
+        let ws = NSWorkspace::sharedWorkspace();
+        let url = ws.URLForApplicationWithBundleIdentifier(&NSString::from_str(bundle))?;
+        let path = url.path()?;
+        let icon = ws.iconForFile(&path);
+        let data = icon.TIFFRepresentation()?;
+        Some(data.to_vec())
     })
 }
 

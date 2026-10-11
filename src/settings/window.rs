@@ -102,7 +102,7 @@ impl App {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(APP_NAME).size(22.0).strong().color(TEXT));
                 ui.label(RichText::new("ℹ").color(MUTED)).on_hover_text(
-                    "Hold the middle button for your main pie.\nDouble-click it for the pie of the app in front.",
+                    "Hold the middle button for your main pie.\nDouble-click it for the pie of the app under the pointer.\nWhile the pie is open, right-click to switch which pie the side buttons follow.",
                 );
                 if !system::is_trusted() || !TAP_ACTIVE.load(Ordering::SeqCst) {
                     ui.label(RichText::new("⚠ Accessibility permission needed").color(BAD));

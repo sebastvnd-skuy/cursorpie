@@ -33,15 +33,16 @@ CursorPie installs a global event tap that watches the mouse button you chose as
 | You do this | CursorPie does this |
 |---|---|
 | **Hold** the trigger for 500 ms | Opens your general pie under the cursor |
-| **Double-click** the trigger (default mode) | Opens the pie of the app in front, instantly, if that app has its own profile |
+| **Double-click** the trigger (default mode) | Opens the pie of the app under the pointer, instantly, if that app has its own profile |
+| **Right-click** while the pie is open | Switches which pie the side buttons follow (general or the app's own); the ring changes color at once. See [Side buttons and app pies](#side-buttons-and-app-pies) |
 | **Click** quickly | Passes the click through to the app. In the default mode, if the app in front has its own profile, the click is delivered once the double-click window (260 ms) has passed |
 | **Press and drag** before the pie opens | Hands the drag back to the app (so middle-drag panning still works) |
 | **Release** over a slice | Runs that slice |
 | **Drag outward** across the rim of a submenu slice | Opens the submenu, re-centered on the cursor |
 | **Keep holding** in the center, with nothing hovered | After 1200 ms in total, opens Settings. A progress arc fills around the center disc |
 
-In *classic* mode (see [Profiles](#features)) there is no double-click: holding opens the app's own pie if it has
-one, otherwise the general pie.
+In *classic* mode (see [Profiles](#features)) there is no double-click: holding opens the app's own pie
+if it has one, otherwise the general pie.
 
 The timings above are the defaults and can be changed in **Settings > Behavior**.
 
@@ -82,7 +83,10 @@ Actions run on one worker thread so they always execute in the order you trigger
 - Slice icons can be text, emoji, or an image (`.png`, `.jpg`, `.jpeg`, `.webp`). A path may start with `~/`.
 - Adjustable pie size (140 to 360 px), accent color, and timings.
 - Optional soft tick sound when the hovered slice changes.
-- Apps with their own profile get an accent-colored outer ring, so you can tell at a glance which pie you opened.
+- In an app that has its own pie, the outer ring shows which pie the side buttons follow: accent color = this pie,
+  red (changeable) = the other one. See [Side buttons and app pies](#side-buttons-and-app-pies).
+- The center of an app's own pie shows that app's real icon (the one the Dock shows) reduced to a white glyph;
+  the general pie, and every pie when this is switched off, shows the icon of the active side-button mode.
 - Optional **instant flick**: drag right after pressing to open the pie with no hold delay
   (this disables middle-drag pass-through in other apps).
 - The trigger can be the middle button or one of three extra mouse buttons.
@@ -157,6 +161,28 @@ Tips:
 - **Cancel** by releasing in the center dead zone.
 - Open **Settings** by holding in the center until the progress arc completes, or from the menu bar icon.
 
+## Side buttons and app pies
+
+An app with its own profile has two pies: its own and the general one. The side buttons (back / forward) follow
+exactly one of them, and each pie shows which with its ring color: **accent = the side buttons follow this pie,
+red = they follow the other one**.
+
+- **Which one by default:** the app's pie (**Settings > Behavior > Side buttons**; you can pick the general pie instead).
+- **Choosing:** pick a side-button mode in a pie and the side buttons follow that pie from then on, in that app.
+  Open the general pie by holding the trigger, pick e.g. *History*, and Undo/Redo is on your side buttons even in an
+  app with its own pie.
+- **Switching:** hold the trigger so the pie is open, then **right-click**. The pie stays open and its ring turns
+  blue (it now owns the side buttons) or red (the other pie does). Without opening a pie, use *Switch side-button pie*
+  in the menu bar: the pie that now owns the side buttons appears for a moment (time adjustable, 0 turns it off).
+- The choice is remembered per app while CursorPie runs. It can be forgotten when you switch to another app, and
+  saving Settings clears it.
+
+**Which app is "the app"?** By default the app whose window is **under the pointer**, so you don't have to click a
+window to focus it first. Shortcuts always go to the app in front, so with this mode CursorPie brings that app to the
+front (`open -b`) right before it sends a shortcut, unless the app is already in front. Both are options: switch back
+to *the app in front* if you prefer the old behavior. If CursorPie cannot tell which window is under the pointer, it
+uses the app in front.
+
 ## Settings
 
 Open it from the menu bar icon or by holding the trigger in the center of the pie.
@@ -174,7 +200,9 @@ Open it from the menu bar icon or by holding the trigger in the center of the pi
 
 - Trigger button, hold time for the pie, hold time for Settings, pie size, accent color
 - Pie of the app in front: general + double-click, or classic merged mode, plus the double-click speed
-- Instant flick, hover sound, launch at login
+- App detection: app under the pointer or app in front, and whether to bring it to the front before sending shortcuts
+- Side buttons: which pie they follow by default, pick-to-follow, forget on app switch, right-click switching, ring colors, preview time
+- Instant flick, hover sound, app icon in the pie center, launch at login
 
 **General**
 
@@ -211,6 +239,16 @@ Actions are `Nothing`, `Key`, `OpenApp`, `OpenUrl`, `Command` or `Sequence`.
   "launch_at_login": false,
   "app_gesture": "DoubleClick",
   "double_click_ms": 260,
+  "target_app": "UnderCursor",
+  "focus_target": true,
+  "side_default": "App",
+  "side_adopt": true,
+  "side_forget": false,
+  "right_click_switch": true,
+  "side_indicator": true,
+  "inactive_color": [232, 86, 86],
+  "preview_ms": 900,
+  "center_app_icon": true,
   "profiles": [
     {
       "name": "Default",
@@ -262,6 +300,15 @@ Reference:
 | `pie_size` | Pie window size in px (140 to 360) |
 | `app_gesture` | `"DoubleClick"` (hold = general pie, double-click = app pie) or `"Merged"` (classic) |
 | `double_click_ms` | Window for the second click (150 to 500) |
+| `target_app` | `"UnderCursor"` (app whose window is under the pointer) or `"Focused"` (app in front) |
+| `focus_target` | With `UnderCursor`: bring that app to the front before sending it a shortcut |
+| `side_default` | `"App"` or `"General"`: pie the side buttons follow in an app that has its own pie, until you choose |
+| `side_adopt` | Picking a side-button mode in a pie makes the side buttons follow that pie |
+| `side_forget` | Forget that choice when another app becomes the target |
+| `right_click_switch` | Right-click while the pie is open to switch the side-button pie |
+| `side_indicator` | Color the pie ring by who owns the side buttons; `inactive_color` is the "other pie" color |
+| `preview_ms` | How long the pie stays on screen after switching from the menu bar (0 to 3000, 0 = off) |
+| `center_app_icon` | Show the app's icon (white glyph) in the center of an app's own pie instead of the active mode's icon |
 | `apps` | Bundle identifiers. An empty list marks the general (fallback) profile |
 | `active` | Path of the active side-button mode, as indices (`[3, 1]` = slice 1 inside slice 3) |
 | `Key` | `key` is a macOS virtual key code (physical key). `mods` is a bitmask: Shift = 1, Ctrl = 2, Opt = 4, Cmd = 8 |
@@ -289,12 +336,14 @@ src/
   app.rs                eframe app: reacts to messages from the other threads, opens/closes Settings
   tap.rs                global event tap and the gesture state machine
   actions.rs            action worker thread; sends shortcuts, opens apps/URLs, runs commands
+  appicon.rs            the real icon of an app (asked from macOS), reduced to a white glyph
+  side.rs               which pie the side buttons follow (per-app choice, indicator, switching)
   config.rs             config model, defaults, presets, validation, load/save, import/export
   keys.rs               shortcut model (key code + modifiers) and key labels
   pie.rs                draws the pie and its animations
   gfx.rs                palette, pie geometry and hit-testing, icon loading, drawing helpers
   msg.rs                messages sent to the UI thread
-  system.rs             macOS glue: permissions, frontmost app, launch at login, file pickers, hover tick
+  system.rs             macOS glue: permissions, frontmost app / app under the pointer, launch at login, file pickers, hover tick
   tray.rs               menu bar icon and menu
   settings/             the Settings window
     window.rs           card, open/close animation, tab bar, Save / Cancel / Quit
@@ -338,6 +387,10 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
   Only the trigger button is configurable.
 - With a per-app profile and the default gesture, a plain middle-click in that app is delivered after the
   double-click window (260 ms by default). Use classic mode, or a shorter window, if that bothers you.
+- The right-click that switches the side-button pie is swallowed only while a pie is open; otherwise right-clicks pass
+  through untouched.
+- "App under the pointer" looks at normal app windows (not the Dock, menu bar or desktop). Bringing it to the front
+  activates the whole app, not one particular window.
 - Sequences cannot be edited in Settings yet, only in `config.json`.
 - Launch at login installs a LaunchAgent that starts CursorPie at your next login. It points at the executable
   that was running when you enabled it, so toggle it off and on again if you move the app.

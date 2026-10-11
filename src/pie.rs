@@ -1,8 +1,10 @@
 //! Drawing of the pie menu (one ring at a time; submenus re-center the same window).
 
 use crate::app::App;
+use crate::appicon;
 use crate::config::{Config, ItemKind, MAX_ITEMS, cfg, item_at, items_at};
 use crate::gfx::*;
+use crate::side;
 use eframe::egui::{self, Align2, Color32, FontId, Shape, Stroke, Vec2};
 use std::f32::consts::{PI, TAU};
 
@@ -16,6 +18,11 @@ struct PieView {
     accent: [u8; 3],
     settle_ms: f32,
     is_app: bool,
+    /// does the side-button indicator apply, and does the side button follow this pie?
+    side: side::View,
+    inactive: [u8; 3],
+    /// icon string (`app:<bundle id>`) of the app this pie belongs to, for the center disc
+    app_icon: Option<String>,
 }
 
 impl PieView {
@@ -43,13 +50,24 @@ impl PieView {
                 .map(|i| i.icon.clone())
         }
         .unwrap_or_default();
+        // the center of an app's own pie shows that app's icon (top level only)
+        let target = side::target();
+        let app_icon = (path.is_empty() && c.center_app_icon)
+            .then(|| {
+                prof.and_then(|p| appicon::bundle_for(&p.apps, target.as_deref()))
+                    .map(|b| format!("{}{}", appicon::PREFIX, b))
+            })
+            .flatten();
         Self {
             items,
             active,
             center_icon,
             accent: c.accent,
             settle_ms: c.settings_hold_ms.saturating_sub(c.pie_hold_ms) as f32,
-            is_app: prof.map_or(false, |p| !p.apps.is_empty()),
+            is_app: prof.is_some_and(|p| !p.apps.is_empty()),
+            side: side::view_of(c, profile),
+            inactive: c.inactive_color,
+            app_icon,
         }
     }
 }
@@ -99,6 +117,7 @@ impl App {
             return;
         }
         let top_level = self.path.is_empty();
+        let previewing = self.preview_until.is_some();
         if moving || (self.pie_open && self.hover.is_none() && top_level) {
             ctx.request_repaint();
         }
@@ -110,6 +129,11 @@ impl App {
             .map(|(ic, _, _)| self.ed.icon_for(&ctx, ic))
             .collect();
         let center_tex = self.ed.icon_for(&ctx, &view.center_icon);
+        // None while not available (not installed, unreadable): the mode icon is shown instead
+        let app_tex = view
+            .app_icon
+            .as_ref()
+            .and_then(|s| self.ed.icon_for(&ctx, s));
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new())
@@ -123,6 +147,8 @@ impl App {
                 let r = pie_outer(self.win) * (0.80 + 0.20 * pop);
                 let inner = pie_inner(self.win) * (0.75 + 0.25 * pop);
                 let accent = rgb(view.accent);
+                // false = the side buttons follow the other pie: tint this one with the inactive color
+                let live = !view.side.shown || view.side.owner;
                 let a = |v: f32, f: f32| (v * f).clamp(0.0, 255.0) as u8;
 
                 // soft shadow behind the ring
@@ -143,7 +169,16 @@ impl App {
                     let rr = inner + (r + 5.0 * h - inner) * lpe;
 
                     let t = (h * 0.95 + m * 0.4).min(1.0);
-                    let col = mix([24, 26, 32], view.accent, t);
+                    let col = if live {
+                        mix([24, 26, 32], view.accent, t)
+                    } else {
+                        // the active mode is tinted with the inactive color, hovering still uses the accent
+                        mix(
+                            mix([24, 26, 32], view.inactive, (m * 0.4).min(1.0)),
+                            view.accent,
+                            (h * 0.95).min(1.0),
+                        )
+                    };
                     let fill =
                         Color32::from_rgba_unmultiplied(col[0], col[1], col[2], a(228.0, lf));
                     painter.add(ring_slice(
@@ -183,33 +218,58 @@ impl App {
                     }
                 }
 
-                let ring_col = if view.is_app {
-                    accent
+                // ring: accent = the side buttons follow this pie, red = they follow the other one
+                let (ring_col, ring_w) = if view.side.shown {
+                    let col = if view.side.owner {
+                        accent
+                    } else {
+                        rgb(view.inactive)
+                    };
+                    (col.gamma_multiply(fade), 3.0)
+                } else if view.is_app {
+                    (accent, 2.5)
                 } else {
-                    Color32::from_white_alpha(a(28.0, fade))
+                    (Color32::from_white_alpha(a(28.0, fade)), 1.0)
                 };
-                painter.circle_stroke(
-                    c,
-                    r,
-                    Stroke::new(if view.is_app { 2.5 } else { 1.0 }, ring_col),
-                );
+                painter.circle_stroke(c, r, Stroke::new(ring_w, ring_col));
 
                 // center disc: active mode (or the parent submenu icon) + "hold for settings" progress
                 let core = inner * 0.86;
                 painter.circle_filled(
                     c,
                     core,
-                    Color32::from_rgba_unmultiplied(14, 15, 18, a(235.0, fade)),
+                    if live {
+                        Color32::from_rgba_unmultiplied(14, 15, 18, a(235.0, fade))
+                    } else {
+                        Color32::from_rgba_unmultiplied(36, 14, 14, a(235.0, fade))
+                    },
                 );
-                draw_icon(
-                    &painter,
-                    center_tex.as_ref(),
-                    &view.center_icon,
-                    c,
-                    core * 1.0,
-                    a(150.0, fade),
-                );
-                if self.pie_open && self.hover.is_none() && top_level && view.settle_ms > 0.0 {
+                if let Some(t) = app_tex.as_ref() {
+                    // the app's icon as a white glyph
+                    draw_icon(
+                        &painter,
+                        Some(t),
+                        "",
+                        c,
+                        core * 1.3,
+                        a(if live { 215.0 } else { 110.0 }, fade),
+                    );
+                } else {
+                    draw_icon(
+                        &painter,
+                        center_tex.as_ref(),
+                        &view.center_icon,
+                        c,
+                        core * 1.0,
+                        a(if live { 150.0 } else { 80.0 }, fade),
+                    );
+                }
+                if self.pie_open
+                    && !previewing
+                    && self.hover.is_none()
+                    && top_level
+                    && view.settle_ms > 0.0
+                {
                     let prog = (self.opened_at.elapsed().as_millis() as f32 / view.settle_ms)
                         .clamp(0.0, 1.0);
                     if prog > 0.02 {

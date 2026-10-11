@@ -1,6 +1,7 @@
 //! Editor-only state: which tab is open, which profile is selected, which
 //! shortcut slot is being recorded, and the icon texture cache.
 
+use crate::appicon;
 use crate::gfx::*;
 use crate::tap::RECORDING;
 use eframe::egui;
@@ -72,6 +73,16 @@ impl Ed {
 
     /// Cached texture for an image icon. None for text icons or images that fail to load.
     pub fn icon_for(&mut self, ctx: &egui::Context, icon: &str) -> Option<egui::TextureHandle> {
+        // "app:<bundle id>" = the real icon of an app, asked from macOS (see `appicon`)
+        if let Some(bundle) = icon.strip_prefix(appicon::PREFIX) {
+            if let Some(t) = self.icons.get(icon) {
+                return t.clone();
+            }
+            let tex = appicon::load(bundle)
+                .map(|img| ctx.load_texture(icon, img, egui::TextureOptions::LINEAR));
+            self.icons.insert(icon.to_string(), tex.clone());
+            return tex;
+        }
         let path = icon_path(icon)?;
         let key = path.to_string_lossy().to_string();
         if let Some(t) = self.icons.get(&key) {

@@ -15,28 +15,65 @@ use std::time::Duration;
 /// Marks events we posted ourselves so the event tap ignores them.
 pub const SYNTH_TAG: i64 = 0x504F_5055;
 
-static TX: OnceLock<mpsc::Sender<Action>> = OnceLock::new();
+struct Job {
+    /// Bundle id of an app to bring to the front first (only done when the action sends keys).
+    focus: Option<String>,
+    action: Action,
+}
+
+static TX: OnceLock<mpsc::Sender<Job>> = OnceLock::new();
 
 pub fn init() {
-    let (tx, rx) = mpsc::channel::<Action>();
+    let (tx, rx) = mpsc::channel::<Job>();
     TX.set(tx).ok();
     std::thread::Builder::new()
         .name("cursorpie-actions".into())
         .spawn(move || {
-            for action in rx {
-                execute(&action);
+            for job in rx {
+                if let Some(app) = job.focus.as_deref()
+                    && sends_keys(&job.action)
+                {
+                    bring_to_front(app);
+                }
+                execute(&job.action);
             }
         })
         .expect("failed to spawn action worker");
 }
 
-/// Queue an action. Safe to call from the event tap callback (never blocks).
-pub fn run(action: Action) {
+/// Queue an action. Safe to call from the event tap callback (never blocks). If `focus` (a bundle id)
+/// is given and the action sends keys, that app is brought to the front first, because keys always
+/// go to the app in front.
+pub fn run_in(focus: Option<String>, action: Action) {
     if matches!(action, Action::Nothing) {
         return;
     }
     if let Some(tx) = TX.get() {
-        let _ = tx.send(action);
+        let _ = tx.send(Job { focus, action });
+    }
+}
+
+fn sends_keys(action: &Action) -> bool {
+    match action {
+        Action::Key(_) => true,
+        Action::Sequence(steps) => steps.iter().any(sends_keys),
+        _ => false,
+    }
+}
+
+/// Activates an app and waits (briefly) until macOS really has it in front: `open` returns
+/// before the switch is done, and keys sent too early would reach the previous app.
+fn bring_to_front(bundle: &str) {
+    if system::frontmost_bundle_id().as_deref() == Some(bundle) {
+        return;
+    }
+    system::spawn_reaped(Command::new("open").arg("-b").arg(bundle));
+    for _ in 0..30 {
+        std::thread::sleep(Duration::from_millis(15));
+        if system::frontmost_bundle_id().as_deref() == Some(bundle) {
+            std::thread::sleep(Duration::from_millis(40)); // let its window become the key window
+            return;
+        }
     }
 }
 
@@ -115,5 +152,25 @@ pub fn post_mouse(pos: CGPoint, ty: CGEventType, button: i64) {
         ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
         ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, SYNTH_TAG);
         ev.post(CGEventTapLocation::HID);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_key_actions_need_the_target_in_front() {
+        assert!(sends_keys(&Action::Key(Shortcut::new(6, MOD_CMD))));
+        assert!(sends_keys(&Action::Sequence(vec![
+            Action::OpenApp("Safari".into()),
+            Action::Key(Shortcut::new(6, 0)),
+        ])));
+        assert!(!sends_keys(&Action::Nothing));
+        assert!(!sends_keys(&Action::OpenApp("Safari".into())));
+        assert!(!sends_keys(&Action::Command("true".into())));
+        assert!(!sends_keys(&Action::Sequence(vec![Action::OpenUrl(
+            "https://example.com".into()
+        )])));
     }
 }
