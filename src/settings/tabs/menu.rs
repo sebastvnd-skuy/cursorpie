@@ -10,8 +10,26 @@ use crate::settings::items_editor::{Env, add_panel, item_inspector};
 use crate::settings::pie_designer::{Designer, pie_designer};
 use crate::settings::widgets::icon_btn;
 use crate::system;
-use eframe::egui::{self, Align, Layout, Rect, RichText, UiBuilder, pos2, vec2};
+use eframe::egui::containers::menu::{MenuButton, MenuConfig};
+use eframe::egui::{
+    self, Align, Layout, PopupCloseBehavior, Rect, RichText, UiBuilder, pos2, vec2,
+};
 use std::sync::mpsc::Sender;
+
+/// Like `ui.menu_button`, but the popup stays open while you click and type inside it.
+///
+/// egui's default closes a menu on *any* click, also one inside it. A text field in such a menu
+/// therefore closed the menu as soon as you clicked it (the mouse button release counts as the
+/// click), so it only stayed open while the mouse button was held down. Here the popup closes on a
+/// click outside it, on the button again, or on Esc.
+fn sticky_menu<R>(
+    ui: &mut egui::Ui,
+    title: impl Into<String>,
+    content: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::Response {
+    let config = MenuConfig::new().close_behavior(PopupCloseBehavior::CloseOnClickOutside);
+    MenuButton::new(title.into()).config(config).ui(ui, content).0
+}
 
 impl App {
     pub(in crate::settings) fn menu_tab(
@@ -66,7 +84,7 @@ impl App {
             };
 
             // ganti nama
-            ui.menu_button("✏", |ui| {
+            sticky_menu(ui, "✏", |ui| {
                 ui.set_min_width(220.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut prof.name)
@@ -74,7 +92,6 @@ impl App {
                         .hint_text("Profile name"),
                 );
             })
-            .response
             .on_hover_text("Rename profile");
 
             // aplikasi yang memakai profil ini
@@ -88,7 +105,7 @@ impl App {
                 )
             };
             let profile = ed.profile;
-            ui.menu_button(label, |ui| {
+            sticky_menu(ui, label, |ui| {
                 ui.set_min_width(320.0);
                 muted(
                     ui,
@@ -143,7 +160,6 @@ impl App {
                     }
                 });
             })
-            .response
             .on_hover_text("Apps that use this profile");
         });
         ui.add_space(4.0);
