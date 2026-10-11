@@ -7,6 +7,7 @@ use crate::tap::RECORDING;
 use eframe::egui;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -15,6 +16,9 @@ pub enum Tab {
     General,
     About,
 }
+
+/// How long to wait before trying again to load an app icon that could not be loaded.
+const APP_ICON_RETRY: Duration = Duration::from_secs(3);
 
 /// Which action field of an item is being recorded.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -36,6 +40,8 @@ pub struct Ed {
     pub profile: usize,
     pub recording: Option<Rec>,
     pub icons: HashMap<String, Option<egui::TextureHandle>>,
+    /// when loading an `app:` icon last failed (it is tried again after `APP_ICON_RETRY`)
+    pub icon_failed: HashMap<String, Instant>,
     pub new_app: String,
     pub nav: Vec<usize>,
     pub sel: Option<usize>,
@@ -55,6 +61,7 @@ impl Ed {
             profile: 0,
             recording: None,
             icons: HashMap::new(),
+            icon_failed: HashMap::new(),
             new_app: String::new(),
             nav: Vec::new(),
             sel: None,
@@ -75,11 +82,25 @@ impl Ed {
     pub fn icon_for(&mut self, ctx: &egui::Context, icon: &str) -> Option<egui::TextureHandle> {
         // "app:<bundle id>" = the real icon of an app, asked from macOS (see `appicon`)
         if let Some(bundle) = icon.strip_prefix(appicon::PREFIX) {
-            if let Some(t) = self.icons.get(icon) {
-                return t.clone();
+            if let Some(cached) = self.icons.get(icon) {
+                // a failure is not final: macOS may simply not have had the icon ready. Try again
+                // after a pause, but not on every frame (decoding is not free).
+                let retry = cached.is_none()
+                    && self
+                        .icon_failed
+                        .get(icon)
+                        .is_none_or(|at| at.elapsed() >= APP_ICON_RETRY);
+                if !retry {
+                    return cached.clone();
+                }
             }
             let tex = appicon::load(bundle)
                 .map(|img| ctx.load_texture(icon, img, egui::TextureOptions::LINEAR));
+            if tex.is_some() {
+                self.icon_failed.remove(icon);
+            } else {
+                self.icon_failed.insert(icon.to_string(), Instant::now());
+            }
             self.icons.insert(icon.to_string(), tex.clone());
             return tex;
         }

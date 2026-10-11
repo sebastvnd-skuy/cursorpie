@@ -394,6 +394,9 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
 - Sequences cannot be edited in Settings yet, only in `config.json`.
 - Launch at login installs a LaunchAgent that starts CursorPie at your next login. It points at the executable
   that was running when you enabled it, so toggle it off and on again if you move the app.
+- If the app icon does not show up in the center of an app's own pie, start CursorPie from a terminal
+  (`cargo run --release`): a line starting with `CursorPie: app icon for <bundle id>` says why it could not be
+  read. The icon only appears in the pie of an app that has its own profile (double-click in the default mode).
 - Ad-hoc signed builds may need the Accessibility permission re-granted after each rebuild. Sign with a stable
   identity via `SIGN_ID` to avoid that.
 

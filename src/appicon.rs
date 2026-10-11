@@ -35,11 +35,24 @@ pub fn bundle_for<'a>(apps: &'a [String], target: Option<&str>) -> Option<&'a st
 }
 
 /// The icon of `bundle` as a white glyph, ready to become a texture. None if the app is not
-/// installed or its icon cannot be read.
+/// installed or its icon cannot be read. Failures are reported on stderr (once per attempt), so a
+/// missing icon can be diagnosed from `cargo run` instead of failing silently.
 pub fn load(bundle: &str) -> Option<egui::ColorImage> {
-    let data = system::app_icon_tiff(bundle)?;
-    let img = decode_best(&data)?;
-    let img = imageops::resize(&img, SIZE, SIZE, imageops::FilterType::Lanczos3);
+    let Some(data) = system::app_icon_tiff(bundle) else {
+        eprintln!("CursorPie: app icon for {bundle}: macOS returned no icon (app not found?)");
+        return None;
+    };
+    let img = match decode_best(&data) {
+        Ok(img) => img,
+        Err(why) => {
+            eprintln!(
+                "CursorPie: app icon for {bundle}: cannot decode the TIFF ({} bytes): {why}",
+                data.len()
+            );
+            return None;
+        }
+    };
+    let img = resize_straight(&img);
     let glyph = to_glyph(&img);
     Some(egui::ColorImage::from_rgba_unmultiplied(
         [glyph.width() as usize, glyph.height() as usize],
@@ -47,10 +60,27 @@ pub fn load(bundle: &str) -> Option<egui::ColorImage> {
     ))
 }
 
+/// Resizes to `SIZE` x `SIZE` in premultiplied space. Resizing straight RGBA mixes the (black)
+/// color of fully transparent pixels into the edge of the icon; those dark pixels then count as
+/// "differs from the background" and show up as a white outline around the glyph.
+fn resize_straight(img: &RgbaImage) -> RgbaImage {
+    let mut pm = img.clone();
+    for c in pm.chunks_exact_mut(4) {
+        let a = c[3] as u32;
+        for v in &mut c[..3] {
+            *v = ((*v as u32 * a + 127) / 255) as u8;
+        }
+    }
+    let mut out = imageops::resize(&pm, SIZE, SIZE, imageops::FilterType::Lanczos3);
+    unpremultiply(&mut out);
+    out
+}
+
 /// Picks the best page of a multi-size TIFF (the smallest one that is at least `SIZE` wide,
-/// otherwise the largest) and decodes it to straight (not premultiplied) RGBA.
-fn decode_best(data: &[u8]) -> Option<RgbaImage> {
-    let mut d = Decoder::new(Cursor::new(data)).ok()?;
+/// otherwise the largest) and decodes it to straight (not premultiplied) RGBA. If that page cannot
+/// be decoded the next best ones are tried (at most 4), so one odd page does not lose the icon.
+fn decode_best(data: &[u8]) -> Result<RgbaImage, String> {
+    let mut d = Decoder::new(Cursor::new(data)).map_err(|e| format!("not a readable TIFF: {e}"))?;
 
     // pass 1: the width of every page (nothing is decoded yet)
     let mut pages: Vec<(usize, u32)> = Vec::new();
@@ -64,17 +94,31 @@ fn decode_best(data: &[u8]) -> Option<RgbaImage> {
         }
         index += 1;
     }
-    let (page, _) = pages
-        .iter()
-        .filter(|(_, w)| *w >= SIZE)
-        .min_by_key(|(_, w)| *w)
-        .or_else(|| pages.iter().max_by_key(|(_, w)| *w))
-        .copied()?;
+    if pages.is_empty() {
+        return Err("the TIFF has no readable page".into());
+    }
 
-    // pass 2: decode that page
-    d.seek_to_image(page).ok()?;
-    let (w, h) = d.dimensions().ok()?;
-    let color = d.colortype().ok()?;
+    // order of preference: big enough (smallest first), then too small (largest first)
+    let mut big: Vec<(usize, u32)> = pages.iter().copied().filter(|(_, w)| *w >= SIZE).collect();
+    big.sort_by_key(|&(_, w)| w);
+    let mut small: Vec<(usize, u32)> = pages.iter().copied().filter(|(_, w)| *w < SIZE).collect();
+    small.sort_by_key(|&(_, w)| std::cmp::Reverse(w));
+
+    // pass 2: decode the best page that works
+    let mut last = String::from("no usable page");
+    for (page, w) in big.into_iter().chain(small).take(4) {
+        match decode_page(&mut d, page) {
+            Ok(img) => return Ok(img),
+            Err(e) => last = format!("page {page} ({w} px wide): {e}"),
+        }
+    }
+    Err(last)
+}
+
+fn decode_page(d: &mut Decoder<Cursor<&[u8]>>, page: usize) -> Result<RgbaImage, String> {
+    d.seek_to_image(page).map_err(|e| format!("seek: {e}"))?;
+    let (w, h) = d.dimensions().map_err(|e| format!("size: {e}"))?;
+    let color = d.colortype().map_err(|e| format!("color type: {e}"))?;
     // ExtraSamples = 1: the alpha is "associated", i.e. the colors are premultiplied with it
     let premultiplied = d
         .find_tag(Tag::ExtraSamples)
@@ -82,10 +126,32 @@ fn decode_best(data: &[u8]) -> Option<RgbaImage> {
         .flatten()
         .and_then(|v| v.into_u16().ok())
         == Some(1);
-    let DecodingResult::U8(buf) = d.read_image().ok()? else {
-        return None;
+    let result = d
+        .read_image()
+        .map_err(|e| format!("decode ({color:?}): {e}"))?;
+    // float samples are 0..1 (values outside that range are clamped)
+    let unit = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let buf: Vec<u8> = match result {
+        DecodingResult::U8(b) => b,
+        // 16 bits per channel: keep the high byte
+        DecodingResult::U16(b) => b.iter().map(|v| (v >> 8) as u8).collect(),
+        // wide-gamut icons from macOS come as 16-bit (half) or 32-bit floats
+        DecodingResult::F16(b) => b.iter().map(|v| unit(v.to_f32())).collect(),
+        DecodingResult::F32(b) => b.iter().map(|&v| unit(v)).collect(),
+        DecodingResult::F64(b) => b.iter().map(|&v| unit(v as f32)).collect(),
+        DecodingResult::I16(b) => b.iter().map(|&v| (v.max(0) >> 7) as u8).collect(),
+        DecodingResult::U32(b) => b.iter().map(|v| (v >> 24) as u8).collect(),
+        _ => return Err(format!("unsupported sample type ({color:?})")),
+    };
+    let color = match color {
+        ColorType::RGBA(_) => ColorType::RGBA(8),
+        ColorType::RGB(_) => ColorType::RGB(8),
+        ColorType::GrayA(_) => ColorType::GrayA(8),
+        ColorType::Gray(_) => ColorType::Gray(8),
+        other => other,
     };
     to_rgba(&buf, w, h, color, premultiplied)
+        .ok_or_else(|| format!("unsupported pixel layout ({color:?}, {w}x{h})"))
 }
 
 fn to_rgba(buf: &[u8], w: u32, h: u32, color: ColorType, premultiplied: bool) -> Option<RgbaImage> {
@@ -257,8 +323,37 @@ mod tests {
     }
 
     #[test]
+    fn sixteen_bit_pages_are_narrowed_to_eight() {
+        let mut out = Cursor::new(Vec::new());
+        let mut enc = TiffEncoder::new(&mut out).unwrap();
+        let px: Vec<u16> = std::iter::repeat([0x1100u16, 0x2200, 0x3300, 0xffff])
+            .take(16 * 16)
+            .flatten()
+            .collect();
+        enc.write_image::<colortype::RGBA16>(16, 16, &px).unwrap();
+        drop(enc);
+        let img = decode_best(&out.into_inner()).unwrap();
+        assert_eq!(img.get_pixel(3, 3), &Rgba([0x11, 0x22, 0x33, 0xff]));
+    }
+
+    #[test]
+    fn resizing_does_not_darken_the_edge() {
+        // flat blue disc on a transparent canvas: after resizing, every visible pixel must still
+        // be (about) that blue; the black of the transparent pixels must not leak into the edge
+        let mut img = sample(256);
+        for p in img.pixels_mut().filter(|p| p[3] != 0) {
+            *p = Rgba([30, 90, 200, 255]);
+        }
+        let out = resize_straight(&img);
+        assert!(out
+            .pixels()
+            .filter(|p| p[3] > 128)
+            .all(|p| p[2] >= 190 && p[1] >= 80));
+    }
+
+    #[test]
     fn garbage_is_not_an_icon() {
-        assert!(decode_best(b"not a tiff").is_none());
+        assert!(decode_best(b"not a tiff").is_err());
     }
 
     #[test]
