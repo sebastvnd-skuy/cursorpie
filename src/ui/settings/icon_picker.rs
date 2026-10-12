@@ -56,6 +56,7 @@ pub(super) fn icon_picker(
     // row 2: categories, one square chip each with its name (they wrap onto more rows if needed)
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = Vec2::splat(4.0);
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
         if chip(ui, "", "All", ed.icon_cat == 0, accent).clicked() {
             ed.icon_cat = 0;
         }

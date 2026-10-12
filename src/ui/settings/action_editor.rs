@@ -55,6 +55,7 @@ pub(super) fn action_editor(
     // kind: one square chip per kind, all with their label (they wrap onto a second row if needed)
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::Vec2::splat(4.0);
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
         for (i, name) in KINDS.iter().enumerate() {
             if chip(ui, "", name, now == i, accent).clicked() {
                 sel = i;

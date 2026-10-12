@@ -28,14 +28,9 @@ pub(in crate::ui::settings) fn chip(
     if on {
         b = b.fill(accent).stroke(Stroke::new(1.0, accent));
     }
-    ui.scope(|ui| {
-        ui.spacing_mut().button_padding = Vec2::new(10.0, 6.0);
-        // do not break the text letter by letter when little width is left in a horizontal_wrapped;
-        // a chip that does not fit moves to the next row as a whole
-        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-        ui.add(b)
-    })
-    .inner
+    // Do not wrap this in `ui.scope`: a nested Ui is not moved to the next row by
+    // `horizontal_wrapped`, it just overflows and gets clipped.
+    ui.add(b)
 }
 
 /// Square button with a single glyph and a tooltip.
