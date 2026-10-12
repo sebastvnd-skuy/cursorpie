@@ -40,6 +40,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
+[package.metadata.docs.rs]
+# The crate only builds for macOS, so docs.rs must build the docs for an Apple target.
+default-target = "aarch64-apple-darwin"
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+# Show the internals (tap, ui, ...) too: this is documentation for contributors.
+rustdoc-args = ["--document-private-items"]
+
 [profile.release]
 opt-level = 3
 lto = "thin"

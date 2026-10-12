@@ -1,0 +1,74 @@
+//! # Config file format
+//!
+//! Settings are stored as pretty-printed JSON in
+//! `~/Library/Application Support/CursorPie/config.json`
+//! ([`config::config_path`](crate::config::config_path)). The Rust types in
+//! [`config`](crate::config) *are* the schema: they derive `serde::{Serialize, Deserialize}`.
+//! This guide describes what is not obvious from the types.
+//!
+//! ## Shape
+//!
+//! ```text
+//! Config
+//! ├── profiles[]            (1 to MAX_PROFILES = 16)
+//! │   ├── name, apps[] (bundle ids; empty = the general/fallback profile)
+//! │   ├── active            path of the active side-button mode, e.g. [3, 1]
+//! │   └── items[]           (at most MAX_ITEMS = 8 per ring)
+//! │       ├── name, icon    icon = text/emoji, or an image path ("~/" allowed)
+//! │       └── kind          Mode { back, forward } | Run(Action) | Submenu(items[])
+//! └── scalar settings       timings, size, colors, gesture and side-button options
+//! ```
+//!
+//! `Action` is `Nothing | Key(Shortcut) | OpenApp | OpenUrl | Command | Sequence(Vec<Action>)`.
+//! `Shortcut` is `{ key, mods }`, where `key` is a macOS *virtual key code* (a physical key
+//! position) and `mods` a bitmask: Shift = 1, Ctrl = 2, Opt = 4, Cmd = 8
+//! (see [`keys`](crate::keys)). Enums use serde's default external tagging, e.g.
+//! `{"Run": {"OpenApp": "Notes"}}`.
+//!
+//! The full annotated example and the table of fields are in the repository `README.md`.
+//!
+//! ## Versioning and compatibility
+//!
+//! * [`CONFIG_VERSION`](crate::config::CONFIG_VERSION) is written to every file. A file **without**
+//!   a `version` key (the old v1 format) or with invalid JSON is rejected by
+//!   [`parse_config`](crate::config::parse_config).
+//! * `Config` is `#[serde(default)]`: a field missing from an older file takes its default. **New
+//!   settings must therefore always have a sensible `Default`**, and adding one does *not* require
+//!   a version bump. Bump the version only for changes an old reader would misinterpret
+//!   (renamed or re-typed fields), and write a migration in `parse_config`.
+//! * Unknown fields are ignored.
+//!
+//! ## Validation
+//!
+//! Every config that enters the program (loaded, imported, or edited in Settings) goes through
+//! [`Config::sanitize`](crate::config::Config::sanitize), so the rest of the code can rely on:
+//!
+//! | Rule | Value |
+//! |---|---|
+//! | profiles | at least 1, at most 16 (defaults are restored if empty) |
+//! | slices per ring | at most 8; every profile has at least one slice |
+//! | menu depth | at most [`MAX_DEPTH`](crate::config::MAX_DEPTH) = 5 (deeper submenus are emptied) |
+//! | `active` | points at a `Mode` slice, otherwise the first `Mode` found (or empty) |
+//! | `pie_hold_ms` | 150 to 2000 |
+//! | `settings_hold_ms` | at least `pie_hold_ms + 300` |
+//! | `double_click_ms` | 150 to 500 |
+//! | `pie_size` | 140 to 360 |
+//! | `preview_ms` | at most 3000 |
+//! | `trigger_button` | 2, 5, 6 or 7 (otherwise 2) |
+//!
+//! If you add a setting with a range, clamp it there and add a test.
+//!
+//! ## Loading, saving and the broken-file path
+//!
+//! * [`load_config`](crate::config::load_config) runs once, lazily, the first time
+//!   [`cfg()`](crate::config::cfg) is called. If the file is unreadable as a config it is copied
+//!   to `config.broken.json` next to the original and the defaults are used. The next save
+//!   overwrites `config.json`.
+//! * Saves happen on *Save* in Settings (UI thread) and when the active mode changes
+//!   ([`set_active`](crate::config::set_active), which saves on a worker thread because it is
+//!   called from inside the event-tap callback).
+//! * Import/Export use [`parse_config`](crate::config::parse_config) and
+//!   [`export_config`](crate::config::export_config). After an import,
+//!   [`has_commands`](crate::config::has_commands) decides whether to warn that the file runs
+//!   shell commands.
+//! * A change made by hand to `config.json` is picked up at the next start.

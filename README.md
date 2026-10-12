@@ -20,6 +20,7 @@ into something more useful. Profiles let every app have its own pie.
 - [Settings](#settings)
 - [Configuration file](#configuration-file)
 - [Project layout](#project-layout)
+- [Developer documentation](#developer-documentation)
 - [Privacy](#privacy)
 - [Known limitations](#known-limitations)
 - [Forking and rebranding](#forking-and-rebranding)
@@ -326,49 +327,43 @@ Export writes `~/Downloads/cursorpie-config.json`.
 
 ## Project layout
 
-```
-Cargo.toml              dependencies, release profile (opt-level 3, thin LTO, stripped)
+```text
+Cargo.toml              dependencies, release profile, docs.rs metadata
 scripts/bundle.sh       builds and signs target/bundle/CursorPie.app
 icon/                   sample images for icons (brackets, clipboard); not loaded automatically
+CONTRIBUTING.md         how to build, test and contribute
 src/
-  main.rs               entry point: transparent, borderless, always-on-top window; starts the threads
+  main.rs               thin binary: calls cursorpie::run()
+  lib.rs                crate root: module list, run()
   about.rs              name, version, bundle id, author and project links (edit to rebrand)
-  app.rs                eframe app: reacts to messages from the other threads, opens/closes Settings
-  tap.rs                global event tap and the gesture state machine
   actions.rs            action worker thread; sends shortcuts, opens apps/URLs, runs commands
-  appicon.rs            the real icon of an app (asked from macOS), reduced to a white glyph
   side.rs               which pie the side buttons follow (per-app choice, indicator, switching)
-  config.rs             config model, defaults, presets, validation, load/save, import/export
   keys.rs               shortcut model (key code + modifiers) and key labels
-  pie.rs                draws the pie and its animations
-  gfx.rs                palette, pie geometry and hit-testing, icon loading, drawing helpers
   msg.rs                messages sent to the UI thread
-  system.rs             macOS glue: permissions, frontmost app / app under the pointer, launch at login, file pickers, hover tick
-  tray.rs               menu bar icon and menu
-  settings/             the Settings window
-    window.rs           card, open/close animation, tab bar, Save / Cancel / Quit
-    state.rs            editor-only state (tabs, selection, shortcut recording, icon cache)
-    action_editor.rs    editor for a single action
-    items_editor.rs     editor for one ring of slices, and the "add a slice" panel
-    pie_designer.rs     interactive pie used to pick and arrange slices
-    tabs/               Menu, Behavior, General and About tabs
+  geometry.rs           pie sizes and slice hit-testing (shared by the tap and the UI)
+  config/               config model, defaults, validation, load/save, import/export
+  tap/                  global event tap and the gesture state machine
+  platform/             macOS glue: permissions, apps, login item, keyboard layout, shell tools
+  ui/                   everything on the UI thread
+    app/                eframe app: state, message handling, window management
+    pie/                drawing the pie
+    settings/           the Settings window (tabs, editors, icon picker)
+    tray.rs, appicon.rs, draw.rs, screen.rs
+  guides/               long-form developer docs (rendered by rustdoc)
 ```
 
-How the pieces fit together:
+## Developer documentation
 
-- **Threads.** The UI runs on the main thread. The event tap runs on its own thread (`cursorpie-tap`) with a
-  CoreFoundation run loop, actions run on `cursorpie-actions`, and short-lived threads handle hold timers and
-  file pickers. They talk to the UI through a channel of `Msg` values that also wakes the UI up.
-- **One window for everything.** The pie is a transparent, click-through, always-on-top window that moves to
-  the cursor. Settings reuses the same window: it is resized, made interactive, and centered on the screen that
-  contains the cursor.
-- **Shared config.** One live `Config` behind a mutex is read by both the UI and the event tap. Settings edits a
-  copy and writes it back when you press Save.
-- **A careful tap.** The event callback never blocks and never panics out of it (panics are caught and the event
-  passes through). If macOS disables the tap, it is re-enabled and any half-finished gesture is reset.
-  Events that CursorPie posts itself carry a marker so the tap ignores them.
-- **No extra tooling.** File choosers use `osascript`, bundle identifiers come from `mdls`, and the hover tick
-  uses `afplay`, so there is nothing else to install.
+The technical documentation is written as Rust docs (rustdoc), so it is rendered like any other
+crate on docs.rs and stays next to the code:
+
+```sh
+cargo docs      # alias for: cargo doc --no-deps --document-private-items --open
+```
+
+Start with the **architecture** guide (threads, message flow, the gesture state machine, locking
+rules). The other guides cover the config file format and step-by-step recipes for common
+changes. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and the pull-request checklist.
 
 ## Privacy
 

@@ -3,20 +3,31 @@
 use core_graphics::event::CGEventFlags;
 use serde::{Deserialize, Serialize};
 
+/// Modifier bit: Shift.
 pub const MOD_SHIFT: u8 = 1;
+/// Modifier bit: Control.
 pub const MOD_CTRL: u8 = 2;
+/// Modifier bit: Option (Alt).
 pub const MOD_ALT: u8 = 4;
+/// Modifier bit: Command.
 pub const MOD_CMD: u8 = 8;
 
 /// Virtual key codes that mean the same thing on every layout (no letters / digits / punctuation:
 /// those move around between layouts, use `Shortcut::ch` for them).
 pub mod key {
+    /// Space bar.
     pub const SPACE: u16 = 49;
+    /// Return.
     pub const RETURN: u16 = 36;
+    /// Backspace (the key macOS calls Delete).
     pub const DELETE: u16 = 51;
+    /// Page Up.
     pub const PAGE_UP: u16 = 116;
+    /// Page Down.
     pub const PAGE_DOWN: u16 = 121;
+    /// Arrow up.
     pub const UP: u16 = 126;
+    /// F13 (a safe default for a new shortcut slice).
     pub const F13: u16 = 105;
 }
 
@@ -28,6 +39,7 @@ pub struct Shortcut {
 }
 
 impl Shortcut {
+    /// A shortcut from a virtual key code and a `MOD_*` bitmask.
     pub const fn new(key: u16, mods: u8) -> Self {
         Self { key, mods }
     }
@@ -37,7 +49,7 @@ impl Shortcut {
     /// Falls back to the US/ANSI position if the layout is not available yet.
     pub fn ch(c: char, mods: u8) -> Self {
         let c = c.to_ascii_lowercase();
-        if let Some((code, need)) = crate::layout::find_key(&c.to_string()) {
+        if let Some((code, need)) = crate::platform::layout::find_key(&c.to_string()) {
             return Self::new(code, mods | need);
         }
         Self::new(ansi_code(c).unwrap_or(0), mods)
@@ -79,11 +91,11 @@ fn shifted_symbol(code: u16) -> Option<String> {
     if special_name(code).is_some() {
         return None;
     }
-    let shifted = crate::layout::char_for(code, true)?;
+    let shifted = crate::platform::layout::char_for(code, true)?;
     if shifted.chars().any(|c| c.is_alphabetic()) {
         return None;
     }
-    if crate::layout::char_for(code, false).as_deref() == Some(shifted.as_str()) {
+    if crate::platform::layout::char_for(code, false).as_deref() == Some(shifted.as_str()) {
         return None;
     }
     Some(shifted)
@@ -206,6 +218,7 @@ const ANSI: &[(u16, &str)] = &[
     (50, "`"),
 ];
 
+/// Key code of a letter, digit or punctuation mark on a US/ANSI keyboard.
 fn ansi_code(c: char) -> Option<u16> {
     let s = c.to_string();
     ANSI.iter()
@@ -218,7 +231,7 @@ pub fn key_name(code: u16) -> String {
     if let Some(s) = special_name(code) {
         return s.to_string();
     }
-    if let Some(s) = crate::layout::char_for(code, false) {
+    if let Some(s) = crate::platform::layout::char_for(code, false) {
         // keep "ß"-style characters as typed instead of expanding them to "SS"
         let upper = s.to_uppercase();
         return if upper.chars().count() == s.chars().count() {
@@ -233,6 +246,7 @@ pub fn key_name(code: u16) -> String {
     format!("Key {code}")
 }
 
+/// Converts event flags from a `CGEvent` into a `MOD_*` bitmask.
 pub fn mods_from_flags(f: CGEventFlags) -> u8 {
     let mut m = 0;
     if f.contains(CGEventFlags::CGEventFlagShift) {

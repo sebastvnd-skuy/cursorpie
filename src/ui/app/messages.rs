@@ -1,0 +1,125 @@
+//! Applies one [`Msg`] (sent by the event tap, the tray menu or a file-picker thread) to the UI state.
+
+use super::App;
+use crate::config::{Action, ItemKind, cfg, has_commands, item_at_mut, parse_config};
+use crate::msg::Msg;
+use crate::platform;
+use crate::ui::settings::Slot;
+use eframe::egui;
+use std::time::{Duration, Instant};
+
+impl App {
+    /// Applies one message. Anything that touches the config edits the Settings *copy* (`self.edit`).
+    pub(super) fn handle_msg(&mut self, ctx: &egui::Context, msg: Msg) {
+        match msg {
+            Msg::ShowPie {
+                x,
+                y,
+                profile,
+                path,
+            } => {
+                // a real gesture takes over from any preview
+                self.preview_until = None;
+                self.show_pie(ctx, x, y, profile, path);
+            }
+            Msg::OpenSettings { x, y, about } => {
+                self.open_settings(ctx, egui::pos2(x as f32, y as f32), about);
+            }
+            Msg::Hover(h) => {
+                if h.is_some()
+                    && h != self.hover
+                    && self.last_tick.elapsed() > Duration::from_millis(60)
+                    && cfg().sound
+                {
+                    platform::tick();
+                    self.last_tick = Instant::now();
+                }
+                self.hover = h;
+            }
+            Msg::Refocus => ctx.send_viewport_cmd(egui::ViewportCommand::Focus),
+            Msg::HidePie => {
+                self.hover = None;
+                self.pie_open = false;
+                self.preview_until = None;
+            }
+            Msg::KeyCaptured(sc) => {
+                if let Some(rec) = self.ed.recording.take() {
+                    if let Some(p) = self.edit.profiles.get_mut(rec.profile) {
+                        if let Some(item) = item_at_mut(&mut p.items, &rec.path) {
+                            match (&mut item.kind, rec.slot) {
+                                (ItemKind::Mode { back, .. }, Slot::Back) => {
+                                    *back = Action::Key(sc)
+                                }
+                                (ItemKind::Mode { forward, .. }, Slot::Forward) => {
+                                    *forward = Action::Key(sc)
+                                }
+                                (ItemKind::Run(a), Slot::Run) => *a = Action::Key(sc),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+            Msg::RecordCancelled => self.ed.recording = None,
+            Msg::IconPicked {
+                profile,
+                path,
+                file,
+            } => {
+                if let Some(p) = self.edit.profiles.get_mut(profile) {
+                    if let Some(item) = item_at_mut(&mut p.items, &path) {
+                        item.icon = file;
+                    }
+                }
+            }
+            Msg::AppPicked { profile, bundle } => {
+                if let Some(p) = self.edit.profiles.get_mut(profile) {
+                    if !p.apps.contains(&bundle) {
+                        p.apps.push(bundle);
+                    }
+                }
+            }
+            Msg::ImportPicked(file) => match std::fs::read_to_string(&file)
+                .ok()
+                .and_then(|t| parse_config(&t))
+            {
+                Some(cfg_in) => {
+                    let warn = has_commands(&cfg_in);
+                    self.edit = cfg_in;
+                    self.ed.profile = 0;
+                    self.ed.reset_nav();
+                    self.ed.stop_recording();
+                    self.ed.icons.clear();
+                    self.say(if warn {
+                        "Imported. This config runs shell commands - review them before you Save."
+                    } else {
+                        "Imported. Review it, then press Save to apply."
+                    });
+                }
+                None => self.say("That file is not a valid CursorPie config."),
+            },
+            Msg::Tray(id) => self.handle_tray(ctx, &id),
+            Msg::ActionAppPicked {
+                profile,
+                path,
+                slot,
+                app,
+            } => {
+                if let Some(p) = self.edit.profiles.get_mut(profile) {
+                    if let Some(item) = item_at_mut(&mut p.items, &path) {
+                        match (&mut item.kind, slot) {
+                            (ItemKind::Run(a), Slot::Run) => *a = Action::OpenApp(app),
+                            (ItemKind::Mode { back, .. }, Slot::Back) => {
+                                *back = Action::OpenApp(app)
+                            }
+                            (ItemKind::Mode { forward, .. }, Slot::Forward) => {
+                                *forward = Action::OpenApp(app)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

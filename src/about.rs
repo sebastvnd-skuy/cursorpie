@@ -1,25 +1,41 @@
-//! Everything shown on the About page. Edit the TODO values to put your own name on the project.
+//! Identity of the app: name, version, author, links and credits.
+//!
+//! Everything the About tab shows lives here, and [`BUNDLE_ID`] doubles as the LaunchAgent label.
+//! Edit these constants (and `Cargo.toml`, `LICENSE`, `scripts/bundle.sh`) to rebrand a fork.
 
+/// Display name, also used as the window title and menu bar tooltip.
 pub const APP_NAME: &str = "CursorPie";
+/// Version from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// One-line description shown under the name in About.
 pub const TAGLINE: &str = "A hold-to-open pie menu for macOS";
 
 /// Used as the LaunchAgent label and the .app bundle identifier (keep it unique, reverse-DNS style).
 pub const BUNDLE_ID: &str = "io.github.cursorpie";
 
 // TODO: replace these with your own details.
+/// Author name shown in About.
 pub const AUTHOR_NAME: &str = "Sebastvnd";
+/// GitHub user name of the author (without `@`).
 pub const AUTHOR_GITHUB_USER: &str = "sebastvnd";
+/// GitHub profile of the author.
 pub const AUTHOR_GITHUB_URL: &str = "https://github.com/sebastvnd";
+/// Contact address of the author.
 pub const AUTHOR_EMAIL: &str = "sebastvnd@gmail.com";
 
+/// Source repository.
 pub const REPO_URL: &str = "https://github.com/sebastvnd/cursorpie";
+/// Where to report bugs and ideas.
 pub const ISSUES_URL: &str = "https://github.com/sebastvnd/cursorpie/issues";
+/// Where to download builds.
 pub const RELEASES_URL: &str = "https://github.com/sebastvnd/cursorpie/releases";
 
+/// Name of the license.
 pub const LICENSE_NAME: &str = "MIT License";
+/// Copyright line.
 pub const COPYRIGHT: &str = "Copyright (c) 2026 Sebastvnd";
 
+/// `(name, url)` of the project that inspired CursorPie.
 pub const INSPIRED_BY: (&str, &str) = ("Kando", "https://github.com/kando-menu/kando");
 
 /// (name, url, license) of the main open-source building blocks.
@@ -56,5 +72,6 @@ pub const CREDITS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Privacy statement shown in About.
 pub const PRIVACY: &str = "CursorPie works entirely on your Mac. It makes no network connections and collects no data. \
 Keyboard events are only inspected while you are recording a shortcut in Settings, and are never stored or logged.";

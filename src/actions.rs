@@ -1,8 +1,12 @@
-//! Executes actions on a single worker thread so they always run in order.
+//! Executes [`Action`]s on a single worker thread so they always run in the order they were triggered.
+//!
+//! [`run_in`] only queues a job, so it is safe to call from the event-tap callback. The worker (started
+//! by [`init`]) sends keys by posting `CGEvent`s, and shells out to `open` and `/bin/sh` for everything
+//! else. Events posted here carry [`SYNTH_TAG`] so the event tap ignores them.
 
 use crate::config::Action;
 use crate::keys::*;
-use crate::system;
+use crate::platform;
 use core_graphics::event::{
     CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGKeyCode, CGMouseButton, EventField,
 };
@@ -15,14 +19,17 @@ use std::time::Duration;
 /// Marks events we posted ourselves so the event tap ignores them.
 pub const SYNTH_TAG: i64 = 0x504F_5055;
 
+/// One queued unit of work.
 struct Job {
     /// Bundle id of an app to bring to the front first (only done when the action sends keys).
     focus: Option<String>,
     action: Action,
 }
 
+/// Sender side of the worker queue; set once by [`init`].
 static TX: OnceLock<mpsc::Sender<Job>> = OnceLock::new();
 
+/// Starts the `cursorpie-actions` worker thread. Call once, before the first [`run_in`].
 pub fn init() {
     let (tx, rx) = mpsc::channel::<Job>();
     TX.set(tx).ok();
@@ -53,6 +60,7 @@ pub fn run_in(focus: Option<String>, action: Action) {
     }
 }
 
+/// Whether running `action` posts keystrokes (directly or inside a sequence).
 fn sends_keys(action: &Action) -> bool {
     match action {
         Action::Key(_) => true,
@@ -64,31 +72,32 @@ fn sends_keys(action: &Action) -> bool {
 /// Activates an app and waits (briefly) until macOS really has it in front: `open` returns
 /// before the switch is done, and keys sent too early would reach the previous app.
 fn bring_to_front(bundle: &str) {
-    if system::frontmost_bundle_id().as_deref() == Some(bundle) {
+    if platform::frontmost_bundle_id().as_deref() == Some(bundle) {
         return;
     }
-    system::spawn_reaped(Command::new("open").arg("-b").arg(bundle));
+    platform::spawn_reaped(Command::new("open").arg("-b").arg(bundle));
     for _ in 0..30 {
         std::thread::sleep(Duration::from_millis(15));
-        if system::frontmost_bundle_id().as_deref() == Some(bundle) {
+        if platform::frontmost_bundle_id().as_deref() == Some(bundle) {
             std::thread::sleep(Duration::from_millis(40)); // let its window become the key window
             return;
         }
     }
 }
 
+/// Runs one action on the worker thread. A sequence waits 40 ms between steps.
 fn execute(action: &Action) {
     match action {
         Action::Nothing => {}
         Action::Key(sc) => press(*sc),
         Action::OpenApp(app) if !app.trim().is_empty() => {
-            system::spawn_reaped(Command::new("open").arg("-a").arg(app.trim()));
+            platform::spawn_reaped(Command::new("open").arg("-a").arg(app.trim()));
         }
         Action::OpenUrl(target) if !target.trim().is_empty() => {
-            system::spawn_reaped(Command::new("open").arg(target.trim()));
+            platform::spawn_reaped(Command::new("open").arg(target.trim()));
         }
         Action::Command(cmd) if !cmd.trim().is_empty() => {
-            system::spawn_reaped(Command::new("/bin/sh").arg("-c").arg(cmd));
+            platform::spawn_reaped(Command::new("/bin/sh").arg("-c").arg(cmd));
         }
         Action::Sequence(steps) => {
             for s in steps {
@@ -134,6 +143,7 @@ fn press(sc: Shortcut) {
     }
 }
 
+/// Posts one key event with the given modifier flags, tagged with [`SYNTH_TAG`].
 fn post_key(src: &CGEventSource, code: CGKeyCode, down: bool, flags: CGEventFlags) {
     if let Ok(ev) = CGEvent::new_keyboard_event(src.clone(), code, down) {
         ev.set_flags(flags);

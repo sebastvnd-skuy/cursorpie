@@ -1,0 +1,3 @@
+[alias]
+# Build the developer documentation (including private items) and open it in the browser.
+docs = "doc --no-deps --document-private-items --open"

@@ -17,6 +17,7 @@ use crate::config::{Config, SideTarget, lock};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+/// Live, in-memory state. Lock order: config first, then this.
 struct State {
     /// Bundle id of the app the current gesture is about (set when a gesture starts).
     target: Option<String>,
@@ -24,6 +25,7 @@ struct State {
     choice: BTreeMap<String, SideTarget>,
 }
 
+/// The one instance; see [`State`].
 static STATE: Mutex<State> = Mutex::new(State {
     target: None,
     choice: BTreeMap::new(),
@@ -70,11 +72,7 @@ pub fn resolve(c: &Config, bundle: Option<&str>, choice: Option<SideTarget>) -> 
 
 /// The other pie: the new choice and the profile that owns the side buttons after it.
 /// None if the app has no pie of its own (nothing to switch between).
-fn toggled(
-    c: &Config,
-    bundle: &str,
-    choice: Option<SideTarget>,
-) -> Option<(SideTarget, usize)> {
+fn toggled(c: &Config, bundle: &str, choice: Option<SideTarget>) -> Option<(SideTarget, usize)> {
     let r = resolve(c, Some(bundle), choice);
     let app = r.app?;
     if r.owner == app {
@@ -86,6 +84,7 @@ fn toggled(
 
 // ----------------------------------------------------------------- live state
 
+/// What the user chose for `bundle`, if anything.
 fn choice_for(bundle: Option<&str>) -> Option<SideTarget> {
     let b = bundle?;
     lock(&STATE).choice.get(b).copied()
@@ -101,6 +100,7 @@ pub fn set_target(bundle: Option<String>, forget_on_switch: bool) {
     s.target = bundle;
 }
 
+/// Bundle id of the app the current gesture is about.
 pub fn target() -> Option<String> {
     lock(&STATE).target.clone()
 }
@@ -260,18 +260,45 @@ mod tests {
 
         // indicator
         set_target(Some(a.to_string()), false);
-        assert_eq!(view_of(&c, 1), View { shown: true, owner: true });
-        assert_eq!(view_of(&c, 0), View { shown: true, owner: false });
+        assert_eq!(
+            view_of(&c, 1),
+            View {
+                shown: true,
+                owner: true
+            }
+        );
+        assert_eq!(
+            view_of(&c, 0),
+            View {
+                shown: true,
+                owner: false
+            }
+        );
         adopt(&c, Some(a), 0);
-        assert_eq!(view_of(&c, 0), View { shown: true, owner: true });
-        assert_eq!(view_of(&c, 1), View { shown: true, owner: false });
+        assert_eq!(
+            view_of(&c, 0),
+            View {
+                shown: true,
+                owner: true
+            }
+        );
+        assert_eq!(
+            view_of(&c, 1),
+            View {
+                shown: true,
+                owner: false
+            }
+        );
         let off = Config {
             side_indicator: false,
             ..two_pies()
         };
         assert_eq!(view_of(&off, 0), View::default());
         set_target(Some(b.to_string()), false);
-        assert!(!view_of(&c, 0).shown, "an app with a single pie needs no indicator");
+        assert!(
+            !view_of(&c, 0).shown,
+            "an app with a single pie needs no indicator"
+        );
 
         // forget_all and forget-on-switch
         adopt(&c, Some(a), 0);
