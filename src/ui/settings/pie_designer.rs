@@ -60,7 +60,6 @@ pub(super) fn pie_designer(
     }
 
     // ---- draw ----
-    painter.circle_filled(c, outer + 4.0, Color32::from_black_alpha(60));
     let sl = TAU / total.max(1) as f32;
     for i in 0..total {
         let ghost = i == n;
@@ -74,12 +73,11 @@ pub(super) fn pie_designer(
         } else {
             0.0
         };
-        let r1 = outer + if hovered { 4.0 } else { 0.0 };
         let a0 = slice_start(i, total);
         painter.add(ring_slice(
             c,
             inner,
-            r1,
+            outer,
             a0 + 0.03,
             a0 + sl - 0.03,
             rgb(mix(base, accent, t)),

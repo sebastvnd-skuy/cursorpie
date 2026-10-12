@@ -13,12 +13,10 @@ use std::sync::atomic::Ordering;
 impl App {
     /// Draws the General tab: permission status, config location, import / export / reset.
     pub(in crate::ui::settings) fn general_tab(&mut self, ui: &mut egui::Ui) {
-        section_title(ui, "Permissions");
-        card().show(ui, |ui| {
-            ui.set_width(ui.available_width());
+        panel(ui, "Permissions", |ui| {
             let trusted = platform::is_trusted();
             let running = TAP_ACTIVE.load(Ordering::SeqCst);
-            ui.horizontal(|ui| {
+            info_row(ui, |ui| {
                 muted(ui, "Accessibility");
                 if trusted {
                     ui.label(RichText::new("Granted").color(GOOD));
@@ -26,7 +24,7 @@ impl App {
                     ui.label(RichText::new("Missing").color(BAD));
                 }
             });
-            ui.horizontal(|ui| {
+            info_row(ui, |ui| {
                 muted(ui, "Event tap");
                 if running {
                     ui.label(RichText::new("Running").color(GOOD));
@@ -47,13 +45,13 @@ impl App {
                 "If it still says 'Not running' after granting access, quit and reopen CursorPie.",
             );
         });
-
-        ui.add_space(14.0);
-        section_title(ui, "Configuration");
-        card().show(ui, |ui| {
-            ui.set_width(ui.available_width());
+        panel(ui, "Configuration", |ui| {
             let path = config_path();
-            ui.label(RichText::new(path.to_string_lossy()).monospace().color(MUTED));
+            ui.label(
+                RichText::new(path.to_string_lossy())
+                    .monospace()
+                    .color(MUTED),
+            );
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Reveal in Finder").clicked() {
                     platform::reveal_in_finder(&path);
@@ -67,7 +65,9 @@ impl App {
                 if ui.button("Import...").clicked() {
                     let (tx, ctx) = (self.tx.clone(), ui.ctx().clone());
                     std::thread::spawn(move || {
-                        if let Some(f) = platform::choose_file("public.json", "Choose a CursorPie config") {
+                        if let Some(f) =
+                            platform::choose_file("public.json", "Choose a CursorPie config")
+                        {
                             let _ = tx.send(Msg::ImportPicked(f));
                             ctx.request_repaint();
                         }
@@ -82,7 +82,10 @@ impl App {
                     self.say("Defaults restored. Press Save to apply.");
                 }
             });
-            muted(ui, "Export saves your whole setup to ~/Downloads so you can share it. Only import configs you trust: actions can run shell commands.");
+            muted(
+                ui,
+                "Export saves your whole setup to ~/Downloads so you can share it. Only import configs you trust: actions can run shell commands.",
+            );
         });
     }
 }

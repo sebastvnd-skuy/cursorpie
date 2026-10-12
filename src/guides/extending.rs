@@ -9,6 +9,7 @@
 //! * [Add a slice kind](#add-a-slice-kind)
 //! * [Add a Settings tab](#add-a-settings-tab)
 //! * [Add icons to the picker](#add-icons-to-the-picker)
+//! * [Keep the Settings look consistent](#keep-the-settings-look-consistent)
 //! * [Add a message to the UI thread](#add-a-message-to-the-ui-thread)
 //! * [Add a menu bar item](#add-a-menu-bar-item)
 //! * [Change gesture behavior](#change-gesture-behavior)
@@ -80,6 +81,35 @@
 //! `ui/settings/icon_catalog.rs`. Glyphs are drawn with egui's bundled fonts; if one renders as
 //! an empty box, remove it. Users can also drop images into
 //! `~/Library/Application Support/CursorPie/icons/`.
+//!
+//! ## Keep the Settings look consistent
+//!
+//! The Settings window is flat and square, like a tiling window manager (Hyprland). When you add
+//! or change a widget:
+//!
+//! 1. Take colors, radius, spacing and height from `ui/settings/theme.rs` (`BG`, `CARD`, `IDLE`,
+//!    `HOT`, `BORDER`, `RADIUS`, `GAP`, `CONTROL_H`). Do not write `Color32::from_rgb(..)`, a corner
+//!    radius or a pixel height in an editor. Text on the accent color uses `on_accent(accent)`,
+//!    because the user picks the accent and it can be light.
+//! 2. Every button, chip, input and list row is `CONTROL_H` (32) high, and there is one gap, `GAP`
+//!    (8), between panels and between controls. Do not add your own spacing numbers.
+//! 3. A tab is a stack of `panel(ui, "Title", ..)` cards (two columns with `ui.columns(2, ..)` when
+//!    it is long). Use the widgets in `ui/settings/widgets.rs` (`chip`, `tile`, `choice`, `toggle`,
+//!    `text_field`, `nav_item`, `info_row`) instead of egui's defaults (`radio_value`, `checkbox`,
+//!    `TextEdit::singleline`): they share one marker style and one height. Rows of plain text and
+//!    links go in `info_row` (22 px), not in a bare `ui.horizontal` (32 px).
+//! 4. Navigation and the Save / Cancel / Quit buttons live in the sidebar (`window.rs`) and
+//!    messages in the status bar below the body. A new tab is one more entry in the sidebar.
+//! 5. Text is `TEXT` (primary) or `MUTED` (secondary, for labels and hints). An option that is off
+//!    keeps `TEXT`: dim text reads as disabled. Do not rely on `.strong()` for a color, egui takes
+//!    it from `widgets.active.fg_stroke`; set the color explicitly.
+//! 6. Use words, not emoji, on buttons and chips. Single glyphs are only for tiny icon buttons
+//!    (`+`, `✖`, `◀`, `▶`); give those a tooltip.
+//! 7. Focus is the accent color: a 2 px border for the selected tile, a 1 px outline for the
+//!    hovered one. Do not add shadows or gradients inside panels.
+//!
+//! The pie itself stays radial: its slices are picked by angle, and that hit-testing is shared
+//! with the event tap (see `geometry.rs`).
 //!
 //! ## Add a message to the UI thread
 //!

@@ -102,10 +102,19 @@ pub(super) fn item_inspector(
     nav: &[usize],
 ) {
     let Some(i) = ed.sel.filter(|&i| i < ring.len()) else {
-        ui.add_space(70.0);
-        ui.vertical_centered(|ui| {
-            ui.label(RichText::new("👈").size(38.0));
-            muted(ui, "Pick a slice");
+        // nothing selected: an empty tile that says what to do
+        card().show(ui, |ui| {
+            ui.set_width(env.width - 26.0);
+            ui.add_space(GAP * 4.0);
+            ui.vertical_centered(|ui| {
+                ui.label(RichText::new("[ ]").monospace().size(28.0).color(MUTED));
+                ui.label(RichText::new("Pick a slice").color(TEXT));
+                muted(
+                    ui,
+                    "Select a slice on the pie to edit its name, icon and actions.",
+                );
+            });
+            ui.add_space(GAP * 4.0);
         });
         return;
     };
@@ -148,133 +157,128 @@ pub(super) fn item_inspector(
     let mut pick_app: Option<Slot> = None;
     let mut change_icon = false;
 
-    egui::Frame::new()
-        .fill(CARD)
-        .corner_radius(egui::CornerRadius::same(14))
-        .inner_margin(egui::Margin::same(12))
-        .stroke(egui::Stroke::new(1.0, BORDER))
-        .show(ui, |ui| {
-            ui.set_width(env.width - 26.0);
-            let item = &mut ring[i];
+    card().show(ui, |ui| {
+        ui.set_width(env.width - 26.0);
+        let item = &mut ring[i];
 
-            // icon (click to change) + name + slice kind
-            ui.horizontal(|ui| {
-                let tex = ed.icon_for(env.ctx, &item.icon);
-                let (r, resp) = tile(ui, Vec2::splat(58.0), false, env.accent);
-                draw_icon(
-                    ui.painter(),
-                    tex.as_ref(),
-                    &item.icon,
-                    r.center(),
-                    34.0,
-                    255,
-                );
-                ui.painter().text(
-                    r.right_bottom() - Vec2::new(9.0, 9.0),
-                    Align2::CENTER_CENTER,
-                    "✏",
-                    FontId::proportional(11.0),
-                    Color32::from_white_alpha(150),
-                );
-                if resp.on_hover_text("Change icon").clicked() {
-                    change_icon = true;
-                }
-                ui.vertical(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut item.name)
-                            .desired_width(ui.available_width())
-                            .hint_text("Name"),
-                    );
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        let now = match &item.kind {
-                            ItemKind::Run(_) => 0,
-                            ItemKind::Mode { .. } => 1,
-                            ItemKind::Submenu(_) => 2,
-                        };
-                        let mut sel = now;
-                        if chip(ui, "⚡", "Action", now == 0, env.accent)
-                            .on_hover_text("Runs when you release over this slice")
-                            .clicked()
-                        {
-                            sel = 0;
-                        }
-                        if chip(ui, "↔", "Side buttons", now == 1, env.accent)
-                            .on_hover_text("Sets what the mouse back / forward buttons do")
-                            .clicked()
-                        {
-                            sel = 1;
-                        }
-                        if nav.len() + 1 < MAX_DEPTH
-                            && chip(ui, "📂", "Submenu", now == 2, env.accent)
-                                .on_hover_text("Opens another ring")
-                                .clicked()
-                        {
-                            sel = 2;
-                        }
-                        if sel != now {
-                            item.kind = match sel {
-                                0 => default_kind(1),
-                                1 => default_kind(0),
-                                _ => default_kind(2),
-                            };
-                        }
-                    });
-                });
-            });
-
-            ui.add_space(4.0);
-            match &mut item.kind {
-                ItemKind::Run(a) => {
-                    let r = action_editor(ui, &format!("{uid}_r"), a, rr, env.accent);
-                    if r.shortcut {
-                        start = Some(Slot::Run);
-                    }
-                    if r.pick_app {
-                        pick_app = Some(Slot::Run);
-                    }
-                }
-                ItemKind::Mode { back, forward } => {
-                    muted(ui, "◀  Back button");
-                    let r = action_editor(ui, &format!("{uid}_b"), back, rb, env.accent);
-                    if r.shortcut {
-                        start = Some(Slot::Back);
-                    }
-                    if r.pick_app {
-                        pick_app = Some(Slot::Back);
-                    }
-                    muted(ui, "▶  Forward button");
-                    let r = action_editor(ui, &format!("{uid}_f"), forward, rf, env.accent);
-                    if r.shortcut {
-                        start = Some(Slot::Forward);
-                    }
-                    if r.pick_app {
-                        pick_app = Some(Slot::Forward);
-                    }
-                }
-                ItemKind::Submenu(ch) => {
-                    muted(ui, &format!("{} slices inside", ch.len()));
-                    if chip(ui, "✏", "Edit submenu  ›", false, env.accent).clicked() {
-                        enter = true;
-                    }
-                }
+        // icon (click to change) + name + slice kind
+        ui.horizontal(|ui| {
+            let tex = ed.icon_for(env.ctx, &item.icon);
+            let (r, resp) = tile(ui, Vec2::splat(58.0), false, env.accent);
+            draw_icon(
+                ui.painter(),
+                tex.as_ref(),
+                &item.icon,
+                r.center(),
+                34.0,
+                255,
+            );
+            ui.painter().text(
+                r.center_bottom() - Vec2::new(0.0, 6.0),
+                Align2::CENTER_CENTER,
+                "edit",
+                FontId::monospace(9.0),
+                Color32::from_white_alpha(120),
+            );
+            if resp.on_hover_text("Change icon").clicked() {
+                change_icon = true;
             }
-
-            ui.add_space(2.0);
-            ui.horizontal(|ui| {
-                if icon_btn(ui, "◀", "Move left", i > 0).clicked() {
-                    shift = -1;
-                }
-                if icon_btn(ui, "▶", "Move right", i + 1 < n).clicked() {
-                    shift = 1;
-                }
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if icon_btn(ui, "🗑", "Delete slice", n > 1 || !nav.is_empty()).clicked() {
-                        remove = true;
+            ui.vertical(|ui| {
+                ui.add(
+                    text_field(&mut item.name)
+                        .desired_width(ui.available_width())
+                        .hint_text("Name"),
+                );
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let now = match &item.kind {
+                        ItemKind::Run(_) => 0,
+                        ItemKind::Mode { .. } => 1,
+                        ItemKind::Submenu(_) => 2,
+                    };
+                    let mut sel = now;
+                    if chip(ui, "", "Action", now == 0, env.accent)
+                        .on_hover_text("Runs when you release over this slice")
+                        .clicked()
+                    {
+                        sel = 0;
+                    }
+                    if chip(ui, "", "Side buttons", now == 1, env.accent)
+                        .on_hover_text("Sets what the mouse back / forward buttons do")
+                        .clicked()
+                    {
+                        sel = 1;
+                    }
+                    if nav.len() + 1 < MAX_DEPTH
+                        && chip(ui, "", "Submenu", now == 2, env.accent)
+                            .on_hover_text("Opens another ring")
+                            .clicked()
+                    {
+                        sel = 2;
+                    }
+                    if sel != now {
+                        item.kind = match sel {
+                            0 => default_kind(1),
+                            1 => default_kind(0),
+                            _ => default_kind(2),
+                        };
                     }
                 });
             });
         });
+
+        ui.add_space(4.0);
+        match &mut item.kind {
+            ItemKind::Run(a) => {
+                let r = action_editor(ui, &format!("{uid}_r"), a, rr, env.accent);
+                if r.shortcut {
+                    start = Some(Slot::Run);
+                }
+                if r.pick_app {
+                    pick_app = Some(Slot::Run);
+                }
+            }
+            ItemKind::Mode { back, forward } => {
+                muted(ui, "◀  Back button");
+                let r = action_editor(ui, &format!("{uid}_b"), back, rb, env.accent);
+                if r.shortcut {
+                    start = Some(Slot::Back);
+                }
+                if r.pick_app {
+                    pick_app = Some(Slot::Back);
+                }
+                muted(ui, "▶  Forward button");
+                let r = action_editor(ui, &format!("{uid}_f"), forward, rf, env.accent);
+                if r.shortcut {
+                    start = Some(Slot::Forward);
+                }
+                if r.pick_app {
+                    pick_app = Some(Slot::Forward);
+                }
+            }
+            ItemKind::Submenu(ch) => {
+                muted(ui, &format!("{} slices inside", ch.len()));
+                if chip(ui, "", "Edit submenu  ›", false, env.accent).clicked() {
+                    enter = true;
+                }
+            }
+        }
+
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            if icon_btn(ui, "◀", "Move left", i > 0).clicked() {
+                shift = -1;
+            }
+            if icon_btn(ui, "▶", "Move right", i + 1 < n).clicked() {
+                shift = 1;
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if icon_btn(ui, "✖", "Delete slice", n > 1 || !nav.is_empty()).clicked() {
+                    remove = true;
+                }
+            });
+        });
+    });
 
     if let Some(slot) = start {
         start_rec(ed, env.profile, &path, slot);

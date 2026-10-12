@@ -1,5 +1,20 @@
-//! The settings window itself: open/close animation, card chrome, tab bar,
-//! footer buttons (Save / Cancel / Quit).
+//! The settings window itself: open/close animation, card chrome, and its layout:
+//!
+//! ```text
+//! +---------+------------------------------------------+
+//! | title   |                                          |
+//! | Menu    |   body of the selected tab               |
+//! | Behavior|                                          |
+//! | General |                                          |
+//! | About   |                                          |
+//! |         +------------------------------------------+
+//! | Save    | status bar: warning, message or hint     |
+//! | Cancel  |                                          |
+//! | Quit app|                                          |
+//! +---------+------------------------------------------+
+//! ```
+//!
+//! The sidebar holds everything you navigate or confirm with, so those buttons never move.
 
 use super::state::Tab;
 use super::tabs::about::about_tab;
@@ -10,11 +25,14 @@ use crate::ui::app::App;
 use crate::ui::draw::*;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
-use eframe::egui::{self, Color32, CornerRadius, RichText, Stroke, Vec2};
+use eframe::egui::{self, Color32, RichText, Vec2};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-/// What the footer buttons asked for this frame.
+/// Width of the sidebar (navigation and Save / Cancel / Quit).
+const SIDEBAR_W: f32 = 140.0;
+
+/// What the sidebar buttons asked for this frame.
 enum UiAction {
     None,
     Save,
@@ -23,7 +41,7 @@ enum UiAction {
 }
 
 impl App {
-    /// Draws the Settings card (animation, title, tabs, footer) and applies Save / Cancel / Quit.
+    /// Draws the Settings card (animation, sidebar, body, status bar) and applies Save / Cancel / Quit.
     pub fn settings_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
 
@@ -64,32 +82,43 @@ impl App {
         style_settings(ui, accent);
         ui.set_opacity(t);
 
-        // card + shadow, always centered in the window
+        // card + shadow, always centered in the window. Everything is square; the border of the
+        // card is the "focused window" border (accent, fading to a greener shade).
         let full = ui.max_rect();
         let card_rect = egui::Rect::from_center_size(full.center(), self.card_size)
             .translate(Vec2::new(0.0, slide));
-        for k in 1..=6 {
-            let g = k as f32 * 3.0;
-            let alpha = (24.0 - k as f32 * 3.6).max(2.0) as u8;
-            ui.painter().rect_filled(
-                card_rect.expand(g).translate(Vec2::new(0.0, 6.0)),
-                CornerRadius::same((16.0 + g) as u8),
-                Color32::from_black_alpha(alpha),
-            );
-        }
-        ui.painter()
-            .rect_filled(card_rect, CornerRadius::same(16), BG);
-        ui.painter().rect_stroke(
-            card_rect,
-            CornerRadius::same(16),
-            Stroke::new(1.0, BORDER),
-            egui::StrokeKind::Inside,
+        ui.painter().add(
+            egui::Shadow {
+                offset: [0, 6],
+                blur: 20,
+                spread: 0,
+                color: Color32::from_black_alpha(110),
+            }
+            .as_shape(card_rect, RADIUS),
+        );
+        ui.painter().rect_filled(card_rect, RADIUS, BG);
+        focus_border(ui.painter(), card_rect, 2.0, accent);
+
+        // sidebar on the left, body + status bar on the right
+        let inner = card_rect.shrink(GAP * 2.0);
+        let side = egui::Rect::from_min_size(inner.min, Vec2::new(SIDEBAR_W, inner.height()));
+        let right =
+            egui::Rect::from_min_max(egui::pos2(side.max.x + GAP * 2.0, inner.min.y), inner.max);
+        let status =
+            egui::Rect::from_min_max(egui::pos2(right.min.x, right.max.y - CONTROL_H), right.max);
+        let body = egui::Rect::from_min_max(right.min, egui::pos2(right.max.x, status.min.y - GAP));
+        // thin divider between the sidebar and the rest
+        let divider_x = side.max.x + GAP;
+        ui.painter().line_segment(
+            [
+                egui::pos2(divider_x, inner.min.y),
+                egui::pos2(divider_x, inner.max.y),
+            ],
+            egui::Stroke::new(1.0, BORDER),
         );
 
-        let inner = card_rect.shrink(18.0);
-
         // dragging the title area moves the window
-        let title_rect = egui::Rect::from_min_size(inner.min, Vec2::new(inner.width(), 36.0));
+        let title_rect = egui::Rect::from_min_size(side.min, Vec2::new(SIDEBAR_W, 36.0));
         let drag = ui.interact(
             title_rect,
             egui::Id::new("settings_drag"),
@@ -99,82 +128,103 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
 
-        let content_w = inner.width();
         let mut action = UiAction::None;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            // title + (if needed) a permission warning, on one line
+
+        // ---------------------------------------------------------------- sidebar
+        ui.scope_builder(egui::UiBuilder::new().max_rect(side), |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(APP_NAME).size(22.0).strong().color(TEXT));
+                let (logo, _) = ui.allocate_exact_size(Vec2::splat(26.0), egui::Sense::hover());
+                draw_logo(ui.painter(), logo.center(), 12.5, accent);
+                ui.label(
+                    RichText::new(APP_NAME)
+                        .monospace()
+                        .size(17.0)
+                        .strong()
+                        .color(TEXT),
+                );
                 ui.label(RichText::new("ℹ").color(MUTED)).on_hover_text(
                     "Hold the middle button for your main pie.\nDouble-click it for the pie of the app under the pointer.\nWhile the pie is open, right-click to switch which pie the side buttons follow.",
                 );
+            });
+            ui.add_space(GAP * 2.0);
+
+            let tabs = [
+                (Tab::Menu, "Menu"),
+                (Tab::Behavior, "Behavior"),
+                (Tab::General, "General"),
+                (Tab::About, "About"),
+            ];
+            ui.spacing_mut().item_spacing.y = 4.0;
+            for (tab, label) in tabs {
+                if nav_item(ui, label, self.ed.tab == tab, accent, SIDEBAR_W).clicked() {
+                    self.ed.tab = tab;
+                    self.ed.picking_icon = false;
+                }
+            }
+
+            // Save / Cancel / Quit sit at the bottom, always in the same place
+            ui.spacing_mut().item_spacing.y = GAP;
+            let buttons_h = 3.0 * CONTROL_H + 2.0 * GAP;
+            ui.add_space((ui.available_height() - buttons_h).max(0.0));
+            let size = Vec2::new(SIDEBAR_W, CONTROL_H);
+            let save = egui::Button::new(RichText::new("Save").strong().color(on_accent(accent)))
+                .fill(accent)
+                .stroke(egui::Stroke::new(1.0, accent));
+            if ui.add_sized(size, save).clicked() {
+                action = UiAction::Save;
+            }
+            if ui.add_sized(size, egui::Button::new("Cancel")).clicked() {
+                action = UiAction::Cancel;
+            }
+            let quit = egui::Button::new(RichText::new("Quit app").color(BAD));
+            if ui.add_sized(size, quit).clicked() {
+                action = UiAction::Quit;
+            }
+        });
+
+        // ---------------------------------------------------------------- body
+        ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
+            ui.set_clip_rect(ui.clip_rect().intersect(body));
+            if self.ed.tab == Tab::Menu {
+                // Menu: two tiles, no outer scroll
+                self.menu_tab(ui, &ctx, body.width());
+            } else {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| match self.ed.tab {
+                        Tab::Behavior => self.behavior_tab(ui),
+                        Tab::General => self.general_tab(ui),
+                        Tab::About => about_tab(ui, accent),
+                        Tab::Menu => {}
+                    });
+            }
+        });
+
+        // ---------------------------------------------------------------- status bar
+        ui.painter().rect_filled(status, RADIUS, INPUT);
+        ui.painter().rect_stroke(
+            status,
+            RADIUS,
+            egui::Stroke::new(1.0, BORDER),
+            egui::StrokeKind::Inside,
+        );
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(status.shrink2(Vec2::new(GAP + 2.0, 0.0)))
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            |ui| {
                 if !platform::is_trusted() || !TAP_ACTIVE.load(Ordering::SeqCst) {
                     ui.label(RichText::new("⚠ Accessibility permission needed").color(BAD));
                     if ui.small_button("Open System Settings").clicked() {
                         platform::open_accessibility_settings();
                     }
+                } else if let Some((msg, _)) = &self.toast {
+                    ui.label(RichText::new(msg).color(accent));
+                } else {
+                    muted(ui, "Esc cancels  ·  Save applies every tab at once");
                 }
-            });
-
-            ui.add_space(2.0);
-            ui.separator();
-
-            let tabs = [
-                (Tab::Menu, "🍕 Menu"),
-                (Tab::Behavior, "🎚 Behavior"),
-                (Tab::General, "⚙ General"),
-                (Tab::About, "ℹ About"),
-            ];
-            let mut idx = tabs.iter().position(|(t, _)| *t == self.ed.tab).unwrap_or(0);
-            if segmented_centered(ui, &mut idx, &tabs.map(|t| t.1), accent) {
-                self.ed.tab = tabs[idx].0;
-                self.ed.picking_icon = false;
-            }
-
-            let h = (ui.available_height() - 66.0).max(120.0);
-            if self.ed.tab == Tab::Menu {
-                // Menu: two columns, no outer scroll
-                ui.allocate_ui(Vec2::new(content_w, h), |ui| {
-                    ui.set_min_height(h);
-                    ui.set_max_width(content_w);
-                    self.menu_tab(ui, &ctx, content_w);
-                });
-            } else {
-                egui::ScrollArea::vertical()
-                    .max_height(h)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| match self.ed.tab {
-                        Tab::Behavior => self.behavior_tab(ui),
-                        Tab::General => self.general_tab(ui),
-                        Tab::About => about_tab(ui),
-                        Tab::Menu => {}
-                    });
-            }
-
-            // restore the card width (a widget may have overflowed) so the footer lines up with the right edge
-            ui.set_max_width(content_w);
-
-            if let Some((msg, _)) = &self.toast {
-                ui.label(RichText::new(msg).color(accent));
-            }
-            ui.separator();
-            ui.horizontal(|ui| {
-                let save = egui::Button::new(RichText::new("Save").strong().color(Color32::WHITE))
-                    .fill(accent)
-                    .min_size(Vec2::new(100.0, 32.0));
-                if ui.add(save).clicked() {
-                    action = UiAction::Save;
-                }
-                if ui.add(egui::Button::new("Cancel").min_size(Vec2::new(80.0, 32.0))).clicked() {
-                    action = UiAction::Cancel;
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Quit app").clicked() {
-                        action = UiAction::Quit;
-                    }
-                });
-            });
-        });
+            },
+        );
 
         match action {
             UiAction::Save => {

@@ -8,6 +8,7 @@ use super::icon_catalog::{self, CATEGORIES, IconDef};
 use super::state::Ed;
 use super::widgets::{chip, tile};
 use crate::ui::draw::*;
+use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use eframe::egui::{self, Align2, Color32, FontId, Vec2};
 
@@ -46,29 +47,29 @@ pub(super) fn icon_picker(
             out.back = true;
         }
         ui.add(
-            egui::TextEdit::singleline(&mut ed.icon_query)
+            text_field(&mut ed.icon_query)
                 .desired_width((w - 84.0).max(80.0))
-                .hint_text("🔍 Search"),
+                .hint_text("Search"),
         );
     });
 
-    // row 2: categories. The active one shows its name, the others only an icon.
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
+    // row 2: categories, one square chip each with its name (they wrap onto more rows if needed)
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::splat(4.0);
         if chip(ui, "", "All", ed.icon_cat == 0, accent).clicked() {
             ed.icon_cat = 0;
         }
         for (k, c) in CATEGORIES.iter().enumerate() {
             let on = ed.icon_cat == k + 1;
-            if chip(ui, c.glyph, if on { c.title } else { "" }, on, accent)
-                .on_hover_text(c.title)
+            if chip(ui, "", c.title, on, accent)
+                .on_hover_text(format!("{} {}", c.glyph, c.title))
                 .clicked()
             {
                 ed.icon_cat = k + 1;
             }
         }
         let on = ed.icon_cat == mine;
-        if chip(ui, "🖼", if on { "Mine" } else { "" }, on, accent)
+        if chip(ui, "", "Mine", on, accent)
             .on_hover_text("My icons (icons folder)")
             .clicked()
         {
@@ -77,36 +78,37 @@ pub(super) fn icon_picker(
         }
     });
 
-    // row 3: image / folder / reload / free text
+    // row 3: image / folder / reload
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
         if ui
-            .button("🖼 Image…")
+            .button("Image…")
             .on_hover_text("Choose an image file")
             .clicked()
         {
             out.pick_file = true;
         }
         if ui
-            .button("📂")
+            .button("Folder")
             .on_hover_text("Open the icons folder. Drop PNG / JPG / WebP files in it.")
             .clicked()
         {
             icon_catalog::open_icons_folder();
         }
         if ui
-            .button("🔄")
+            .button("Reload")
             .on_hover_text("Reload the icons folder")
             .clicked()
         {
             ed.user_icons = icon_catalog::user_icons();
         }
-        ui.add(
-            egui::TextEdit::singleline(icon)
-                .desired_width((w - 214.0).max(60.0))
-                .hint_text("or type text / emoji"),
-        );
     });
+
+    // row 4: free text
+    ui.add(
+        text_field(icon)
+            .desired_width((w - 20.0).max(60.0))
+            .hint_text("or type text / emoji"),
+    );
 
     // grid content
     let q = ed.icon_query.trim().to_lowercase();
@@ -125,7 +127,7 @@ pub(super) fn icon_picker(
         }
     }
 
-    let (tile_w, gap) = (42.0_f32, 6.0_f32);
+    let (tile_w, gap) = (42.0_f32, GAP);
     let cols = (((w - 10.0) + gap) / (tile_w + gap)).floor().max(1.0) as usize;
     let h = ui.available_height().max(80.0);
     egui::ScrollArea::vertical()
@@ -139,7 +141,7 @@ pub(super) fn icon_picker(
                 muted(
                     ui,
                     if ed.icon_cat == mine {
-                        "Drop images into the icons folder (📂), then press 🔄."
+                        "Drop images into the icons folder (Folder), then press Reload."
                     } else {
                         "No icons found."
                     },

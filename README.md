@@ -83,6 +83,9 @@ Actions run on one worker thread so they always execute in the order you trigger
 
 - Slice icons can be text, emoji, or an image (`.png`, `.jpg`, `.jpeg`, `.webp`). A path may start with `~/`.
 - Adjustable pie size (140 to 360 px), accent color, and timings.
+- The Settings window has a flat, square look inspired by tiling window managers such as Hyprland: a sidebar
+  for navigation (Save / Cancel / Quit always in the same place), hairline borders, no rounded corners, and
+  the accent color as the focus border.
 - Optional soft tick sound when the hovered slice changes.
 - In an app that has its own pie, the outer ring shows which pie the side buttons follow: accent color = this pie,
   red (changeable) = the other one. See [Side buttons and app pies](#side-buttons-and-app-pies).

@@ -6,7 +6,7 @@ use crate::msg::Msg;
 use crate::platform;
 use crate::ui::settings::picker::spawn_file_picker;
 use crate::ui::settings::state::Ed;
-use crate::ui::settings::widgets::{icon_btn, muted};
+use crate::ui::settings::widgets::{icon_btn, muted, text_field};
 use eframe::egui::containers::menu::{MenuButton, MenuConfig};
 use eframe::egui::{self, Align, Layout, PopupCloseBehavior, RichText};
 use std::sync::mpsc::Sender;
@@ -38,10 +38,11 @@ pub(super) fn profile_toolbar(
     tx: &Sender<Msg>,
 ) {
     ui.horizontal(|ui| {
+        muted(ui, "Profile");
         let names: Vec<String> = edit.profiles.iter().map(|p| p.name.clone()).collect();
         let before = ed.profile;
         egui::ComboBox::from_id_salt("profile_select")
-            .width(170.0)
+            .width(180.0)
             .selected_text(names[ed.profile].clone())
             .show_ui(ui, |ui| {
                 for (i, name) in names.iter().enumerate() {
@@ -53,7 +54,7 @@ pub(super) fn profile_toolbar(
         }
         let pi = ed.profile;
 
-        if icon_btn(ui, "➕", "New profile", edit.profiles.len() < MAX_PROFILES).clicked() {
+        if icon_btn(ui, "+", "New profile", edit.profiles.len() < MAX_PROFILES).clicked() {
             edit.profiles.push(Profile {
                 name: "New profile".into(),
                 apps: vec![],
@@ -64,7 +65,7 @@ pub(super) fn profile_toolbar(
             ed.reset_nav();
             ed.stop_recording();
         }
-        if icon_btn(ui, "🗑", "Delete profile", edit.profiles.len() > 1).clicked() {
+        if icon_btn(ui, "✖", "Delete profile", edit.profiles.len() > 1).clicked() {
             edit.profiles.remove(pi);
             ed.profile = pi.saturating_sub(1);
             ed.reset_nav();
@@ -76,10 +77,10 @@ pub(super) fn profile_toolbar(
         };
 
         // rename
-        sticky_menu(ui, "✏", |ui| {
+        sticky_menu(ui, "Rename", |ui| {
             ui.set_min_width(220.0);
             ui.add(
-                egui::TextEdit::singleline(&mut prof.name)
+                text_field(&mut prof.name)
                     .desired_width(200.0)
                     .hint_text("Profile name"),
             );
@@ -88,10 +89,10 @@ pub(super) fn profile_toolbar(
 
         // apps that use this profile
         let label = if prof.apps.is_empty() {
-            "🖥 All apps".to_string()
+            "All apps".to_string()
         } else {
             format!(
-                "🖥 {} app{}",
+                "{} app{}",
                 prof.apps.len(),
                 if prof.apps.len() == 1 { "" } else { "s" }
             )
@@ -123,7 +124,7 @@ pub(super) fn profile_toolbar(
             }
             ui.horizontal(|ui| {
                 ui.add(
-                    egui::TextEdit::singleline(&mut ed.new_app)
+                    text_field(&mut ed.new_app)
                         .desired_width(170.0)
                         .hint_text("bundle id, e.g. com.apple.Safari"),
                 );
@@ -134,7 +135,7 @@ pub(super) fn profile_toolbar(
                     }
                     ed.new_app.clear();
                 }
-                if ui.button("📂 Pick").clicked() {
+                if ui.button("Pick…").clicked() {
                     spawn_file_picker(
                         tx.clone(),
                         ctx.clone(),

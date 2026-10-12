@@ -66,6 +66,9 @@ flow and the rules that keep the event tap safe.
   never block in the callback, never panic out of it, pass events through when unsure, release
   the gesture lock before sending messages, and keep the lock order *gesture, then config, then
   side state*.
+- **Keep the Settings look consistent.** Square corners, colors and spacing come from
+  `src/ui/settings/theme.rs` (controls are 32 px high, the gap is 8 px), controls from
+  `src/ui/settings/widgets.rs` (see `guides::extending`). No emoji on buttons.
 - **Keep logic testable.** Put decisions that need no macOS API in plain functions and unit
   test them (see `side::resolve`, `config` tests, `appicon` tests).
 - **No new dependencies** without a good reason. The app is deliberately small and makes no

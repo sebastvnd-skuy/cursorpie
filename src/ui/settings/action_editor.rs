@@ -6,14 +6,8 @@ use crate::keys::{Shortcut, key};
 use crate::ui::settings::widgets::*;
 use eframe::egui::{self, Color32};
 
-/// (glyph, name). Order = index in `action_index`. Sequence (5) is only shown while it is active.
-const KINDS: [(&str, &str); 5] = [
-    ("🚫", "None"),
-    ("⌨", "Shortcut"),
-    ("🚀", "App"),
-    ("🌐", "URL / file"),
-    (">_", "Command"),
-];
+/// Chip labels. Order = index in `action_index`. Sequence (5) is only shown while it is active.
+const KINDS: [&str; 5] = ["None", "Shortcut", "App", "URL / file", "Command"];
 
 /// Position of the action's kind in [`KINDS`] (Sequence is 5).
 fn action_index(a: &Action) -> usize {
@@ -58,20 +52,16 @@ pub(super) fn action_editor(
     let now = action_index(a);
     let mut sel = now;
 
-    // kind: the active one shows its label, the others only an icon (tooltip = name)
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
-        for (i, &(glyph, name)) in KINDS.iter().enumerate() {
-            let on = now == i;
-            if chip(ui, glyph, if on { name } else { "" }, on, accent)
-                .on_hover_text(name)
-                .clicked()
-            {
+    // kind: one square chip per kind, all with their label (they wrap onto a second row if needed)
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::Vec2::splat(4.0);
+        for (i, name) in KINDS.iter().enumerate() {
+            if chip(ui, "", name, now == i, accent).clicked() {
                 sel = i;
             }
         }
         if now == 5 {
-            chip(ui, "🔁", "Sequence", true, accent);
+            chip(ui, "", "Sequence", true, accent);
         }
     });
     if sel != now {
@@ -88,24 +78,24 @@ pub(super) fn action_editor(
         Action::OpenApp(s) => {
             let w = (ui.available_width() - 100.0).max(120.0);
             ui.add(
-                egui::TextEdit::singleline(s)
+                text_field(s)
                     .desired_width(w)
                     .hint_text("Safari  or  /Applications/X.app"),
             );
-            if ui.button("📂 Pick").clicked() {
+            if ui.button("Pick…").clicked() {
                 out.pick_app = true;
             }
         }
         Action::OpenUrl(s) => {
             ui.add(
-                egui::TextEdit::singleline(s)
+                text_field(s)
                     .desired_width(ui.available_width())
                     .hint_text("https://…  or a file path"),
             );
         }
         Action::Command(s) => {
             ui.add(
-                egui::TextEdit::singleline(s)
+                text_field(s)
                     .desired_width(ui.available_width())
                     .hint_text("shell command"),
             );
