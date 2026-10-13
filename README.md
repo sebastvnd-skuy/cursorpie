@@ -8,6 +8,8 @@ into something more useful. Profiles let every app have its own pie.
 
 - Written in Rust, UI in [egui](https://github.com/emilk/egui) / eframe, macOS only
 - Lives in the menu bar: no Dock icon, no window until you need it
+- Light on memory: icons are cached while you use it and freed when it has been idle
+- Settings has **Undo / Redo**, and every Save keeps a backup of the version it replaces
 - Everything stays on your Mac: no network access, no telemetry
 
 ## Contents
@@ -18,6 +20,9 @@ into something more useful. Profiles let every app have its own pie.
 - [First launch and permissions](#first-launch-and-permissions)
 - [Using the pie](#using-the-pie)
 - [Settings](#settings)
+- [Undo, redo and backups](#undo-redo-and-backups)
+- [Sharing a profile](#sharing-a-profile)
+- [Memory and performance](#memory-and-performance)
 - [Configuration file](#configuration-file)
 - [Project layout](#project-layout)
 - [Developer documentation](#developer-documentation)
@@ -74,7 +79,11 @@ Actions run on one worker thread so they always execute in the order you trigger
 **Profiles.**
 
 - Up to 16 profiles. Each lists app bundle identifiers (for example `com.apple.Safari`).
-- A profile with **no apps** is the general (fallback) profile.
+- There is **exactly one general profile**: the one with **no apps**, used for every app that has no
+  profile of its own. It is created for you and cannot be deleted.
+- Every other profile **belongs to at least one app**. **New profile** asks for a name and an app, and the
+  last app of a profile cannot be removed. (A config file that has a second profile without apps loses it
+  when loaded: such a profile could never be chosen.)
 - Two ways to combine them, switchable in **Behavior**:
   - *Hold = general pie, double-click = pie of the app* (default)
   - *Classic: hold opens the app's own pie if it has one*, otherwise the general pie
@@ -97,7 +106,8 @@ Actions run on one worker thread so they always execute in the order you trigger
 
 **Menu bar.** Settings, About, Pause, Launch at login, Quit. While paused, every event passes through untouched.
 
-**Import / export.** Save your whole setup as JSON and share it, or load someone else's.
+**Import / export.** Save your whole setup as JSON and share it, or load someone else's. To share just one
+pie, use **Share** in the Menu tab: see [Sharing a profile](#sharing-a-profile).
 
 ### Default setup
 
@@ -191,10 +201,13 @@ uses the app in front.
 
 Open it from the menu bar icon or by holding the trigger in the center of the pie.
 **Save** applies and stores your changes. **Cancel**, **Esc** and **Cmd+W** discard them.
+**Undo** and **Redo** (sidebar, or **Cmd+Z** / **Cmd+Shift+Z**) step back and forward through your
+edits while Settings is open; see [Undo, redo and backups](#undo-redo-and-backups).
 
 **Menu**
 
-- Choose, create, rename and delete profiles, and list the apps each one applies to
+- Choose, create (name + app), rename and delete profiles, list the apps each one applies to, and
+  **Share** a profile (export / import, icons included)
   (type a bundle identifier or use **Pick app...**).
 - An interactive pie shows the ring you are editing. Click a slice to edit it, click **+** to add one,
   click a selected submenu slice again to step into it, and click the center to go back.
@@ -207,15 +220,85 @@ Open it from the menu bar icon or by holding the trigger in the center of the pi
 - App detection: app under the pointer or app in front, and whether to bring it to the front before sending shortcuts
 - Side buttons: which pie they follow by default, pick-to-follow, forget on app switch, right-click switching, ring colors, preview time
 - Instant flick, hover sound, app icon in the pie center, launch at login
+- Memory: free cached icons and the Settings working copy after an idle time (on by default, 60 s)
 
 **General**
 
 - Permission status and shortcuts to the System Settings pages
 - Location of the config file, **Reveal in Finder**, **Export...**, **Import...**, **Reset to defaults**
+- **Backups**: one button per saved earlier version, to load it back into the editor
 
 **About**
 
 - Version, author, project links, privacy note and credits
+
+## Undo, redo and backups
+
+Deleting a slice or a whole profile by accident is easy to fix.
+
+**While Settings is open**, every change you make is recorded: adding, deleting or moving slices and
+profiles, editing actions and apps, changing any option, importing a file and **Reset to defaults**.
+
+- **Undo** / **Redo** are in the sidebar, or press **Cmd+Z** and **Cmd+Shift+Z** (**Cmd+Y** also redoes).
+- Typing and dragging a slider count as **one** step, not one per keystroke: a step ends when you pause
+  for a moment.
+- Up to 50 steps are kept. Making a new change after an undo discards the steps you undid.
+- While you type in a text field, **Cmd+Z** undoes the text first. While you record a shortcut, the keys
+  go to the recorder instead.
+- The history lives only as long as the Settings window: **Save**, **Cancel** and **Esc** close it and
+  forget it. Which slice is selected is not part of it.
+
+**After you have saved**, use the backups. Every **Save** first stores the version it replaces as
+`config.backup.1.json` (the newest) next to `config.json`, and keeps the last five. Open
+**Settings > General > Backups** and pick one: it is loaded into the editor, and nothing changes until you
+press **Save**. Undo still brings back what you had before restoring.
+
+```
+~/Library/Application Support/CursorPie/
+  config.json            the live config
+  config.backup.1.json   the version before your last Save (up to config.backup.5.json)
+  config.broken.json     a config that could not be read (see below)
+```
+
+A Save that would store exactly what is already in `config.json` makes no backup, and `config.json`
+is written through a temporary file, so a crash or a full disk cannot leave half a file.
+
+## Sharing a profile
+
+**Menu > Share** moves one profile between Macs, with its icons, so it looks the same on arrival.
+
+- **Export this profile...** writes `~/Downloads/<name>.cursorpie-profile.json` and reveals it in Finder.
+  Every image icon the profile uses (including those in submenus) is embedded in the file, up to 2 MB
+  each. Icons of apps (`app:`), text and emoji need nothing embedded. Missing or oversized images are left
+  out and show up as `?` for the receiver.
+- **Import a profile...** adds the file as a **new** profile (nothing is overwritten) and selects it.
+  The embedded images are copied to `~/Library/Application Support/CursorPie/icons/` (an identical file is
+  reused, a different one with the same name gets a number) and the slices are pointed at the copies.
+  Press **Save** to apply it, or **Undo** to take it back.
+- The profile must list at least one app; a name that is already taken gets ` (2)`, ` (3)`...
+- Only PNG, JPEG and WebP data is written, whatever the file claims, and nothing outside the icons folder.
+- **Only import profiles you trust:** actions can run shell commands. CursorPie warns you when an imported
+  profile contains any, and nothing runs until you press Save and then use the slice.
+
+## Memory and performance
+
+CursorPie sits in the menu bar all day, so it is built to cost almost nothing while you are not using it:
+
+- **No drawing while idle.** The window is hidden and nothing repaints until you press the trigger.
+- **Icons are cached.** Decoding an app icon or an image is the slowest part of opening a pie, so the
+  decoded icons are kept (at most 96) and shared by the pie and Settings. Closing Settings no longer
+  throws them away: only image files that changed on disk are read again.
+- **Icons are loaded before the pie opens.** Pressing the trigger tells the UI which pies may open, and it
+  loads their icons during the hold time (500 ms by default), so the pie appears without a hitch.
+- **Sleep.** After 60 seconds without a pie or Settings (**Settings > Behavior > Memory**), CursorPie drops
+  the cached icons and the Settings working copy and asks macOS to take the freed pages back, so Activity
+  Monitor shows the memory as released. The next press loads what the pie needs again. Set the option off
+  to keep everything in memory.
+- **Permission checks are throttled.** Settings asks macOS about the Accessibility permission at most
+  once a second instead of on every frame.
+
+What sleep cannot free: the text rendering and graphics buffers that the UI library keeps for the process
+lifetime. That is a fixed base cost, not something that grows with use.
 
 ## Configuration file
 
@@ -253,6 +336,7 @@ Actions are `Nothing`, `Key`, `OpenApp`, `OpenUrl`, `Command` or `Sequence`.
   "inactive_color": [232, 86, 86],
   "preview_ms": 900,
   "center_app_icon": true,
+  "sleep_after_s": 60,
   "profiles": [
     {
       "name": "Default",
@@ -313,7 +397,8 @@ Reference:
 | `side_indicator` | Color the pie ring by who owns the side buttons; `inactive_color` is the "other pie" color |
 | `preview_ms` | How long the pie stays on screen after switching from the menu bar (0 to 3000, 0 = off) |
 | `center_app_icon` | Show the app's icon (white glyph) in the center of an app's own pie instead of the active mode's icon |
-| `apps` | Bundle identifiers. An empty list marks the general (fallback) profile |
+| `sleep_after_s` | Seconds without a pie or Settings before cached icons and the Settings copy are freed (10 to 3600, `0` = never) |
+| `apps` | Bundle identifiers. An empty list marks the general (fallback) profile; only the first such profile is kept, all others need at least one app |
 | `active` | Path of the active side-button mode, as indices (`[3, 1]` = slice 1 inside slice 3) |
 | `Key` | `key` is a macOS virtual key code (physical key). `mods` is a bitmask: Shift = 1, Ctrl = 2, Opt = 4, Cmd = 8 |
 
@@ -340,17 +425,22 @@ src/
   lib.rs                crate root: module list, run()
   about.rs              name, version, bundle id, author and project links (edit to rebrand)
   actions.rs            action worker thread; sends shortcuts, opens apps/URLs, runs commands
+  cache.rs              bounded least-recently-used cache (backs the icon textures)
+  history.rs            undo / redo snapshots with burst coalescing (used by Settings)
   side.rs               which pie the side buttons follow (per-app choice, indicator, switching)
   keys.rs               shortcut model (key code + modifiers) and key labels
   msg.rs                messages sent to the UI thread
   geometry.rs           pie sizes and slice hit-testing (shared by the tap and the UI)
-  config/               config model, defaults, validation, load/save, import/export
+  config/               config model, defaults, validation, load/save, import/export, backups,
+                        profile sharing (`share.rs`)
   tap/                  global event tap and the gesture state machine
   platform/             macOS glue: permissions, apps, login item, keyboard layout, shell tools
   ui/                   everything on the UI thread
-    app/                eframe app: state, message handling, window management
+    app/                eframe app: state, message handling, window management, idle sleep
     pie/                drawing the pie
     settings/           the Settings window (tabs, editors, icon picker)
+    icons.rs            icon texture cache (bounded, kept across Settings sessions, warmed on press)
+    sleep.rs            idle policy: when caches and the Settings copy are freed
     tray.rs, appicon.rs, draw.rs, screen.rs
   guides/               long-form developer docs (rendered by rustdoc)
 ```
@@ -390,6 +480,9 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
 - "App under the pointer" looks at normal app windows (not the Dock, menu bar or desktop). Bringing it to the front
   activates the whole app, not one particular window.
 - Sequences cannot be edited in Settings yet, only in `config.json`.
+- Undo covers one Settings session. After you save and close, use **Settings > General > Backups** (the last
+  five saves). Changes that Settings does not make, such as the active side-button mode that CursorPie saves
+  when you pick a mode in the pie, are not backed up on their own.
 - Launch at login installs a LaunchAgent that starts CursorPie at your next login. It points at the executable
   that was running when you enabled it, so toggle it off and on again if you move the app.
 - If the app icon does not show up in the center of an app's own pie, start CursorPie from a terminal

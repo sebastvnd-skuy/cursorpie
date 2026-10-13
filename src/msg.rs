@@ -41,6 +41,16 @@ pub enum Msg {
     Tray(String),
     /// Take keyboard focus back after a native file chooser closed.
     Refocus,
+    /// The trigger was pressed: the pie of `general` (and the app's own `app` profile) may open
+    /// soon. The UI loads their icons now, while the hold timer runs, instead of on the frame that
+    /// opens the pie. Also wakes the UI from sleep (see [`ui::sleep`](crate::ui::sleep)).
+    Warm { general: usize, app: Option<usize> },
+    /// An app was chosen in the "New profile" form; `0` is its bundle identifier.
+    NewProfileAppPicked(String),
+    /// A profile file to import was chosen (its path).
+    ProfileImportPicked(String),
+    /// Show a short message in the Settings status bar (sent by helpers that cannot reach `App`).
+    Notice(String),
     /// An app was chosen for an "Open app" action of the slice at `path` (`slot` = which action).
     ActionAppPicked {
         profile: usize,

@@ -10,9 +10,12 @@
 //! | `action_editor` | editor for one [`Action`](crate::config::Action) |
 //! | `icon_picker`, `icon_catalog` | icon chooser and its catalog |
 //! | `picker` | native file choosers run off the UI thread |
+//! | `undo` | undo / redo shortcuts and backup restore, on top of [`History`](crate::history::History) |
 //! | `theme`, `widgets` | palette, geometry, egui style and small reusable (square) widgets |
 //!
 //! Settings edits a *copy* of the config (`App::edit`); pressing Save sanitizes and applies it.
+//! Every change to that copy can be undone and redone (`undo`), and the copy is dropped again when
+//! Settings closes.
 //!
 //! The look is tiling-window-manager style (Hyprland): square corners, hairline borders, flat
 //! panels and an accent border on whatever has focus. See [`theme`] for the rules.
@@ -27,6 +30,7 @@ mod pie_designer;
 mod state;
 mod tabs;
 mod theme;
+mod undo;
 mod widgets;
 mod window;
 

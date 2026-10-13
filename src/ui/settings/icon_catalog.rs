@@ -8,10 +8,10 @@
 //! Note: glyphs are drawn with egui's bundled fonts (monochrome Noto Emoji + emoji-icon-font).
 //! If a glyph shows up as an empty box, remove its line or use an image from the icons folder instead.
 
-use crate::config::{app_support_dir, home};
+use crate::config::{icons_dir, tilde};
 use crate::platform;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// One catalog icon.
 pub struct IconDef {
@@ -211,17 +211,7 @@ const MAX_ICON_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 /// `~/Library/Application Support/CursorPie/icons` (created if missing).
 pub fn user_icons_dir() -> PathBuf {
-    let p = app_support_dir().join("icons");
-    fs::create_dir_all(&p).ok();
-    p
-}
-
-/// Writes a path under the home directory as `~/...`.
-fn as_tilde(p: &Path) -> String {
-    match p.strip_prefix(home()) {
-        Ok(rest) => format!("~/{}", rest.display()),
-        Err(_) => p.display().to_string(),
-    }
+    icons_dir()
 }
 
 /// Images in the icons folder, as strings that can be used directly as `Item::icon`.
@@ -243,7 +233,7 @@ pub fn user_icons() -> Vec<String> {
                 .map(|m| m.len() <= MAX_ICON_FILE_BYTES)
                 .unwrap_or(false)
         })
-        .map(|p| as_tilde(&p))
+        .map(|p| tilde(&p))
         .collect();
     v.sort();
     v.truncate(MAX_USER_ICONS);

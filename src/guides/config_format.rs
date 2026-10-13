@@ -46,6 +46,7 @@
 //! | Rule | Value |
 //! |---|---|
 //! | profiles | at least 1, at most 16 (defaults are restored if empty) |
+//! | general profile | at most one profile without apps (the first); later ones are dropped, since they could never be chosen. `apps` entries are trimmed, blanks and duplicates removed |
 //! | slices per ring | at most 8; every profile has at least one slice |
 //! | menu depth | at most [`MAX_DEPTH`](crate::config::MAX_DEPTH) = 5 (deeper submenus are emptied) |
 //! | `active` | points at a `Mode` slice, otherwise the first `Mode` found (or empty) |
@@ -54,9 +55,22 @@
 //! | `double_click_ms` | 150 to 500 |
 //! | `pie_size` | 140 to 360 |
 //! | `preview_ms` | at most 3000 |
+//! | `sleep_after_s` | 0 (never sleep) or 10 to 3600 |
 //! | `trigger_button` | 2, 5, 6 or 7 (otherwise 2) |
 //!
 //! If you add a setting with a range, clamp it there and add a test.
+//!
+//! ## Profile files (sharing)
+//!
+//! One profile can be exported on its own ([`config::share`](crate::config::share)). The file is
+//! `{ "cursorpie_profile": 1, "profile": { .. }, "icons": { "<icon string>": { "file", "data" } } }`:
+//! the [`Profile`](crate::config::Profile) as in `config.json`, plus every image icon it uses as
+//! base64. Importing parses it with [`parse_bundle`](crate::config::share::parse_bundle), writes the icons into
+//! the icons folder ([`install_icons`](crate::config::share::install_icons): the extension comes from
+//! the image bytes, names are reduced to safe characters, sizes are capped, nothing is written
+//! outside the folder) and adds the result with [`add_profile`](crate::config::share::add_profile),
+//! which requires an app, a free slot and a unique name. Bump `cursorpie_profile` only for changes an old
+//! reader would misread.
 //!
 //! ## Loading, saving and the broken-file path
 //!
@@ -66,7 +80,15 @@
 //!   overwrites `config.json`.
 //! * Saves happen on *Save* in Settings (UI thread) and when the active mode changes
 //!   ([`set_active`](crate::config::set_active), which saves on a worker thread because it is
-//!   called from inside the event-tap callback).
+//!   called from inside the event-tap callback). Both write through a temporary file that is
+//!   renamed over `config.json`, under one lock, so a crash cannot leave half a file and two
+//!   writers cannot interleave.
+//! * *Save* uses [`save_config_with_backup`](crate::config::save_config_with_backup): the text of the
+//!   file it replaces becomes `config.backup.1.json`, older backups move up to
+//!   `config.backup.5.json`, and an identical or blank version is not stored (see
+//!   [`config::backup`](crate::config::backup)). `set_active` makes no backup, since it saves on
+//!   every mode pick. [`backups`](crate::config::backups) lists them and
+//!   [`load_backup`](crate::config::load_backup) parses one through the normal validation.
 //! * Import/Export use [`parse_config`](crate::config::parse_config) and
 //!   [`export_config`](crate::config::export_config). After an import,
 //!   [`has_commands`](crate::config::has_commands) decides whether to warn that the file runs

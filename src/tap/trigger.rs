@@ -69,6 +69,11 @@ fn on_press<'a>(
     button: i64,
 ) -> CallbackResult {
     let (hold_profile, app) = resolve_profiles(p);
+    // lets the UI load the icons while the hold timer runs (never blocks, see the tap rules)
+    notifier.send(Msg::Warm {
+        general: hold_profile,
+        app,
+    });
     let dbl_ms = cfg().double_click_ms;
 
     // (A) second press inside the double-click window: open the app's own pie at once

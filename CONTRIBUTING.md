@@ -40,12 +40,15 @@ cargo docs                      # builds the docs with private items and opens t
 ```text
 src/main.rs        thin binary: calls cursorpie::run()
 src/lib.rs         crate root: module list, run()
-src/config/        data model, defaults, validation, config.json, the live global config
+src/config/        data model, defaults, validation, config.json, backups, profile sharing, the live global config
 src/tap/           global event tap thread and the gesture state machine
 src/actions.rs     worker thread that executes actions in order
+src/cache.rs       bounded LRU cache (icon textures)
+src/history.rs     undo / redo snapshots (Settings editor)
 src/side.rs        which pie the back/forward buttons follow
 src/platform/      macOS glue (permissions, apps, login item, keyboard layout, shell tools)
-src/ui/            everything on the UI thread: app, pie renderer, Settings, menu bar icon
+src/ui/            everything on the UI thread: app, pie renderer, Settings, menu bar icon,
+                   icon cache (`icons.rs`) and idle policy (`sleep.rs`)
 src/guides/        long-form developer docs (rendered by rustdoc)
 scripts/bundle.sh  builds and signs the .app
 ```
@@ -69,8 +72,18 @@ flow and the rules that keep the event tap safe.
 - **Keep the Settings look consistent.** Square corners, colors and spacing come from
   `src/ui/settings/theme.rs` (controls are 32 px high, the gap is 8 px), controls from
   `src/ui/settings/widgets.rs` (see `guides::extending`). No emoji on buttons.
+- **Bound every cache and give it a way out.** Anything the UI keeps between frames (textures,
+  decoded images, lists read from disk) needs a size limit, and must be dropped in
+  `App::enter_sleep` or when Settings closes (see `guides::architecture`, *Idle sleep and
+  caches*). Never key a cache by unbounded input without eviction. Do not decode or read files on
+  the frame that opens the pie: warm them in `App::warm`.
+- **Keep Settings undoable.** Settings edits `App::edit`, and `History` watches it as a whole, so
+  state that belongs in the config needs no extra code. State kept elsewhere (`Ed`) is not part of
+  the history: make it tolerate a config that changed under it (see `Ed::fit_to`).
 - **Keep logic testable.** Put decisions that need no macOS API in plain functions and unit
-  test them (see `side::resolve`, `config` tests, `appicon` tests).
+  test them (see `side::resolve`, `config` tests, `appicon` tests). `cache`, `history`,
+  `ui::sleep` and `config::backup` are written with no macOS or egui types on purpose, and take
+  the clock or the directory as a parameter instead of reading them.
 - **No new dependencies** without a good reason. The app is deliberately small and makes no
   network connections.
 - **Config compatibility.** New settings need a `Default`; older `config.json` files must keep
@@ -87,6 +100,8 @@ icons...) see `guides::extending`.
 - Use clear, imperative commit subjects (`Fix double-click replay on slow clicks`). Add a body
   when the reason is not obvious.
 - Include tests for logic changes, and update `README.md` when behavior or settings change.
+- For anything that touches caching, sleep or undo, say what you checked by hand: pie opening after a
+  long idle time, Settings after sleep, Cmd+Z after deleting a slice, restoring a backup.
 - Mention what you tested by hand (macOS version, trigger button, which apps) for gesture or UI
   changes, since those cannot be covered by unit tests.
 

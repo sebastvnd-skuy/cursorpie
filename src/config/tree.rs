@@ -2,7 +2,7 @@
 //!
 //! A *path* is a list of indices: `[3, 1]` is slice 1 inside the submenu at slice 3 of the top ring.
 
-use super::{Action, Config, Item, ItemKind};
+use super::{Action, Config, Item, ItemKind, Profile};
 
 /// The ring at `path`: an empty path is the top ring, `[3]` is the submenu at slice 3, and so on.
 /// `None` if the path leaves the tree.
@@ -36,28 +36,38 @@ pub fn item_at_mut<'a>(items: &'a mut Vec<Item>, path: &[usize]) -> Option<&'a m
     }
 }
 
-/// true if any action in the tree runs a shell command (used to warn after importing a config).
-pub fn has_commands(cfg: &Config) -> bool {
-    /// Whether one action runs a shell command.
-    fn act(a: &Action) -> bool {
-        match a {
-            Action::Command(_) => true,
-            Action::Sequence(v) => v.iter().any(act),
-            _ => false,
-        }
+/// Whether one action runs a shell command.
+fn action_runs_command(a: &Action) -> bool {
+    match a {
+        Action::Command(_) => true,
+        Action::Sequence(v) => v.iter().any(action_runs_command),
+        _ => false,
     }
-    /// Whether any slice below `v` runs a shell command.
-    fn items(v: &[Item]) -> bool {
-        v.iter().any(|i| match &i.kind {
-            ItemKind::Mode { back, forward } => act(back) || act(forward),
-            ItemKind::Run(a) => act(a),
-            ItemKind::Submenu(c) => items(c),
-        })
-    }
-    cfg.profiles.iter().any(|p| items(&p.items))
 }
 
-/// Cincin (daftar item) pada path tertentu; path kosong = level atas.
+/// Whether any slice in `v` (submenus included) runs a shell command.
+fn items_run_commands(v: &[Item]) -> bool {
+    v.iter().any(|i| match &i.kind {
+        ItemKind::Mode { back, forward } => {
+            action_runs_command(back) || action_runs_command(forward)
+        }
+        ItemKind::Run(a) => action_runs_command(a),
+        ItemKind::Submenu(c) => items_run_commands(c),
+    })
+}
+
+/// true if any action in the tree runs a shell command (used to warn after importing a config).
+pub fn has_commands(cfg: &Config) -> bool {
+    cfg.profiles.iter().any(profile_has_commands)
+}
+
+/// true if any action of the profile runs a shell command (used to warn after importing a profile).
+pub fn profile_has_commands(p: &Profile) -> bool {
+    items_run_commands(&p.items)
+}
+
+/// Mutable version of [`items_at`]: the ring at `path`, where an empty path is the top ring.
+/// `None` if the path leaves the tree.
 pub fn ring_mut<'a>(items: &'a mut Vec<Item>, path: &[usize]) -> Option<&'a mut Vec<Item>> {
     if path.is_empty() {
         return Some(items);

@@ -10,6 +10,8 @@
 //! * [The gesture state machine](#the-gesture-state-machine)
 //! * [Shared state and lock order](#shared-state-and-lock-order)
 //! * [Side-button routing](#side-button-routing)
+//! * [Idle sleep and caches](#idle-sleep-and-caches)
+//! * [Undo, redo and backups](#undo-redo-and-backups)
 //! * [Rules for the event-tap callback](#rules-for-the-event-tap-callback)
 //! * [macOS APIs and external tools](#macos-apis-and-external-tools)
 //!
@@ -18,7 +20,7 @@
 //! | Thread | Started by | Owns | Talks to the others through |
 //! |---|---|---|---|
 //! | **main / UI** | `eframe::run_native` in [`crate::run`] | the [`App`](crate::ui::app::App), every egui window, the menu bar icon, the keyboard-layout snapshot | receives [`Msg`](crate::msg::Msg) values |
-//! | **`cursorpie-tap`** | [`tap::spawn`](crate::tap::spawn) | the `CGEventTap`, its `CFRunLoop`, the gesture state | sends `Msg` through a [`Notifier`](crate::msg::Notifier); enqueues actions |
+//! | **`cursorpie-tap`** | [`tap::spawn`](crate::tap::spawn) | the `CGEventTap`, its `CFRunLoop`, the gesture state | sends `Msg` (`Warm`, `ShowPie`, ...) through a [`Notifier`](crate::msg::Notifier); enqueues actions |
 //! | **`cursorpie-actions`** | [`actions::init`](crate::actions::init) | the queue of [`Action`](crate::config::Action)s to execute | receives jobs from [`actions::run_in`](crate::actions::run_in) |
 //! | short-lived | on demand | hold timer, double-click timer, file chooser, config save | send `Msg` or touch shared state |
 //!
@@ -134,6 +136,77 @@
 //! app's pie by default, or whichever pie the user last picked a mode in, or toggled with a
 //! right-click or the menu bar item. The pie ring is tinted by [`side::view_of`](crate::side::view_of).
 //!
+//! ## Idle sleep and caches
+//!
+//! The window is hidden almost all the time, and egui does not repaint a hidden window, so the idle
+//! cost is already near zero. What stays allocated is *state*: decoded icon textures and the
+//! Settings working copy. Three mechanisms keep that small without making the pie slower.
+//!
+//! **1. A bounded icon cache** ([`ui::icons`](crate::ui::icons), built on [`cache::Lru`](crate::cache::Lru)).
+//! Decoding an app icon (a multi-size TIFF from macOS) or scaling an image file takes far longer
+//! than a frame, so decoded textures are kept: at most [`CAPACITY`](crate::ui::icons::CAPACITY)
+//! entries, evicting the least recently used. Eviction happens once per frame in `App::logic`
+//! and never removes an entry the previous frame used, so a screen showing more icons than the
+//! capacity (the icon picker) grows the cache while it is open instead of reloading icons every
+//! frame. The cache **survives** Settings: opening or closing it only calls
+//! [`IconCache::revalidate`](crate::ui::icons::IconCache::revalidate), which drops image files whose
+//! modification time or size changed (one `stat` each), and failed loads so they can be retried.
+//!
+//! **2. Warming up on press.** [`tap::trigger`](crate::tap) sends [`Msg::Warm`](crate::msg::Msg::Warm)
+//! as soon as the trigger goes down, carrying the profiles that may open. The UI loads their icons
+//! ([`icons_to_warm`](crate::ui::icons::icons_to_warm)) while the hold timer runs, which is
+//! `pie_hold_ms` (500 ms by default) before the first pie frame. A warm cache costs only hash
+//! lookups, so this is free in the common case. Sending the message follows the tap rules below:
+//! it never blocks.
+//!
+//! **3. Sleep.** [`ui::sleep::Sleeper`](crate::ui::sleep::Sleeper) is a small state machine over
+//! `Instant`s:
+//!
+//! ```text
+//!   Busy ---- window hides ----> Idle ---- sleep_after_s ----> Asleep
+//!    ^                            |                              |
+//!    +- pie / Settings shows -----+-- Msg::Warm (poke) ----------+
+//! ```
+//!
+//! `App::sleep_step` drives it from both `logic` and `ui`, and asks egui for one frame at the
+//! moment the idle time ends (`request_repaint_after`), because a hidden window schedules nothing
+//! itself. Entering sleep (`App::enter_sleep`) drops the icon cache, the Settings working copy and
+//! everything derived from it, then calls
+//! [`platform::release_unused_memory`](crate::platform::release_unused_memory)
+//! (`malloc_zone_pressure_relief`), because freed memory is otherwise kept by the allocator and
+//! still counted against the process. A press counts as activity (`Sleeper::poke`), otherwise the
+//! first press after a long idle time could load icons and have them dropped by the sleep that was
+//! already due.
+//!
+//! | State | Freed when Settings closes | Freed when the UI sleeps | Never freed |
+//! |---|---|---|---|
+//! | `App::edit` (config copy), undo history, picker lists, backup list | yes | yes | |
+//! | icon textures | no (only changed files are re-read) | yes | |
+//! | the live config, side-button state, gesture state | | | yes |
+//! | egui font atlas, GPU surface | | | yes |
+//!
+//! `Config::sleep_after_s` sets the idle time (0 = never sleep). Rules for new code: a cache must
+//! be bounded, must be cleared in `enter_sleep`, and must never be filled on the frame that opens
+//! the pie (warm it instead).
+//!
+//! ## Undo, redo and backups
+//!
+//! Settings edits a copy of the config, `App::edit`. [`History`](crate::history::History) keeps
+//! whole snapshots of it: simple, and impossible to get out of sync with editors that change the
+//! value from dozens of places. `window.rs` calls `observe` once per frame, after the widgets ran.
+//! A burst of changes (typing, dragging a slider) is coalesced into one step, committed once the
+//! value has not changed for [`SETTLE`](crate::history::SETTLE); undoing in the middle of a burst
+//! returns to the value before it. At most `HISTORY_LIMIT` (50) steps are kept. Import, *Reset to
+//! defaults* and restoring a backup replace `edit` and are therefore undoable too. The editor
+//! selection (`Ed`) is not part of the history, so after an undo `Ed::fit_to` makes it valid again.
+//! Cmd+Z is left to egui while a text field has focus, and to the recorder while a shortcut is
+//! being recorded.
+//!
+//! The history ends with the Settings session. For mistakes that were saved,
+//! [`save_config_with_backup`](crate::config::save_config_with_backup) keeps the file it replaces as
+//! `config.backup.1.json` (shifting older ones, five in all, see [`config::backup`](crate::config::backup)).
+//! The General tab lists them and loads one into the editor, still subject to *Save* and *Undo*.
+//!
 //! ## Rules for the event-tap callback
 //!
 //! Everything reachable from `tap::handle` must follow these rules:
@@ -160,6 +233,7 @@
 //! | frontmost app | `NSWorkspace` | `platform::frontmost_bundle_id` |
 //! | app under the pointer | `CGWindowListCopyWindowInfo` + `NSRunningApplication` | `platform::bundle_id_at` |
 //! | real app icon | `NSWorkspace.iconForFile` as TIFF, decoded by the `tiff` crate | [`ui::appicon`](crate::ui::appicon) |
+//! | give freed memory back | `malloc_zone_pressure_relief` | [`platform::release_unused_memory`](crate::platform::release_unused_memory) |
 //! | key labels on any layout | TIS + `UCKeyTranslate`, snapshot taken on the main thread | [`platform::layout`](crate::platform::layout) |
 //! | menu bar icon | `tray-icon` / `muda` | [`ui::tray`](crate::ui::tray) |
 //! | no Dock icon | `NSApplicationActivationPolicyAccessory` | `platform::set_accessory_policy` |

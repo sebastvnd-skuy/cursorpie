@@ -24,7 +24,7 @@ pub enum Action {
 }
 
 /// What a slice does.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum ItemKind {
     /// Selecting it makes the side buttons (back/forward) send these actions.
     Mode { back: Action, forward: Action },
@@ -35,7 +35,7 @@ pub enum ItemKind {
 }
 
 /// One slice of a ring.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Item {
     pub name: String,
     /// Text / emoji, or an image path (.png .jpg .jpeg .webp), e.g. "~/Pictures/undo.png"
@@ -104,7 +104,7 @@ impl Item {
 }
 
 /// A pie: its slices, and the apps it applies to.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Profile {
     pub name: String,
     /// Bundle identifiers, e.g. "com.apple.Safari". Empty = fallback profile.
@@ -115,6 +115,27 @@ pub struct Profile {
 }
 
 impl Profile {
+    /// The general (fallback) profile: the only one that lists no apps. There is exactly one;
+    /// every other profile lists at least one app (see [`Config::sanitize`]).
+    pub fn is_general(&self) -> bool {
+        self.apps.is_empty()
+    }
+
+    /// A new profile for the app `bundle` with one starter slice. `None` if the name or the app
+    /// is blank, because a profile that is not the general one must belong to an app.
+    pub fn for_app(name: &str, bundle: &str) -> Option<Self> {
+        let (name, bundle) = (name.trim(), bundle.trim());
+        if name.is_empty() || bundle.is_empty() {
+            return None;
+        }
+        Some(Self {
+            name: name.into(),
+            apps: vec![bundle.into()],
+            items: vec![super::presets().remove(0)],
+            active: vec![0],
+        })
+    }
+
     /// The slice whose side-button actions are currently active, if `active` still points at one.
     pub fn active_item(&self) -> Option<&Item> {
         item_at(&self.items, &self.active)
@@ -123,7 +144,7 @@ impl Profile {
 
 /// The whole configuration. `#[serde(default)]` keeps older files loadable: every field
 /// missing from a file takes its value from [`Config::default`].
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(default)]
 pub struct Config {
     pub version: u32,
@@ -160,6 +181,9 @@ pub struct Config {
     /// The center of an app's own pie shows that app's icon (as a white silhouette) instead of the
     /// icon of the active side-button mode.
     pub center_app_icon: bool,
+    /// Seconds without a pie or Settings on screen before the UI frees its caches and Settings
+    /// state (0 = never). See [`ui::sleep`](crate::ui::sleep).
+    pub sleep_after_s: u64,
 }
 
 impl Config {

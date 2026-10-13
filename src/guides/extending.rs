@@ -12,6 +12,9 @@
 //! * [Keep the Settings look consistent](#keep-the-settings-look-consistent)
 //! * [Add a message to the UI thread](#add-a-message-to-the-ui-thread)
 //! * [Add a menu bar item](#add-a-menu-bar-item)
+//! * [Cache something in the UI](#cache-something-in-the-ui)
+//! * [Keep the profile rules](#keep-the-profile-rules)
+//! * [Make a change undoable](#make-a-change-undoable)
 //! * [Change gesture behavior](#change-gesture-behavior)
 //! * [Rebrand a fork](#rebrand-a-fork)
 //!
@@ -125,6 +128,40 @@
 //!
 //! `ui/tray.rs` builds the menu (`MenuItem::with_id("my_id", ..)`); `ui/app/windows.rs`
 //! `handle_tray` receives the id as `Msg::Tray(id)`.
+//!
+//! ## Cache something in the UI
+//!
+//! Read [Idle sleep and caches](super::architecture#idle-sleep-and-caches) first.
+//!
+//! 1. Store it in a [`Lru`](crate::cache::Lru) (or add to [`IconCache`](crate::ui::icons::IconCache)
+//!    if it is an icon). Call `new_frame(cap)` once per frame so it stays bounded.
+//! 2. Clear it in `App::enter_sleep` (`ui/app/lifecycle.rs`), so it does not outlive an idle period.
+//! 3. If the first use would be slow, fill it ahead of time in `App::warm`, which runs when the
+//!    trigger is pressed. Never do slow work on the frame that opens the pie.
+//! 4. If the source can change on disk, store a stamp ([`FileStamp`](crate::ui::icons::FileStamp))
+//!    and drop stale entries in a `revalidate` step instead of clearing everything.
+//! 5. Put the pure part (eviction, decisions) in a type with no egui or macOS types and unit test it.
+//!
+//! ## Keep the profile rules
+//!
+//! Exactly one profile is general (no apps); every other profile has at least one app. Create
+//! profiles with [`Profile::for_app`](crate::config::Profile::for_app) (or `share::add_profile` for
+//! imports), never with an empty `apps` list, and offer no way to delete the general profile or the
+//! last app of another one. [`Config::sanitize`](crate::config::Config::sanitize) enforces the rule
+//! as a last line of defense.
+//!
+//! ## Make a change undoable
+//!
+//! Anything stored in the config copy `App::edit` is undoable with no extra code: the history
+//! snapshots the whole value every frame. Just edit `self.edit` (Settings widgets already do).
+//!
+//! * State kept outside the config, such as the selection in `Ed`, is not in the history. After an
+//!   undo it can point at something that no longer exists, so read it defensively or extend
+//!   `Ed::fit_to`.
+//! * If an action replaces `edit` wholesale (import, restore), do not reset the history: the
+//!   replacement is a step the user can undo. Call `Ed::reset_nav` (or `fit_to`) afterwards.
+//! * A new field of `Config` (or of the types inside it) must keep `PartialEq`: the history compares
+//!   values to notice changes.
 //!
 //! ## Change gesture behavior
 //!

@@ -1,6 +1,6 @@
 //! Reading, writing and sharing the config: parsing, the file on disk, and the live global copy.
 
-use super::Config;
+use super::{Config, backup};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -29,6 +29,22 @@ pub fn app_support_dir() -> PathBuf {
     p
 }
 
+/// `~/Library/Application Support/CursorPie/icons`, where the user's own icons live (created if
+/// missing). Imported profiles put their icons here too.
+pub fn icons_dir() -> PathBuf {
+    let p = app_support_dir().join("icons");
+    fs::create_dir_all(&p).ok();
+    p
+}
+
+/// Writes a path under the home directory as `~/...` (the form used in icon strings).
+pub fn tilde(p: &std::path::Path) -> String {
+    match p.strip_prefix(home()) {
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => p.display().to_string(),
+    }
+}
+
 /// The config file: `<app support dir>/config.json`.
 pub fn config_path() -> PathBuf {
     app_support_dir().join("config.json")
@@ -50,12 +66,44 @@ pub fn load_config() -> Config {
     }
 }
 
+/// Serializes every write to the config directory (the UI thread and the `set_active` workers
+/// both save), so two writers can never interleave on the temporary file.
+static IO: Mutex<()> = Mutex::new(());
+
 /// Writes the config as pretty JSON, ignoring I/O errors (a failed save must never crash the app).
-/// Do not call this from the event-tap thread; see [`set_active`].
+/// The file is replaced atomically. Do not call this from the event-tap thread; see [`set_active`].
 pub fn save_config(config: &Config) {
     if let Ok(data) = serde_json::to_string_pretty(config) {
-        fs::write(config_path(), data).ok();
+        let _io = lock(&IO);
+        backup::write_atomic(&config_path(), &data).ok();
     }
+}
+
+/// Like [`save_config`], but first keeps the file it replaces as a backup (see [`backup`]), so a
+/// Save that turns out to be a mistake can be undone with [`load_backup`]. Used by *Save* in
+/// Settings, not by the frequent saves of [`set_active`].
+pub fn save_config_with_backup(config: &Config) {
+    let Ok(data) = serde_json::to_string_pretty(config) else {
+        return;
+    };
+    let _io = lock(&IO);
+    let path = config_path();
+    if let Ok(old) = fs::read_to_string(&path)
+        && old != data
+    {
+        backup::push_backup(&app_support_dir(), &old, backup::KEEP).ok();
+    }
+    backup::write_atomic(&path, &data).ok();
+}
+
+/// The backups on disk, newest first.
+pub fn backups() -> Vec<backup::Backup> {
+    backup::list_backups(&app_support_dir(), backup::KEEP)
+}
+
+/// Parses backup `n` (1 = newest). None if it does not exist or is not a valid config.
+pub fn load_backup(n: usize) -> Option<Config> {
+    parse_config(&backup::read_backup(&app_support_dir(), n)?)
 }
 
 /// Writes ~/Downloads/cursorpie-config.json and returns its path.

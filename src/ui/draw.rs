@@ -6,18 +6,7 @@ use std::path::PathBuf;
 // --------------------------------------------------------------------- icons
 /// If the icon string points to an image file, return its path. Otherwise it is text/emoji.
 pub fn icon_path(s: &str) -> Option<PathBuf> {
-    let s = s.trim();
-    let lower = s.to_lowercase();
-    let is_img = [".png", ".jpg", ".jpeg", ".webp"]
-        .iter()
-        .any(|e| lower.ends_with(e));
-    if !is_img {
-        return None;
-    }
-    if let Some(rest) = s.strip_prefix("~/") {
-        return Some(crate::config::home().join(rest));
-    }
-    Some(PathBuf::from(s))
+    crate::config::image_path(s)
 }
 
 /// Loads an image file as a texture (downscaled to at most 128 px).

@@ -1,5 +1,8 @@
-//! Profile toolbar of the Menu tab: select, create, delete and rename profiles, and edit the
-//! apps a profile applies to.
+//! Profile toolbar of the Menu tab: select, create, delete and rename profiles, edit the apps a
+//! profile applies to, and share (export / import) a profile with its icons.
+//!
+//! There is exactly one general profile (no apps, cannot be deleted). Every other profile belongs
+//! to at least one app: the "New profile" form asks for it, and the last app cannot be removed.
 
 use crate::config::*;
 use crate::msg::Msg;
@@ -29,7 +32,66 @@ pub(super) fn sticky_menu<R>(
         .0
 }
 
-/// One row: profile picker, new / delete buttons, rename and "apps" popups.
+/// Shows `text` in the status bar of Settings (this file has no access to `App`).
+fn notice(tx: &Sender<Msg>, ctx: &egui::Context, text: impl Into<String>) {
+    let _ = tx.send(Msg::Notice(text.into()));
+    ctx.request_repaint();
+}
+
+/// The "New profile" form: a name and the app the profile belongs to, both required.
+fn new_profile_form(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    edit: &mut Config,
+    ed: &mut Ed,
+    tx: &Sender<Msg>,
+) {
+    ui.set_min_width(320.0);
+    muted(
+        ui,
+        "Every profile except the general one belongs to an app.",
+    );
+    ui.add(
+        text_field(&mut ed.new_profile_name)
+            .desired_width(300.0)
+            .hint_text("Profile name"),
+    );
+    ui.horizontal(|ui| {
+        ui.add(
+            text_field(&mut ed.new_profile_app)
+                .desired_width(220.0)
+                .hint_text("bundle id, e.g. com.apple.Safari"),
+        );
+        if ui.button("Pick…").clicked() {
+            spawn_file_picker(
+                tx.clone(),
+                ctx.clone(),
+                "com.apple.application-bundle",
+                "Choose an application",
+                |file| platform::bundle_id_of(&file).map(Msg::NewProfileAppPicked),
+            );
+        }
+    });
+    let full = edit.profiles.len() >= MAX_PROFILES;
+    let new = Profile::for_app(&ed.new_profile_name, &ed.new_profile_app);
+    let create = ui.add_enabled(new.is_some() && !full, egui::Button::new("Create"));
+    if full {
+        muted(ui, "The profile limit is reached. Delete one first.");
+    }
+    if create.clicked()
+        && let Some(profile) = new
+    {
+        edit.profiles.push(profile);
+        ed.profile = edit.profiles.len() - 1;
+        ed.reset_nav();
+        ed.stop_recording();
+        ed.new_profile_name.clear();
+        ed.new_profile_app.clear();
+        ui.close();
+    }
+}
+
+/// One row: profile picker, new / delete buttons, rename, "apps" and "share" popups.
 pub(super) fn profile_toolbar(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
@@ -54,18 +116,20 @@ pub(super) fn profile_toolbar(
         }
         let pi = ed.profile;
 
-        if icon_btn(ui, "+", "New profile", edit.profiles.len() < MAX_PROFILES).clicked() {
-            edit.profiles.push(Profile {
-                name: "New profile".into(),
-                apps: vec![],
-                items: vec![presets().remove(0)],
-                active: vec![0],
-            });
-            ed.profile = edit.profiles.len() - 1;
-            ed.reset_nav();
-            ed.stop_recording();
-        }
-        if icon_btn(ui, "✖", "Delete profile", edit.profiles.len() > 1).clicked() {
+        sticky_menu(ui, "New profile", |ui| {
+            new_profile_form(ui, ctx, edit, ed, tx)
+        })
+        .on_hover_text("Create a profile for an app");
+        // the general profile is the fallback for every app, so it must stay
+        let can_delete = edit.profiles.len() > 1 && !edit.profiles[pi].is_general();
+        if icon_btn(
+            ui,
+            "✖",
+            "Delete profile (the general profile cannot be deleted)",
+            can_delete,
+        )
+        .clicked()
+        {
             edit.profiles.remove(pi);
             ed.profile = pi.saturating_sub(1);
             ed.reset_nav();
@@ -88,7 +152,8 @@ pub(super) fn profile_toolbar(
         .on_hover_text("Rename profile");
 
         // apps that use this profile
-        let label = if prof.apps.is_empty() {
+        let general = prof.is_general();
+        let label = if general {
             "All apps".to_string()
         } else {
             format!(
@@ -100,20 +165,26 @@ pub(super) fn profile_toolbar(
         let profile = ed.profile;
         sticky_menu(ui, label, |ui| {
             ui.set_min_width(320.0);
-            muted(
-                ui,
-                if prof.apps.is_empty() {
-                    "Used for every app without its own profile."
-                } else {
-                    "Used while one of these is in front:"
-                },
-            );
+            if general {
+                muted(
+                    ui,
+                    "The general profile: used for every app without its own profile.",
+                );
+                return;
+            }
+            muted(ui, "Used while one of these is in front:");
             let mut drop_app: Option<usize> = None;
+            let last = prof.apps.len() == 1;
             for (i, app) in prof.apps.iter().enumerate() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(app).monospace());
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.small_button("✖").clicked() {
+                        // a profile that is not the general one keeps at least one app
+                        let remove = ui.add_enabled(!last, egui::Button::new("✖").small());
+                        if remove
+                            .on_hover_text("A profile needs at least one app")
+                            .clicked()
+                        {
                             drop_app = Some(i);
                         }
                     });
@@ -150,5 +221,29 @@ pub(super) fn profile_toolbar(
             });
         })
         .on_hover_text("Apps that use this profile");
+
+        // share: export this profile with its icons, or import one
+        let (_, _) = MenuButton::new("Share").ui(ui, |ui| {
+            if ui.button("Export this profile…").clicked() {
+                match share::export_to_downloads(prof) {
+                    Ok(path) => {
+                        platform::reveal_in_finder(&path);
+                        notice(tx, ctx, format!("Exported to {}", path.display()));
+                    }
+                    Err(e) => notice(tx, ctx, format!("Export failed: {e}")),
+                }
+                ui.close();
+            }
+            if ui.button("Import a profile…").clicked() {
+                spawn_file_picker(
+                    tx.clone(),
+                    ctx.clone(),
+                    "public.json",
+                    "Choose a CursorPie profile",
+                    |file| Some(Msg::ProfileImportPicked(file)),
+                );
+                ui.close();
+            }
+        });
     });
 }

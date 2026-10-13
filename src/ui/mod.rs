@@ -7,6 +7,8 @@
 //! | [`settings`] | the Settings window (tabs, editors, icon picker) |
 //! | [`tray`] | the menu bar icon and menu |
 //! | [`appicon`] | real app icons, reduced to white glyphs |
+//! | [`icons`] | the bounded texture cache for icons, shared by the pie and Settings |
+//! | [`sleep`] | the idle policy that frees caches and Settings state |
 //! | [`draw`] | drawing helpers shared by the pie and Settings |
 //! | [`screen`] | display lookup for window placement |
 //!
@@ -16,7 +18,9 @@
 pub mod app;
 pub mod appicon;
 pub mod draw;
+pub mod icons;
 pub mod pie;
 pub mod screen;
 pub mod settings;
+pub mod sleep;
 pub mod tray;

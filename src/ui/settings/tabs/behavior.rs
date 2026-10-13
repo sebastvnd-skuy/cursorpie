@@ -87,6 +87,19 @@ impl App {
             panel(ui, "Startup", |ui| {
                 toggle(ui, &mut cfg.launch_at_login, "Launch at login", accent);
             });
+            panel(ui, "Memory", |ui| {
+                let mut on = cfg.sleep_after_s != 0;
+                if toggle(ui, &mut on, "Free memory while CursorPie is idle", accent).changed() {
+                    cfg.sleep_after_s = if on { 60 } else { 0 };
+                }
+                if cfg.sleep_after_s != 0 {
+                    slider_row(ui, "Idle time before freeing", &mut cfg.sleep_after_s, 10..=600, " s");
+                }
+                muted(
+                    ui,
+                    "After this long without a pie or Settings, cached icons and the editor's working copy are dropped. They are loaded again when you press the trigger.",
+                );
+            });
 
             // ------------------------------------------------------------ right column
             let ui = &mut cols[1];

@@ -1,7 +1,11 @@
 //! Applies one [`Msg`] (sent by the event tap, the tray menu or a file-picker thread) to the UI state.
 
 use super::App;
-use crate::config::{Action, ItemKind, cfg, has_commands, item_at_mut, parse_config};
+use crate::config::share::{add_profile, import_file};
+use crate::config::{
+    Action, ItemKind, cfg, has_commands, icons_dir, item_at_mut, parse_config,
+    profile_has_commands, tilde,
+};
 use crate::msg::Msg;
 use crate::platform;
 use crate::ui::settings::Slot;
@@ -36,6 +40,10 @@ impl App {
                 }
                 self.hover = h;
             }
+            Msg::NewProfileAppPicked(bundle) => self.ed.new_profile_app = bundle,
+            Msg::ProfileImportPicked(file) => self.import_profile(&file),
+            Msg::Notice(text) => self.say(text),
+            Msg::Warm { general, app } => self.warm(ctx, general, app),
             Msg::Refocus => ctx.send_viewport_cmd(egui::ViewportCommand::Focus),
             Msg::HidePie => {
                 self.hover = None;
@@ -89,7 +97,7 @@ impl App {
                     self.ed.profile = 0;
                     self.ed.reset_nav();
                     self.ed.stop_recording();
-                    self.ed.icons.clear();
+                    self.ed.icons.revalidate();
                     self.say(if warn {
                         "Imported. This config runs shell commands - review them before you Save."
                     } else {
@@ -120,6 +128,33 @@ impl App {
                     }
                 }
             }
+        }
+    }
+}
+
+impl App {
+    /// Adds the profile in `file` (with its icons) to the Settings copy as a new profile.
+    fn import_profile(&mut self, file: &str) {
+        if !self.settings_open {
+            return; // the chooser answered after Settings was closed
+        }
+        let added = import_file(file, &icons_dir(), &tilde).and_then(|p| {
+            let runs_commands = profile_has_commands(&p);
+            add_profile(&mut self.edit, p).map(|i| (i, runs_commands))
+        });
+        match added {
+            Ok((index, runs_commands)) => {
+                self.ed.profile = index;
+                self.ed.reset_nav();
+                self.ed.stop_recording();
+                self.ed.icons.revalidate();
+                self.say(if runs_commands {
+                    "Profile imported. It runs shell commands - review them before you Save."
+                } else {
+                    "Profile imported. Review it, then press Save to apply."
+                });
+            }
+            Err(e) => self.say(e),
         }
     }
 }

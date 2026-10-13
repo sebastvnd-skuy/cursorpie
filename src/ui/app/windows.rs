@@ -21,7 +21,7 @@ impl App {
             let login = new.launch_at_login;
             *cfg() = new.clone();
             side::forget_all(); // a changed default should apply at once
-            config::save_config(&new);
+            config::save_config_with_backup(&new);
             if let Err(e) = platform::set_launch_at_login(login) {
                 eprintln!("CursorPie: could not update launch-at-login: {e}");
             }
@@ -29,7 +29,8 @@ impl App {
                 t.login.set_checked(login);
             }
         }
-        self.ed.icons.clear(); // re-read images that changed on disk
+        self.ed.icons.revalidate(); // re-read only the images that changed on disk
+        self.release_editor(); // the next open copies the config again
         self.win = cfg().pie_size;
         self.settings_open = false;
         self.closing = None;
@@ -45,6 +46,7 @@ impl App {
             egui::WindowLevel::AlwaysOnTop,
         ));
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        self.sleep_step(ctx); // the idle clock starts now
     }
 
     /// Turns the window into Settings, centered on the display that contains `at`.
@@ -62,12 +64,13 @@ impl App {
         self.closing = None;
         self.settings_anim = 0.0;
         self.ed.stop_recording();
-        self.ed.icons.clear();
+        self.ed.icons.revalidate();
         self.ed.profile = 0;
         self.ed.reset_nav();
         self.ed.tab = if about { Tab::About } else { Tab::Menu };
         self.edit = cfg().clone();
         self.edit.launch_at_login = platform::launch_at_login_enabled();
+        self.history.reset(&self.edit); // undo starts from what Settings opened with
 
         // centered on the display that contains the cursor
         let area = screen_rect_at(at)

@@ -2,6 +2,7 @@
 
 use super::{
     CONFIG_VERSION, Config, Item, ItemKind, MAX_DEPTH, MAX_ITEMS, MAX_PROFILES, item_at, presets,
+    share::clean_apps,
 };
 
 /// Path of the first `Mode` slice in depth-first order, if there is one.
@@ -41,6 +42,17 @@ impl Config {
     /// Called for every config that is loaded, imported or saved.
     pub fn sanitize(mut self) -> Self {
         self.version = CONFIG_VERSION;
+        // Only the first profile without apps is kept (the general one). A second one could never
+        // be chosen: profiles are picked by app, and the fallback is the first without apps.
+        let mut have_general = false;
+        for p in &mut self.profiles {
+            p.apps = clean_apps(&p.apps);
+        }
+        self.profiles.retain(|p| {
+            let extra_general = p.is_general() && have_general;
+            have_general |= p.is_general();
+            !extra_general
+        });
         if self.profiles.is_empty() {
             self.profiles = Config::default().profiles;
         }
@@ -63,6 +75,9 @@ impl Config {
         self.settings_hold_ms = self.settings_hold_ms.max(self.pie_hold_ms + 300);
         self.pie_size = self.pie_size.clamp(140.0, 360.0);
         self.preview_ms = self.preview_ms.min(3000);
+        if self.sleep_after_s != 0 {
+            self.sleep_after_s = self.sleep_after_s.clamp(10, 3600);
+        }
         if !matches!(self.trigger_button, 2 | 5 | 6 | 7) {
             self.trigger_button = 2;
         }

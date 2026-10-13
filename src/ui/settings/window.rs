@@ -19,6 +19,7 @@
 use super::state::Tab;
 use super::tabs::about::about_tab;
 use crate::about::*;
+use crate::config::backups;
 use crate::platform;
 use crate::tap::TAP_ACTIVE;
 use crate::ui::app::App;
@@ -35,6 +36,8 @@ const SIDEBAR_W: f32 = 140.0;
 /// What the sidebar buttons asked for this frame.
 enum UiAction {
     None,
+    Undo,
+    Redo,
     Save,
     Cancel,
     Quit,
@@ -70,6 +73,7 @@ impl App {
         {
             self.closing = Some(false);
         }
+        self.history_keys(&ctx);
         if self
             .toast
             .as_ref()
@@ -129,6 +133,7 @@ impl App {
         }
 
         let mut action = UiAction::None;
+        let (can_undo, can_redo) = (self.history.can_undo(), self.history.can_redo());
 
         // ---------------------------------------------------------------- sidebar
         ui.scope_builder(egui::UiBuilder::new().max_rect(side), |ui| {
@@ -159,13 +164,32 @@ impl App {
                 if nav_item(ui, label, self.ed.tab == tab, accent, SIDEBAR_W).clicked() {
                     self.ed.tab = tab;
                     self.ed.picking_icon = false;
+                    if tab == Tab::General {
+                        self.ed.backups = backups(); // read once, not on every frame
+                    }
                 }
             }
 
-            // Save / Cancel / Quit sit at the bottom, always in the same place
+            // Undo / Redo, then Save / Cancel / Quit sit at the bottom, always in the same place
             ui.spacing_mut().item_spacing.y = GAP;
-            let buttons_h = 3.0 * CONTROL_H + 2.0 * GAP;
+            let buttons_h = 4.0 * CONTROL_H + 3.0 * GAP;
             ui.add_space((ui.available_height() - buttons_h).max(0.0));
+            let half = Vec2::new((SIDEBAR_W - GAP) / 2.0, CONTROL_H);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = GAP;
+                ui.add_enabled_ui(can_undo, |ui| {
+                    let undo = ui.add_sized(half, egui::Button::new("Undo"));
+                    if undo.on_hover_text("Undo the last change (Cmd+Z)").clicked() {
+                        action = UiAction::Undo;
+                    }
+                });
+                ui.add_enabled_ui(can_redo, |ui| {
+                    let redo = ui.add_sized(half, egui::Button::new("Redo"));
+                    if redo.on_hover_text("Redo (Cmd+Shift+Z)").clicked() {
+                        action = UiAction::Redo;
+                    }
+                });
+            });
             let size = Vec2::new(SIDEBAR_W, CONTROL_H);
             let save = egui::Button::new(RichText::new("Save").strong().color(on_accent(accent)))
                 .fill(accent)
@@ -213,7 +237,7 @@ impl App {
                 .max_rect(status.shrink2(Vec2::new(GAP + 2.0, 0.0)))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
             |ui| {
-                if !platform::is_trusted() || !TAP_ACTIVE.load(Ordering::SeqCst) {
+                if !platform::is_trusted_cached() || !TAP_ACTIVE.load(Ordering::SeqCst) {
                     ui.label(RichText::new("⚠ Accessibility permission needed").color(BAD));
                     if ui.small_button("Open System Settings").clicked() {
                         platform::open_accessibility_settings();
@@ -221,12 +245,17 @@ impl App {
                 } else if let Some((msg, _)) = &self.toast {
                     ui.label(RichText::new(msg).color(accent));
                 } else {
-                    muted(ui, "Esc cancels  ·  Save applies every tab at once");
+                    muted(
+                        ui,
+                        "Esc cancels  ·  Cmd+Z undoes  ·  Save applies every tab at once",
+                    );
                 }
             },
         );
 
         match action {
+            UiAction::Undo => self.undo_edit(&ctx),
+            UiAction::Redo => self.redo_edit(&ctx),
             UiAction::Save => {
                 self.ed.stop_recording();
                 self.closing = Some(true);
@@ -238,5 +267,6 @@ impl App {
             UiAction::Quit => self.quit(&ctx),
             UiAction::None => {}
         }
+        self.history_observe(&ctx);
     }
 }

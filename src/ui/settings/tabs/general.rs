@@ -1,5 +1,6 @@
 //! General tab: permissions status and config import/export/reset.
 
+use crate::config::backup::age_label;
 use crate::config::*;
 use crate::msg::Msg;
 use crate::platform;
@@ -9,12 +10,13 @@ use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use eframe::egui::{self, RichText};
 use std::sync::atomic::Ordering;
+use std::time::SystemTime;
 
 impl App {
     /// Draws the General tab: permission status, config location, import / export / reset.
     pub(in crate::ui::settings) fn general_tab(&mut self, ui: &mut egui::Ui) {
         panel(ui, "Permissions", |ui| {
-            let trusted = platform::is_trusted();
+            let trusted = platform::is_trusted_cached();
             let running = TAP_ACTIVE.load(Ordering::SeqCst);
             info_row(ui, |ui| {
                 muted(ui, "Accessibility");
@@ -86,6 +88,34 @@ impl App {
                 ui,
                 "Export saves your whole setup to ~/Downloads so you can share it. Only import configs you trust: actions can run shell commands.",
             );
+        });
+        panel(ui, "Backups", |ui| {
+            muted(
+                ui,
+                "Every Save keeps the version it replaces, so a setting deleted by mistake is not gone for good. Restoring loads a backup into the editor; nothing changes until you press Save, and Undo brings back what you had.",
+            );
+            if self.ed.backups.is_empty() {
+                muted(
+                    ui,
+                    "No backups yet. The first one is made by your next Save.",
+                );
+            }
+            let now = SystemTime::now();
+            let mut restore = None;
+            ui.horizontal_wrapped(|ui| {
+                for b in &self.ed.backups {
+                    let age = b
+                        .modified
+                        .and_then(|t| now.duration_since(t).ok())
+                        .map_or_else(|| "earlier".to_string(), age_label);
+                    if ui.button(format!("Restore: {age}")).clicked() {
+                        restore = Some(b.n);
+                    }
+                }
+            });
+            if let Some(n) = restore {
+                self.restore_backup(n);
+            }
         });
     }
 }

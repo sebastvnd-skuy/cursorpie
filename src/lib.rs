@@ -26,6 +26,8 @@
 //! | [`config`] | any thread | data model, defaults, validation, `config.json`, the live global copy |
 //! | [`tap`] | `cursorpie-tap` thread | global event tap and the gesture state machine |
 //! | [`actions`] | `cursorpie-actions` thread | executes actions (shortcuts, `open`, shell) in order |
+//! | [`cache`] | any thread | bounded least-recently-used cache (backs the icon textures) |
+//! | [`history`] | UI thread | undo / redo snapshots for the Settings editor |
 //! | [`side`] | any thread | which pie the back/forward buttons follow |
 //! | [`geometry`] | any thread | pie sizes and slice hit-testing (shared by tap and UI) |
 //! | [`keys`] | any thread | shortcut model (key code + modifiers) and its labels |
@@ -46,9 +48,11 @@ compile_error!("CursorPie only supports macOS.");
 
 pub mod about;
 pub mod actions;
+pub mod cache;
 pub mod config;
 pub mod geometry;
 pub mod guides;
+pub mod history;
 pub mod keys;
 pub mod msg;
 pub mod platform;
