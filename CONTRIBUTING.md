@@ -22,9 +22,96 @@ CursorPie needs the **Accessibility** permission (and sometimes *Input Monitorin
 mouse. When you start it with `cargo run`, macOS attributes the permission to your terminal app.
 While you develop, a rebuilt ad-hoc-signed binary may need the permission granted again.
 
+## Build for every platform
+
+CursorPie is one code base with three kinds of build. Only a native build on macOS or Windows gives
+you a working app; the other builds exist to check that your change still compiles there.
+
+| You are on | You want | Run | Result |
+|---|---|---|---|
+| macOS | the macOS app | `scripts/bundle.sh` | `target/bundle/CursorPie.app` |
+| Windows | the Windows app | `scripts\package-windows.ps1` | `target/bundle/CursorPie-windows.zip` |
+| Linux | to run the tests | `cargo test` | no app: Linux builds the do-nothing stub |
+| any OS | to type-check the Windows backend | `cargo check --features check-windows` | no binary |
+| macOS or Linux | a Windows `.exe` (best effort) | see [Cross-compiling to Windows](#cross-compiling-to-windows) | `cursorpie.exe` |
+
+### macOS
+
+```sh
+xcode-select --install          # once: linker and codesign
+scripts/bundle.sh               # ad-hoc signature, for your own machine
+SIGN_ID="Developer ID Application: Name (TEAMID)" scripts/bundle.sh   # signed with your identity
+```
+
+`scripts/bundle.sh` builds for the architecture of the machine it runs on. To ship one app for both
+Intel and Apple silicon, build both targets, join them with `lipo`, put the result into the bundle
+and sign it again:
+
+```sh
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+cargo build --release --target aarch64-apple-darwin
+cargo build --release --target x86_64-apple-darwin
+lipo -create -output target/CursorPie-universal \
+    target/aarch64-apple-darwin/release/cursorpie target/x86_64-apple-darwin/release/cursorpie
+scripts/bundle.sh
+cp target/CursorPie-universal target/bundle/CursorPie.app/Contents/MacOS/CursorPie
+codesign --force --deep --sign - target/bundle/CursorPie.app
+lipo -info target/bundle/CursorPie.app/Contents/MacOS/CursorPie   # must list x86_64 and arm64
+```
+
+### Windows
+
+Install the MSVC build tools, then in PowerShell:
+
+```powershell
+scripts\package-windows.ps1
+```
+
+The result is a zip with `cursorpie.exe`, `LICENSE` and `README.md`. The executable is a tray app
+without a console window. It is not code signed, so SmartScreen warns about it on first start.
+
+### Linux
+
+Linux has no real backend. `cargo build` and `cargo test` work (the stub does nothing), which is
+enough to run the whole unit test suite and to write platform-independent code. If linking fails,
+install your distribution's X11, Wayland and xkbcommon development packages.
+
+### Cross-compiling to Windows
+
+You can produce a `cursorpie.exe` from macOS or Linux with
+[cargo-xwin](https://github.com/rust-cross/cargo-xwin). It needs `clang` and `lld` (LLVM) and
+downloads the Windows SDK on first use, which means accepting Microsoft's license:
+
+```sh
+rustup target add x86_64-pc-windows-msvc
+cargo install --locked cargo-xwin
+cargo xwin build --release --target x86_64-pc-windows-msvc
+# result: target/x86_64-pc-windows-msvc/release/cursorpie.exe
+```
+
+Treat this as a smoke test. The mouse hook, the tray icon and DPI handling only prove themselves on a
+real Windows machine, so run the manual checklist in `docs/WINDOWS_MIGRATION.md` before you call a
+change finished. CI-style checks that need no Windows machine are
+`cargo check --features check-windows` and `cargo clippy --all-targets --features check-windows`.
+
+### What each OS can check
+
+Rust only compiles the code of the OS you build on, so a lint can only see that code:
+
+| Code | Checked by |
+|---|---|
+| `platform/macos/`, `tap/macos.rs` | `cargo clippy` and `cargo test` on macOS only |
+| `platform/windows/`, `tap/windows.rs` | Windows, or any OS with `--features check-windows` |
+| everything else | any OS |
+
+Before a release: change `version` in `Cargo.toml` (`src/about.rs` reads it from there), keep `BUNDLE_ID`
+equal in `src/about.rs` and `scripts/bundle.sh`, build on each OS, run the manual checklists, and
+attach the `.app` (zipped) and `CursorPie-windows.zip` to a GitHub release.
+
 ## Before you open a pull request
 
-Run all of these:
+Run all of these on your OS. Each command must finish without warnings. When you touch code
+for the other OS, also run the `--features check-windows` variants from the section above.
 
 ```sh
 cargo fmt --all -- --check      # formatting (rustfmt defaults)
@@ -56,6 +143,7 @@ src/ui/            everything on the UI thread: app, pie renderer, Settings, men
                    icon cache (`icons.rs`) and idle policy (`sleep.rs`)
 src/guides/        long-form developer docs (rendered by rustdoc)
 scripts/bundle.sh  builds and signs the .app
+scripts/package-windows.ps1   builds the Windows zip
 ```
 
 Start with the `guides::architecture` page of the Rust docs: it explains the threads, the data

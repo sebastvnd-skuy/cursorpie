@@ -432,7 +432,10 @@ mod tests {
         let outer = arc_points(c, 60.0, 0.0, 1.0).len();
         let inner = arc_points(c, 30.0, 1.0, 0.0).len();
         assert_eq!(pts.len(), outer + inner);
-        assert!(((pts[outer] - c).length() - 30.0).abs() < 1e-3, "turns inward");
+        assert!(
+            ((pts[outer] - c).length() - 30.0).abs() < 1e-3,
+            "turns inward"
+        );
     }
 
     // ------------------------------------------------------------ mesh
@@ -453,7 +456,11 @@ mod tests {
         let (r0, r1, a0, a1, f) = (30.0, 80.0, 0.2, 1.4, 1.0);
         let m = ring_slice_mesh(c, r0, r1, a0, a1, color, f);
         let steps = arc_segments(r1, a1 - a0, ARC_TOLERANCE);
-        assert_eq!(m.vertices.len(), 4 * (steps + 3), "4 rows, steps + 3 columns");
+        assert_eq!(
+            m.vertices.len(),
+            4 * (steps + 3),
+            "4 rows, steps + 3 columns"
+        );
         let solid = m.vertices.iter().filter(|v| v.color == color).count();
         assert_eq!(solid, 2 * (steps + 1), "only the core is opaque");
         assert!(
@@ -495,23 +502,45 @@ mod tests {
         let color = Color32::from_rgb(10, 20, 30);
         let m = ring_slice_mesh(egui::pos2(0.0, 0.0), 30.0, 80.0, 0.0, TAU, color, 1.0);
         let solid = m.vertices.iter().filter(|v| v.color == color).count();
-        assert_eq!(solid * 2, m.vertices.len(), "two solid rows out of four, all columns");
+        assert_eq!(
+            solid * 2,
+            m.vertices.len(),
+            "two solid rows out of four, all columns"
+        );
     }
 
     #[test]
     fn degenerate_slices_make_no_mesh() {
         let c = egui::pos2(0.0, 0.0);
         let w = Color32::WHITE;
-        assert!(ring_slice_mesh(c, 50.0, 50.0, 0.0, 1.0, w, 1.0).is_empty(), "no thickness");
-        assert!(ring_slice_mesh(c, 30.0, 80.0, 1.0, 1.0, w, 1.0).is_empty(), "no sweep");
+        assert!(
+            ring_slice_mesh(c, 50.0, 50.0, 0.0, 1.0, w, 1.0).is_empty(),
+            "no thickness"
+        );
+        assert!(
+            ring_slice_mesh(c, 30.0, 80.0, 1.0, 1.0, w, 1.0).is_empty(),
+            "no sweep"
+        );
         assert!(ring_slice_mesh(c, 30.0, 80.0, 0.0, 1.0, Color32::TRANSPARENT, 1.0).is_empty());
     }
 
     #[test]
     fn a_thin_slice_does_not_fold_over_itself() {
         // sweep much smaller than the feather's angle at the inner radius
-        let m = ring_slice_mesh(egui::pos2(0.0, 0.0), 5.0, 12.0, 0.0, 0.05, Color32::WHITE, 1.0);
+        let m = ring_slice_mesh(
+            egui::pos2(0.0, 0.0),
+            5.0,
+            12.0,
+            0.0,
+            0.05,
+            Color32::WHITE,
+            1.0,
+        );
         assert!(!m.is_empty());
-        assert!(m.vertices.iter().all(|v| v.pos.x.is_finite() && v.pos.y.is_finite()));
+        assert!(
+            m.vertices
+                .iter()
+                .all(|v| v.pos.x.is_finite() && v.pos.y.is_finite())
+        );
     }
 }

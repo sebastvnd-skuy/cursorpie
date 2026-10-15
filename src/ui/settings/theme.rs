@@ -312,12 +312,18 @@ mod tests {
     #[test]
     fn corner_radii_fit_together() {
         assert_eq!(TOP_RADIUS.nw, CARD_RADIUS.nw);
-        assert_eq!(TOP_RADIUS.sw, 0, "the bar is square where it meets the body");
+        assert_eq!(
+            TOP_RADIUS.sw, 0,
+            "the bar is square where it meets the body"
+        );
         assert_eq!(BOTTOM_RADIUS.se, CARD_RADIUS.se);
         assert_eq!(BOTTOM_RADIUS.nw, 0);
-        assert!(
-            RADIUS.nw < CARD_RADIUS.nw,
-            "controls are squarer than the window"
-        );
+        // both sides are constants, so the compiler can check this instead of a test run
+        const {
+            assert!(
+                RADIUS.nw < CARD_RADIUS.nw,
+                "controls are squarer than the window"
+            );
+        }
     }
 }

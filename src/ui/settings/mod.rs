@@ -18,8 +18,8 @@
 //! Settings closes.
 //!
 //! The look is a quiet, dense tool UI: a graphite window with rounded corners, hairline borders,
-//! almost square flat controls, monospace capitals for chrome and one accent color. See [`theme`]
-//! for the rules and `docs/UI_DESIGN.md` for the reasoning.
+//! almost square flat controls, monospace capitals for chrome and one accent color. See the `theme`
+//! module for the rules and `docs/UI_DESIGN.md` for the reasoning.
 
 mod action_editor;
 mod add_panel;

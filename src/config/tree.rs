@@ -24,7 +24,7 @@ pub fn item_at<'a>(items: &'a [Item], path: &[usize]) -> Option<&'a Item> {
 }
 
 /// Mutable version of [`item_at`].
-pub fn item_at_mut<'a>(items: &'a mut Vec<Item>, path: &[usize]) -> Option<&'a mut Item> {
+pub fn item_at_mut<'a>(items: &'a mut [Item], path: &[usize]) -> Option<&'a mut Item> {
     let (first, rest) = path.split_first()?;
     let item = items.get_mut(*first)?;
     if rest.is_empty() {

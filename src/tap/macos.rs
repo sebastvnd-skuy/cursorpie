@@ -1,7 +1,7 @@
 //! macOS hook: a `CGEventTap` on its own thread with a CoreFoundation run loop.
 //!
 //! [`spawn`] keeps retrying every 2 seconds until the Accessibility permission is granted. Native
-//! events are translated by [`translate`] and routed by [`dispatch`](super::dispatch).
+//! events are translated by [`translate`] and routed by [`dispatch`].
 
 use super::{Ev, Gesture, Kind, Verdict, dispatch, reset};
 use crate::actions::SYNTH_TAG;

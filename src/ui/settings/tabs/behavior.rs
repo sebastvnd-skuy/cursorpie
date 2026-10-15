@@ -6,7 +6,6 @@
 use crate::config::{AppGesture, SideTarget, TargetApp};
 use crate::ui::app::App;
 use crate::ui::draw::rgb;
-use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use eframe::egui;
 

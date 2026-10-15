@@ -62,6 +62,7 @@ pub(super) fn pie_designer(
     // ---- draw ----
     let sl = TAU / total.max(1) as f32;
     for i in 0..total {
+        let item = items.get(i); // None for the trailing "+" slice
         let ghost = i == n;
         let selected = ed.sel == Some(i);
         let hovered = matches!(hov, Hit::Slice(h) if h == i);
@@ -94,8 +95,7 @@ pub(super) fn pie_designer(
                 FontId::proportional(30.0),
                 Color32::from_white_alpha(130),
             );
-        } else {
-            let it = &items[i];
+        } else if let Some(it) = item {
             let tex = ed.icon_for(ctx, &it.icon);
             draw_icon(
                 &painter,
@@ -145,21 +145,21 @@ pub(super) fn pie_designer(
     );
 
     // ---- clicks ----
-    if resp.clicked() {
-        if let Some(p) = resp.interact_pointer_pos() {
-            match hit(p) {
-                Hit::Center if !ed.nav.is_empty() => return Designer::Up,
-                Hit::Slice(i) if i == n && n < MAX_ITEMS => return Designer::AddClicked,
-                Hit::Slice(i) if i < n => {
-                    let is_sub = matches!(items[i].kind, ItemKind::Submenu(_));
-                    if ed.sel == Some(i) && is_sub {
-                        return Designer::Enter(i); // click again = step in
-                    }
-                    ed.sel = Some(i);
-                    ed.adding = false;
+    if resp.clicked()
+        && let Some(p) = resp.interact_pointer_pos()
+    {
+        match hit(p) {
+            Hit::Center if !ed.nav.is_empty() => return Designer::Up,
+            Hit::Slice(i) if i == n && n < MAX_ITEMS => return Designer::AddClicked,
+            Hit::Slice(i) if i < n => {
+                let is_sub = matches!(items[i].kind, ItemKind::Submenu(_));
+                if ed.sel == Some(i) && is_sub {
+                    return Designer::Enter(i); // click again = step in
                 }
-                _ => {}
+                ed.sel = Some(i);
+                ed.adding = false;
             }
+            _ => {}
         }
     }
     Designer::None

@@ -130,7 +130,10 @@ impl App {
         painter.rect_filled(foot, BOTTOM_RADIUS, INPUT);
         let hairline = |y: f32| {
             painter.line_segment(
-                [egui::pos2(card_rect.min.x, y), egui::pos2(card_rect.max.x, y)],
+                [
+                    egui::pos2(card_rect.min.x, y),
+                    egui::pos2(card_rect.max.x, y),
+                ],
                 egui::Stroke::new(1.0, BORDER),
             );
         };
@@ -156,7 +159,10 @@ impl App {
         // ---------------------------------------------------------------- top bar
         let bar_line = |ui: &egui::Ui, x: f32| {
             ui.painter().line_segment(
-                [egui::pos2(x, top.min.y + 14.0), egui::pos2(x, top.max.y - 14.0)],
+                [
+                    egui::pos2(x, top.min.y + 14.0),
+                    egui::pos2(x, top.max.y - 14.0),
+                ],
                 egui::Stroke::new(1.0, BORDER),
             );
         };
@@ -338,8 +344,14 @@ mod tests {
         assert_eq!(r.foot.width(), c.width());
         assert_eq!(r.top.height(), TOP_H);
         assert_eq!(r.foot.height(), FOOT_H);
-        assert!(r.top.max.y + PAD <= r.body.min.y + 1e-3, "body clears the bar");
-        assert!(r.body.max.y + PAD <= r.foot.min.y + 1e-3, "body clears the footer");
+        assert!(
+            r.top.max.y + PAD <= r.body.min.y + 1e-3,
+            "body clears the bar"
+        );
+        assert!(
+            r.body.max.y + PAD <= r.foot.min.y + 1e-3,
+            "body clears the footer"
+        );
         assert!(c.contains_rect(r.body));
     }
 

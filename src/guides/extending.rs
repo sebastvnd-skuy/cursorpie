@@ -184,3 +184,26 @@
 //!
 //! Edit `about.rs` (name, author, links, bundle id), `Cargo.toml`, `LICENSE`, and keep
 //! `BUNDLE_ID` identical in `about.rs` and `scripts/bundle.sh`.
+//!
+//! ### Replace the logo
+//!
+//! The logo is one function, `draw_logo` in `ui/settings/widgets.rs`. The top bar of the Settings
+//! window (`ui/settings/window.rs`, a 24 pt box) and the About tab (`ui/settings/tabs/about.rs`, an
+//! 88 pt box) both call it, so keep its signature and change only its body.
+//!
+//! 1. Keep the SVG as the source file (`assets/logo.svg`) and render a square PNG from it, because
+//!    the app has no SVG renderer and adding one would break the "no new dependencies" rule:
+//!
+//!    ```sh
+//!    rsvg-convert -w 256 -h 256 assets/logo.svg -o assets/logo.png
+//!    ```
+//!
+//! 2. Embed the PNG with `include_bytes!`, decode it with the `image` crate (its `png` feature is
+//!    already on) and upload it once as an egui texture. A texture is a cache: keep it in one place
+//!    and drop it in `App::enter_sleep` (see [Cache something in the UI](#cache-something-in-the-ui)).
+//! 3. Draw it with `Painter::image`. A white logo on a transparent background can be tinted with
+//!    the accent color, which keeps the old behavior of following the accent.
+//! 4. Add a unit test that decodes the embedded PNG, so a broken asset fails `cargo test`.
+//!
+//! The menu bar / tray icon (`ui/tray.rs`) and the icon of the `.app` bundle are separate and are
+//! not changed by this.

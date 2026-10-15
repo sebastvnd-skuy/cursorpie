@@ -3,7 +3,8 @@
 //! Every Save in Settings first stores the text of the file it is about to replace as
 //! `config.backup.1.json`, shifting the older ones up to `config.backup.<KEEP>.json`. The
 //! functions here only move text around, so they take the directory as a parameter and are unit
-//! tested with a scratch directory. [`store`](super::store) connects them to the real config.
+//! tested with a scratch directory. The `store` module next to this one connects them to the real
+//! config.
 
 use std::fs;
 use std::io;

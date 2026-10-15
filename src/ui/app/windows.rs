@@ -193,10 +193,10 @@ impl App {
                 }
             }
             "login" => {
-                if let Some(t) = &self.tray {
-                    if let Err(e) = platform::set_launch_at_login(t.login_checked()) {
-                        eprintln!("CursorPie: could not update launch-at-login: {e}");
-                    }
+                if let Some(t) = &self.tray
+                    && let Err(e) = platform::set_launch_at_login(t.login_checked())
+                {
+                    eprintln!("CursorPie: could not update launch-at-login: {e}");
                 }
             }
             "quit" => self.quit(ctx),

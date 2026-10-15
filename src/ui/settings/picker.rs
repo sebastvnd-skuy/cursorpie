@@ -19,10 +19,10 @@ pub(super) fn spawn_file_picker(
     make: impl FnOnce(String) -> Option<Msg> + Send + 'static,
 ) {
     std::thread::spawn(move || {
-        if let Some(file) = platform::choose_file(kind, prompt) {
-            if let Some(msg) = make(file) {
-                let _ = tx.send(msg);
-            }
+        if let Some(file) = platform::choose_file(kind, prompt)
+            && let Some(msg) = make(file)
+        {
+            let _ = tx.send(msg);
         }
         std::thread::sleep(Duration::from_millis(120)); // give the OS time to hand focus back
         let _ = tx.send(Msg::Refocus);

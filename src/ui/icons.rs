@@ -304,18 +304,20 @@ mod tests {
     #[test]
     fn warm_list_covers_ring_submenu_center_and_app_icon() {
         use crate::config::{Action, Config, Item, Profile};
-        let mut c = Config::default();
-        c.center_app_icon = true;
-        c.profiles = vec![Profile {
-            name: "App".into(),
-            apps: vec!["com.example.App".into()],
-            items: vec![
-                Item::run("A", "~/a.png", Action::Nothing),
-                Item::submenu("S", "S", vec![Item::run("B", "~/b.png", Action::Nothing)]),
-                Item::run("Dup", "~/a.png", Action::Nothing),
-            ],
-            active: vec![],
-        }];
+        let c = Config {
+            center_app_icon: true,
+            profiles: vec![Profile {
+                name: "App".into(),
+                apps: vec!["com.example.App".into()],
+                items: vec![
+                    Item::run("A", "~/a.png", Action::Nothing),
+                    Item::submenu("S", "S", vec![Item::run("B", "~/b.png", Action::Nothing)]),
+                    Item::run("Dup", "~/a.png", Action::Nothing),
+                ],
+                active: vec![],
+            }],
+            ..Default::default()
+        };
         let w = icons_to_warm(&c, 0, Some("com.example.App"));
         assert!(w.contains(&"app:com.example.App".to_string()));
         assert!(w.contains(&"~/a.png".to_string()) && w.contains(&"~/b.png".to_string()));

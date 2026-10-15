@@ -162,7 +162,7 @@ fn build() -> Option<Table> {
             if !is_layout_key(code) {
                 continue;
             }
-            for variant in 0..4usize {
+            for (variant, slot) in chars[code as usize].iter_mut().enumerate() {
                 let mut m = 0;
                 if variant & 1 != 0 {
                     m |= UC_SHIFT;
@@ -170,7 +170,7 @@ fn build() -> Option<Table> {
                 if variant & 2 != 0 {
                     m |= UC_OPTION;
                 }
-                chars[code as usize][variant] = translate(layout, kbd, code, m);
+                *slot = translate(layout, kbd, code, m);
             }
         }
         CFRelease(src); // `layout` points into `src`; not used past this point
@@ -185,9 +185,9 @@ fn build() -> Option<Table> {
             if variant & 2 != 0 {
                 mods |= MOD_ALT;
             }
-            for code in 0u16..128 {
-                if let Some(s) = &chars[code as usize][variant] {
-                    reverse.entry(s.clone()).or_insert((code, mods));
+            for (code, row) in chars.iter().enumerate() {
+                if let Some(s) = &row[variant] {
+                    reverse.entry(s.clone()).or_insert((code as u16, mods));
                 }
             }
         }

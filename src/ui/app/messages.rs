@@ -51,20 +51,17 @@ impl App {
                 self.preview_until = None;
             }
             Msg::KeyCaptured(sc) => {
-                if let Some(rec) = self.ed.recording.take() {
-                    if let Some(p) = self.edit.profiles.get_mut(rec.profile) {
-                        if let Some(item) = item_at_mut(&mut p.items, &rec.path) {
-                            match (&mut item.kind, rec.slot) {
-                                (ItemKind::Mode { back, .. }, Slot::Back) => {
-                                    *back = Action::Key(sc)
-                                }
-                                (ItemKind::Mode { forward, .. }, Slot::Forward) => {
-                                    *forward = Action::Key(sc)
-                                }
-                                (ItemKind::Run(a), Slot::Run) => *a = Action::Key(sc),
-                                _ => {}
-                            }
+                if let Some(rec) = self.ed.recording.take()
+                    && let Some(p) = self.edit.profiles.get_mut(rec.profile)
+                    && let Some(item) = item_at_mut(&mut p.items, &rec.path)
+                {
+                    match (&mut item.kind, rec.slot) {
+                        (ItemKind::Mode { back, .. }, Slot::Back) => *back = Action::Key(sc),
+                        (ItemKind::Mode { forward, .. }, Slot::Forward) => {
+                            *forward = Action::Key(sc)
                         }
+                        (ItemKind::Run(a), Slot::Run) => *a = Action::Key(sc),
+                        _ => {}
                     }
                 }
             }
@@ -74,17 +71,17 @@ impl App {
                 path,
                 file,
             } => {
-                if let Some(p) = self.edit.profiles.get_mut(profile) {
-                    if let Some(item) = item_at_mut(&mut p.items, &path) {
-                        item.icon = file;
-                    }
+                if let Some(p) = self.edit.profiles.get_mut(profile)
+                    && let Some(item) = item_at_mut(&mut p.items, &path)
+                {
+                    item.icon = file;
                 }
             }
             Msg::AppPicked { profile, bundle } => {
-                if let Some(p) = self.edit.profiles.get_mut(profile) {
-                    if !p.apps.contains(&bundle) {
-                        p.apps.push(bundle);
-                    }
+                if let Some(p) = self.edit.profiles.get_mut(profile)
+                    && !p.apps.contains(&bundle)
+                {
+                    p.apps.push(bundle);
                 }
             }
             Msg::ImportPicked(file) => match std::fs::read_to_string(&file)
@@ -113,18 +110,16 @@ impl App {
                 slot,
                 app,
             } => {
-                if let Some(p) = self.edit.profiles.get_mut(profile) {
-                    if let Some(item) = item_at_mut(&mut p.items, &path) {
-                        match (&mut item.kind, slot) {
-                            (ItemKind::Run(a), Slot::Run) => *a = Action::OpenApp(app),
-                            (ItemKind::Mode { back, .. }, Slot::Back) => {
-                                *back = Action::OpenApp(app)
-                            }
-                            (ItemKind::Mode { forward, .. }, Slot::Forward) => {
-                                *forward = Action::OpenApp(app)
-                            }
-                            _ => {}
+                if let Some(p) = self.edit.profiles.get_mut(profile)
+                    && let Some(item) = item_at_mut(&mut p.items, &path)
+                {
+                    match (&mut item.kind, slot) {
+                        (ItemKind::Run(a), Slot::Run) => *a = Action::OpenApp(app),
+                        (ItemKind::Mode { back, .. }, Slot::Back) => *back = Action::OpenApp(app),
+                        (ItemKind::Mode { forward, .. }, Slot::Forward) => {
+                            *forward = Action::OpenApp(app)
                         }
+                        _ => {}
                     }
                 }
             }

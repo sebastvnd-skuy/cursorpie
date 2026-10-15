@@ -72,7 +72,7 @@ pub fn load(bundle: &str) -> Option<egui::ColorImage> {
 /// "differs from the background" and show up as a white outline around the glyph.
 fn resize_straight(img: &RgbaImage) -> RgbaImage {
     let mut pm = img.clone();
-    for c in pm.chunks_exact_mut(4) {
+    for c in pm.as_chunks_mut::<4>().0 {
         let a = c[3] as u32;
         for v in &mut c[..3] {
             *v = ((*v as u32 * a + 127) / 255) as u8;
@@ -174,12 +174,12 @@ fn to_rgba(buf: &[u8], w: u32, h: u32, color: ColorType, premultiplied: bool) ->
             }
         }
         ColorType::RGB(8) if buf.len() >= n * 3 => {
-            for c in buf[..n * 3].chunks_exact(3) {
+            for c in buf[..n * 3].as_chunks::<3>().0 {
                 px.extend_from_slice(&[c[0], c[1], c[2], 255]);
             }
         }
         ColorType::GrayA(8) if buf.len() >= n * 2 => {
-            for c in buf[..n * 2].chunks_exact(2) {
+            for c in buf[..n * 2].as_chunks::<2>().0 {
                 px.extend_from_slice(&[c[0], c[0], c[0], c[1]]);
             }
         }
@@ -195,7 +195,7 @@ fn to_rgba(buf: &[u8], w: u32, h: u32, color: ColorType, premultiplied: bool) ->
 
 /// RGBA with premultiplied colors -> straight colors.
 fn unpremultiply(px: &mut [u8]) {
-    for c in px.chunks_exact_mut(4) {
+    for c in px.as_chunks_mut::<4>().0 {
         let a = c[3] as u32;
         if a != 0 && a != 255 {
             for v in &mut c[..3] {
@@ -288,7 +288,6 @@ mod tests {
             enc.write_image::<colortype::RGBA8>(s, s, sample(s).as_raw())
                 .unwrap();
         }
-        drop(enc);
         out.into_inner()
     }
 
@@ -336,12 +335,10 @@ mod tests {
     fn sixteen_bit_pages_are_narrowed_to_eight() {
         let mut out = Cursor::new(Vec::new());
         let mut enc = TiffEncoder::new(&mut out).unwrap();
-        let px: Vec<u16> = std::iter::repeat([0x1100u16, 0x2200, 0x3300, 0xffff])
-            .take(16 * 16)
+        let px: Vec<u16> = std::iter::repeat_n([0x1100u16, 0x2200, 0x3300, 0xffff], 16 * 16)
             .flatten()
             .collect();
         enc.write_image::<colortype::RGBA16>(16, 16, &px).unwrap();
-        drop(enc);
         let img = decode_best(&out.into_inner()).unwrap();
         assert_eq!(img.get_pixel(3, 3), &Rgba([0x11, 0x22, 0x33, 0xff]));
     }
