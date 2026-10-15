@@ -71,7 +71,8 @@ use ui::app::App;
 ///
 /// Order matters here:
 /// 1. the action worker thread is started ([`actions::init`]);
-/// 2. the eframe window is created hidden, transparent and click-through;
+/// 2. the eframe window is created hidden, transparent and click-through (it renders with `glow`
+///    on Windows and `wgpu` on macOS, chosen in `Cargo.toml`: see `docs/UI_DESIGN.md`);
 /// 3. inside eframe's creator (which runs on the **main thread**, inside the event loop) the
 ///    Dock icon is hidden, the keyboard-layout snapshot is taken (TIS needs the main thread),
 ///    the event-tap thread is spawned and the menu bar icon is created.

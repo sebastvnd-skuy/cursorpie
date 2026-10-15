@@ -116,6 +116,8 @@ Run on macOS 11+ and on Windows 10 and 11:
 8. Non-US keyboard layout (AZERTY or QWERTZ): labels and preset shortcuts match the layout.
 9. Two monitors, same scale, and 125 % / 150 % scaling on Windows: pie size and hit-testing match.
 10. Idle for the sleep time, then open the pie: icons reload, no crash.
+11. Windows: the pie and the margin around the Settings card are see-through (no black or white box),
+    also over a bright window.
 
 ## Risks and known limitations
 
@@ -133,6 +135,11 @@ Run on macOS 11+ and on Windows 10 and 11:
 - **Icons in a copied `config.json`.** Image icons are stored as `~/...` paths, which differ per OS. Profile
   *share files* embed the images and are portable; copying a whole `config.json` between OSes is not.
 - **Trigger button.** Only the middle button is offered on Windows.
+- **Transparent window needs the `glow` renderer.** eframe 0.36 defaults to `wgpu`, which gives an
+  opaque window on Windows (a black box around the pie). The Windows build therefore uses `glow`
+  (OpenGL), selected in `Cargo.toml`; see `docs/UI_DESIGN.md`. It needs OpenGL 2.0 or newer, which
+  every Windows 10/11 GPU driver provides, but a machine with a broken OpenGL driver or a remote
+  desktop session without GPU acceleration may fail to create the window.
 - **Unverified here.** The Windows backend was written and type-checked without a Windows machine.
   Treat phase 5 as required before a release.
 

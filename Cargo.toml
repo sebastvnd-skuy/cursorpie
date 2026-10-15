@@ -15,8 +15,8 @@ repository = "https://github.com/sebastvnd/cursorpie"
 check-windows = ["dep:windows-sys"]
 
 [dependencies]
-# UI (egui 0.36 uses `App::ui` + `App::logic`, same as the original code)
-eframe = "0.36"
+# UI (egui 0.36 uses `App::ui` + `App::logic`, same as the original code).
+# `eframe` is declared per target below, because the renderer differs between the OSes.
 
 # Reads the multi-page TIFF macOS hands out for app icons. Only the codecs macOS uses are enabled.
 # Kept for every target because the decoder is plain Rust and its tests run everywhere.
@@ -45,6 +45,11 @@ windows-sys = { version = "0.61", optional = true, features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+# UI on macOS (and on Linux, which only builds the test stub): eframe's default features, that is
+# the `wgpu` renderer (Metal on macOS).
+[target.'cfg(not(windows))'.dependencies]
+eframe = "0.36"
+
 # macOS: event tap, frontmost app, activation policy (no Dock icon), app icons.
 [target.'cfg(target_os = "macos")'.dependencies]
 # Event tap. Keep the core-graphics / core-foundation versions that already
@@ -67,8 +72,19 @@ objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSData"]
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
 tray-icon = "0.25"
 
-# Windows: low-level hooks, SendInput, registry, DPI, file chooser.
+# Windows: low-level hooks, SendInput, registry, DPI, file chooser, and the UI.
 [target.'cfg(windows)'.dependencies]
+# The pie and the Settings card are drawn on a transparent, borderless window. With eframe's
+# default `wgpu` renderer that window was opaque on Windows (the pie sat in a black box); the
+# `glow` (OpenGL) renderer asks for a pixel format with an alpha channel and winit enables
+# per-pixel alpha, which is the combination that gives a transparent window there.
+# Turn the default features off: with both renderers compiled in, eframe prefers `wgpu`.
+# Never add the `wgpu` feature here (see docs/UI_DESIGN.md, "Transparent window on Windows").
+eframe = { version = "0.36", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

@@ -102,6 +102,31 @@ Timing: 0.22 s to open (slices appear one after another, with a small overshoot)
    alpha.
 7. **Keep colors, radii and sizes in `theme.rs`.**
 
+## Transparent window on Windows
+
+The pie and the Settings card are drawn on a borderless window whose background is fully transparent
+(`with_transparent(true)`, `clear_color` is `[0, 0, 0, 0]`, the central panel has no frame).
+Whether that really is transparent depends on the renderer and the OS:
+
+| Platform | Renderer | Result |
+|---|---|---|
+| macOS | `wgpu` (eframe default, Metal) | transparent |
+| Windows | `wgpu` (eframe default since 0.34; DX12, Vulkan or GL surface) | reported and seen as opaque: the pie sits in a **black box** |
+| Windows | `glow` (OpenGL through glutin) | intended fix: the pixel format has an alpha channel and winit turns on per-pixel alpha (verify on real hardware) |
+
+So `Cargo.toml` selects the renderer per target: Windows builds eframe with `default-features = false`
+and `glow`, every other target keeps the defaults. Rules:
+
+1. **Never enable eframe's `wgpu` feature in the Windows dependency table.** If both renderers are
+   compiled in, eframe prefers `wgpu` and the black box comes back.
+2. **Keep every layer above the window transparent:** `clear_color` alpha 0, `CentralPanel` with
+   `Frame::new()` in pie mode. Settings paints its own opaque card inside the margin (`WIN_MARGIN`).
+3. **Check with a clean build.** After changing eframe features run `cargo tree -i wgpu --target
+   x86_64-pc-windows-msvc`: it must report that `wgpu` is not part of the Windows build.
+
+If a machine still shows a black box with `glow`, note the Windows version, the GPU and driver (laptops
+with two GPUs behave differently), and whether Settings is affected too, then open an issue.
+
 ## Testing
 
 Everything that does not need a window is unit tested, and runs on every OS through the stub backend:
@@ -143,3 +168,5 @@ at the very least change the display scaling once:
 - [ ] Undo and Redo are dimmed when unavailable and show a tooltip.
 - [ ] Shrink the screen height (or use a short laptop display): the Menu tab still fits.
 - [ ] Use an image icon with a transparent background: no dark halo around it.
+- [ ] Windows: hold the trigger over a bright window (a white page): the pie floats over it with no
+      black or white box around the ring, and the same for the margin around the Settings card.

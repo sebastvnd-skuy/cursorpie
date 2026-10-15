@@ -39,7 +39,9 @@
 //! cursor. In *Settings mode* the same window is resized to the card size, made interactive,
 //! lowered to the normal window level and centered on the display that contains the cursor.
 //! [`ui::app`](crate::ui::app) switches between the two (`show_pie`, `open_settings`,
-//! `close_settings`). Because the window is click-through, the pie never steals mouse events: the
+//! `close_settings`). The window only looks transparent if the renderer supports it: Windows uses
+//! the `glow` renderer for that reason, macOS keeps `wgpu` (see `docs/UI_DESIGN.md`).
+//! Because the window is click-through, the pie never steals mouse events: the
 //! event tap is what sees the mouse, and the UI only draws.
 //!
 //! ## Data flow
