@@ -1,8 +1,12 @@
 //! Running apps and the pointer: frontmost app, app under the pointer, app icons, activation policy.
 
+use crate::geometry::Point;
+use crate::platform::{NativeIcon, ScreenRect, spawn_reaped};
 use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
+use std::process::Command;
+use std::time::Duration;
 
 /// Bundle identifier of the frontmost application (the key used by per-app profiles).
 /// NSWorkspace can be read from any thread; the pool drains temporaries when called off the main thread.
@@ -20,7 +24,8 @@ pub fn frontmost_bundle_id() -> Option<String> {
 /// space as the cursor), whether or not that app is in front. Only regular app windows count: not
 /// the Dock, the menu bar or the desktop, and CursorPie's own windows are skipped. None when
 /// nothing suitable is under the point or the app has no bundle identifier.
-pub fn bundle_id_at(p: CGPoint) -> Option<String> {
+pub fn bundle_id_at(p: Point) -> Option<String> {
+    let p = CGPoint::new(p.x, p.y);
     use core_foundation::base::{CFType, TCFType};
     use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
     use core_foundation::number::CFNumber;
@@ -114,6 +119,11 @@ pub fn app_icon_tiff(bundle: &str) -> Option<Vec<u8>> {
     })
 }
 
+/// The icon of the app with this bundle id, as the TIFF macOS provides (see [`app_icon_tiff`]).
+pub fn app_icon(bundle: &str) -> Option<NativeIcon> {
+    app_icon_tiff(bundle).map(NativeIcon::Tiff)
+}
+
 /// Hides the Dock icon / app switcher entry (same effect as LSUIElement, also when run via `cargo run`).
 pub fn set_accessory_policy() {
     use objc2::MainThreadMarker;
@@ -130,4 +140,40 @@ pub fn cursor_pos() -> Option<(f64, f64)> {
     let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState).ok()?;
     let p = CGEvent::new(src).ok()?.location();
     Some((p.x, p.y))
+}
+
+/// Activates an app and waits (briefly) until macOS really has it in front: `open` returns
+/// before the switch is done, and keys sent too early would reach the previous app.
+pub fn activate_app(bundle: &str) {
+    if frontmost_bundle_id().as_deref() == Some(bundle) {
+        return;
+    }
+    spawn_reaped(Command::new("open").arg("-b").arg(bundle));
+    for _ in 0..30 {
+        std::thread::sleep(Duration::from_millis(15));
+        if frontmost_bundle_id().as_deref() == Some(bundle) {
+            std::thread::sleep(Duration::from_millis(40)); // let its window become the key window
+            return;
+        }
+    }
+}
+
+/// Bounds of every active display in global coordinates (the space of the cursor, in points).
+pub fn display_rects() -> Vec<ScreenRect> {
+    use core_graphics::display::CGDisplay;
+
+    let Ok(ids) = CGDisplay::active_displays() else {
+        return Vec::new();
+    };
+    ids.into_iter()
+        .map(|id| {
+            let b = CGDisplay::new(id).bounds();
+            ScreenRect {
+                x: b.origin.x,
+                y: b.origin.y,
+                w: b.size.width,
+                h: b.size.height,
+            }
+        })
+        .collect()
 }

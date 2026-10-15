@@ -5,15 +5,17 @@ The technical documentation lives in the Rust docs (see [Documentation](#documen
 
 ## Prerequisites
 
-- **macOS 11 or later.** The code uses macOS-only APIs and refuses to build on other platforms.
+- **macOS 11 or later, or Windows 10 (1809) / 11.** Linux builds a do-nothing stub, enough to run `cargo test`.
 - **Rust 1.88 or later** (edition 2024), installed with [rustup](https://rustup.rs).
-- Xcode Command Line Tools (`xcode-select --install`) for the linker and `codesign`.
+- macOS: Xcode Command Line Tools (`xcode-select --install`) for the linker and `codesign`.
+- Windows: the MSVC build tools (Visual Studio Build Tools, "Desktop development with C++").
 
 ## Build and run
 
 ```sh
-cargo run --release     # quick try; grant Accessibility to your terminal app
-scripts/bundle.sh       # builds target/bundle/CursorPie.app (see README.md)
+cargo run --release     # quick try; on macOS grant Accessibility to your terminal app
+scripts/bundle.sh       # macOS: builds target/bundle/CursorPie.app (see README.md)
+scripts/package-windows.ps1   # Windows: builds target/bundle/CursorPie-windows.zip
 ```
 
 CursorPie needs the **Accessibility** permission (and sometimes *Input Monitoring*) to watch the
@@ -27,7 +29,8 @@ Run all of these:
 ```sh
 cargo fmt --all -- --check      # formatting (rustfmt defaults)
 cargo clippy --all-targets      # lints (do not add new warnings)
-cargo test                      # unit tests
+cargo test                      # unit tests (also run on Linux through the stub backend)
+cargo check --features check-windows   # type-checks the Windows backend on any OS
 cargo docs                      # builds the docs with private items and opens them
 ```
 
@@ -46,7 +49,8 @@ src/actions.rs     worker thread that executes actions in order
 src/cache.rs       bounded LRU cache (icon textures)
 src/history.rs     undo / redo snapshots (Settings editor)
 src/side.rs        which pie the back/forward buttons follow
-src/platform/      macOS glue (permissions, apps, login item, keyboard layout, shell tools)
+src/platform/      OS glue behind one facade: macos/, windows/, stub.rs, plus keymap.rs (key tables)
+docs/              WINDOWS_MIGRATION.md: design, phases and the manual test checklist
 src/ui/            everything on the UI thread: app, pie renderer, Settings, menu bar icon,
                    icon cache (`icons.rs`) and idle policy (`sleep.rs`)
 src/guides/        long-form developer docs (rendered by rustdoc)
@@ -80,7 +84,8 @@ flow and the rules that keep the event tap safe.
 - **Keep Settings undoable.** Settings edits `App::edit`, and `History` watches it as a whole, so
   state that belongs in the config needs no extra code. State kept elsewhere (`Ed`) is not part of
   the history: make it tolerate a config that changed under it (see `Ed::fit_to`).
-- **Keep logic testable.** Put decisions that need no macOS API in plain functions and unit
+- **One code base, two OSes.** Put OS calls in `src/platform/<os>/` (or the native hook glue `src/tap/macos.rs`, `src/tap/windows.rs`) and give every backend the same function names. Everything above them takes an `Os` or portable types (`geometry::Point`, `tap::Ev`). Do not add `cfg` attributes to call sites. Keep config keys macOS virtual key codes; translate at the edge. Do not break macOS when working on Windows, and vice versa: run the tests on both.
+- **Keep logic testable.** Put decisions that need no OS API in plain functions and unit
   test them (see `side::resolve`, `config` tests, `appicon` tests). `cache`, `history`,
   `ui::sleep` and `config::backup` are written with no macOS or egui types on purpose, and take
   the clock or the directory as a parameter instead of reading them.
@@ -102,12 +107,12 @@ icons...) see `guides::extending`.
 - Include tests for logic changes, and update `README.md` when behavior or settings change.
 - For anything that touches caching, sleep or undo, say what you checked by hand: pie opening after a
   long idle time, Settings after sleep, Cmd+Z after deleting a slice, restoring a backup.
-- Mention what you tested by hand (macOS version, trigger button, which apps) for gesture or UI
+- Mention what you tested by hand (macOS or Windows version, trigger button, which apps) for gesture or UI
   changes, since those cannot be covered by unit tests.
 
 ## Reporting bugs
 
-Open an issue with: macOS version, how CursorPie was started (`.app` or `cargo run`), the
+Open an issue with: macOS or Windows version, how CursorPie was started (`.app` or `cargo run`), the
 trigger button, what you did, what you expected, and the output of `cargo run --release` from a
 terminal (CursorPie prints diagnostics to stderr). Attach your `config.json` if it is relevant,
 after removing any commands you do not want to share.

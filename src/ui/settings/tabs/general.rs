@@ -15,37 +15,52 @@ use std::time::SystemTime;
 impl App {
     /// Draws the General tab: permission status, config location, import / export / reset.
     pub(in crate::ui::settings) fn general_tab(&mut self, ui: &mut egui::Ui) {
-        panel(ui, "Permissions", |ui| {
-            let trusted = platform::is_trusted_cached();
+        let title = if platform::OS.needs_permission() {
+            "Permissions"
+        } else {
+            "Input"
+        };
+        panel(ui, title, |ui| {
+            let needs = platform::OS.needs_permission();
             let running = TAP_ACTIVE.load(Ordering::SeqCst);
+            if needs {
+                let trusted = platform::is_trusted_cached();
+                info_row(ui, |ui| {
+                    muted(ui, "Accessibility");
+                    if trusted {
+                        ui.label(RichText::new("Granted").color(GOOD));
+                    } else {
+                        ui.label(RichText::new("Missing").color(BAD));
+                    }
+                });
+            }
             info_row(ui, |ui| {
-                muted(ui, "Accessibility");
-                if trusted {
-                    ui.label(RichText::new("Granted").color(GOOD));
-                } else {
-                    ui.label(RichText::new("Missing").color(BAD));
-                }
-            });
-            info_row(ui, |ui| {
-                muted(ui, "Event tap");
+                muted(ui, if needs { "Event tap" } else { "Mouse hook" });
                 if running {
                     ui.label(RichText::new("Running").color(GOOD));
                 } else {
                     ui.label(RichText::new("Not running (retrying every 2 s)").color(BAD));
                 }
             });
-            ui.horizontal(|ui| {
-                if ui.button("Open Accessibility settings").clicked() {
-                    platform::open_accessibility_settings();
-                }
-                if ui.button("Open Input Monitoring settings").clicked() {
-                    platform::open_input_monitoring_settings();
-                }
-            });
-            muted(
-                ui,
-                "If it still says 'Not running' after granting access, quit and reopen CursorPie.",
-            );
+            if needs {
+                ui.horizontal(|ui| {
+                    if ui.button("Open Accessibility settings").clicked() {
+                        platform::open_accessibility_settings();
+                    }
+                    if ui.button("Open Input Monitoring settings").clicked() {
+                        platform::open_input_monitoring_settings();
+                    }
+                });
+                muted(
+                    ui,
+                    "If it still says 'Not running' after granting access, quit and reopen CursorPie.",
+                );
+            } else {
+                muted(
+                    ui,
+                    "No permission is needed. Windows ignores input sent to programs running as administrator unless CursorPie runs as administrator too.",
+                );
+            }
         });
         panel(ui, "Configuration", |ui| {
             let path = config_path();
@@ -55,8 +70,11 @@ impl App {
                     .color(MUTED),
             );
             ui.horizontal_wrapped(|ui| {
-                if ui.button("Reveal in Finder").clicked() {
-                    platform::reveal_in_finder(&path);
+                if ui
+                    .button(format!("Reveal in {}", platform::OS.file_manager()))
+                    .clicked()
+                {
+                    platform::reveal_in_file_manager(&path);
                 }
                 if ui.button("Export...").clicked() {
                     match export_config(&self.edit) {
@@ -67,9 +85,10 @@ impl App {
                 if ui.button("Import...").clicked() {
                     let (tx, ctx) = (self.tx.clone(), ui.ctx().clone());
                     std::thread::spawn(move || {
-                        if let Some(f) =
-                            platform::choose_file("public.json", "Choose a CursorPie config")
-                        {
+                        if let Some(f) = platform::choose_file(
+                            platform::FileKind::Json,
+                            "Choose a CursorPie config",
+                        ) {
                             let _ = tx.send(Msg::ImportPicked(f));
                             ctx.request_repaint();
                         }

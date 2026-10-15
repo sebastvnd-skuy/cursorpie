@@ -1,16 +1,16 @@
 # CursorPie
 
-A hold-to-open pie menu for macOS, inspired by [Kando](https://github.com/kando-menu/kando).
+A hold-to-open pie menu for macOS and Windows, inspired by [Kando](https://github.com/kando-menu/kando).
 
 Hold your middle mouse button, flick toward a slice, release. Each slice can fire a keyboard shortcut,
 launch an app, open a URL, run a shell command, open a submenu, or turn your mouse's back/forward buttons
 into something more useful. Profiles let every app have its own pie.
 
-- Written in Rust, UI in [egui](https://github.com/emilk/egui) / eframe, macOS only
-- Lives in the menu bar: no Dock icon, no window until you need it
+- Written in Rust, UI in [egui](https://github.com/emilk/egui) / eframe, for macOS 11+ and Windows 10/11
+- Lives in the menu bar (macOS) or the system tray (Windows): no Dock icon or taskbar button, no window until you need it
 - Light on memory: icons are cached while you use it and freed when it has been idle
 - Settings has **Undo / Redo**, and every Save keeps a backup of the version it replaces
-- Everything stays on your Mac: no network access, no telemetry
+- Everything stays on your computer: no network access, no telemetry
 
 ## Contents
 
@@ -58,7 +58,7 @@ The timings above are the defaults and can be changed in **Settings > Behavior**
 
 - **Do something (Run).** Runs an action when you release the button over it.
 - **Side buttons (Mode).** Selecting it makes your mouse's back and forward buttons send the actions you
-  assigned to this mode (for example Undo/Redo, or Cmd+[ / Cmd+]). The active mode is remembered per profile
+  assigned to this mode (for example Undo/Redo, or Cmd+[ / Cmd+] on macOS, Alt+Left / Alt+Right on Windows). The active mode is remembered per profile
   and shown in the center of the pie. If a mode's action is *None*, the native back/forward click passes through.
 - **Submenu.** A nested ring. Rings hold up to 8 slices, and menus can go up to 5 levels deep
   (the top level counts as level 1).
@@ -69,16 +69,16 @@ The timings above are the defaults and can be changed in **Settings > Behavior**
 |---|---|
 | None | Nothing. For side buttons, the click passes through to the app |
 | Shortcut | Sends a key combination. Record it by clicking the button and pressing the keys (Esc cancels) |
-| Open app | `open -a <name or path>`, e.g. `Safari` or `/Applications/Safari.app` |
+| Open app | macOS: `open -a <name or path>`, e.g. `Safari` or `/Applications/Safari.app`. Windows: a program name or the path of an `.exe`, e.g. `chrome` or `C:\Tools\App.exe` |
 | Open URL / file | `open <target>`, e.g. `https://example.com` or a file path |
-| Shell command | Runs `/bin/sh -c "<command>"` |
+| Shell command | macOS: runs `/bin/sh -c "<command>"`. Windows: runs `cmd /C "<command>"` without a console window |
 | Sequence | Several actions in order, 40 ms apart. Edit these in `config.json` (see below) |
 
 Actions run on one worker thread so they always execute in the order you triggered them.
 
 **Profiles.**
 
-- Up to 16 profiles. Each lists app bundle identifiers (for example `com.apple.Safari`).
+- Up to 16 profiles. Each lists app ids: bundle identifiers on macOS (for example `com.apple.Safari`), executable names on Windows (for example `chrome.exe`, not case sensitive).
 - There is **exactly one general profile**: the one with **no apps**, used for every app that has no
   profile of its own. It is created for you and cannot be deleted.
 - Every other profile **belongs to at least one app**. **New profile** asks for a name and an app, and the
@@ -115,7 +115,7 @@ A fresh install comes with three profiles:
 
 | Profile | Apps | Slices |
 |---|---|---|
-| Default (general) | all apps without a profile | History (undo/redo), Clipboard (copy/paste), Brackets (`[` `]`), and a *Launch* submenu with Finder, Terminal, Safari and Shot (screenshot) |
+| Default (general) | all apps without a profile | History (undo/redo), Clipboard (copy/paste), Brackets (`[` `]`), and a *Launch* submenu with Finder, Terminal, Safari and Shot (screenshot) on macOS, or Explorer, Terminal, Edge and Shot on Windows |
 | Browsers | Safari, Chrome, Firefox, Arc, Brave, Edge | Browser (back/forward), Tabs (previous/next tab), Zoom, Scroll (Page Up/Down) |
 | Code | VS Code, Xcode | History, Brackets, Edit (Return/Delete) |
 
@@ -127,7 +127,7 @@ Ready-made slices you can add from the **+** button:
 
 ## Install
 
-CursorPie is built from source. You need **macOS 11 or later** and **Rust 1.88 or later** (edition 2024).
+CursorPie is built from source. You need **macOS 11 or later** or **Windows 10 (1809) / 11**, and **Rust 1.88 or later** (edition 2024).
 
 ```sh
 git clone https://github.com/sebastvnd/cursorpie.git
@@ -146,9 +146,20 @@ SIGN_ID="Developer ID Application: Your Name (TEAMID)" scripts/bundle.sh
 
 Then move `CursorPie.app` to `/Applications` and open it.
 
+On **Windows** (PowerShell, with the MSVC build tools installed):
+
+```powershell
+cargo run --release              # quick try
+scripts\package-windows.ps1      # builds target\bundle\CursorPie-windows.zip with cursorpie.exe
+```
+
+Run `cursorpie.exe`; a pie icon appears in the system tray. Windows needs no permission. To control windows of
+programs that run as administrator, start CursorPie as administrator too (Windows blocks input to them
+otherwise). Tick **Launch at login** in the tray menu to start it with Windows.
+
 ## First launch and permissions
 
-CursorPie needs the **Accessibility** permission to watch the mouse and to send shortcuts. macOS may also ask
+*Windows needs no permission; skip this section.* On macOS, CursorPie needs the **Accessibility** permission to watch the mouse and to send shortcuts. macOS may also ask
 for **Input Monitoring**.
 
 1. Open **System Settings > Privacy & Security**.
@@ -173,7 +184,7 @@ Tips:
   send that mode's actions, in any app that uses the same profile. While the pie is open, pressing a side
   button over a mode slice sends that mode's actions without selecting it.
 - **Cancel** by releasing in the center dead zone.
-- Open **Settings** by holding in the center until the progress arc completes, or from the menu bar icon.
+- Open **Settings** by holding in the center until the progress arc completes, or from the menu bar / tray icon.
 
 ## Side buttons and app pies
 
@@ -200,15 +211,15 @@ uses the app in front.
 ## Settings
 
 Open it from the menu bar icon or by holding the trigger in the center of the pie.
-**Save** applies and stores your changes. **Cancel**, **Esc** and **Cmd+W** discard them.
-**Undo** and **Redo** (sidebar, or **Cmd+Z** / **Cmd+Shift+Z**) step back and forward through your
+**Save** applies and stores your changes. **Cancel**, **Esc** and **Cmd+W** (Ctrl+W on Windows) discard them.
+**Undo** and **Redo** (sidebar, or **Cmd+Z** / **Cmd+Shift+Z**, Ctrl on Windows) step back and forward through your
 edits while Settings is open; see [Undo, redo and backups](#undo-redo-and-backups).
 
 **Menu**
 
 - Choose, create (name + app), rename and delete profiles, list the apps each one applies to, and
   **Share** a profile (export / import, icons included)
-  (type a bundle identifier or use **Pick app...**).
+  (type a bundle identifier or executable name, or use **Pick app...**).
 - An interactive pie shows the ring you are editing. Click a slice to edit it, click **+** to add one,
   click a selected submenu slice again to step into it, and click the center to go back.
 - Per slice: name, icon (text, emoji or image), kind, action, and Move / Delete.
@@ -225,7 +236,7 @@ edits while Settings is open; see [Undo, redo and backups](#undo-redo-and-backup
 **General**
 
 - Permission status and shortcuts to the System Settings pages
-- Location of the config file, **Reveal in Finder**, **Export...**, **Import...**, **Reset to defaults**
+- Location of the config file, **Reveal in Finder** (Explorer on Windows), **Export...**, **Import...**, **Reset to defaults**
 - **Backups**: one button per saved earlier version, to load it back into the editor
 
 **About**
@@ -239,7 +250,7 @@ Deleting a slice or a whole profile by accident is easy to fix.
 **While Settings is open**, every change you make is recorded: adding, deleting or moving slices and
 profiles, editing actions and apps, changing any option, importing a file and **Reset to defaults**.
 
-- **Undo** / **Redo** are in the sidebar, or press **Cmd+Z** and **Cmd+Shift+Z** (**Cmd+Y** also redoes).
+- **Undo** / **Redo** are in the sidebar, or press **Cmd+Z** and **Cmd+Shift+Z** (**Cmd+Y** also redoes; Ctrl instead of Cmd on Windows).
 - Typing and dragging a slider count as **one** step, not one per keystroke: a step ends when you pause
   for a moment.
 - Up to 50 steps are kept. Making a new change after an undo discards the steps you undid.
@@ -254,7 +265,7 @@ profiles, editing actions and apps, changing any option, importing a file and **
 press **Save**. Undo still brings back what you had before restoring.
 
 ```
-~/Library/Application Support/CursorPie/
+~/Library/Application Support/CursorPie/      (%APPDATA%\CursorPie\ on Windows)
   config.json            the live config
   config.backup.1.json   the version before your last Save (up to config.backup.5.json)
   config.broken.json     a config that could not be read (see below)
@@ -305,7 +316,8 @@ lifetime. That is a fixed base cost, not something that grows with use.
 Settings are stored in:
 
 ```
-~/Library/Application Support/CursorPie/config.json
+~/Library/Application Support/CursorPie/config.json      (macOS)
+%APPDATA%\CursorPie\config.json                           (Windows)
 ```
 
 You can edit it in Settings or by hand. A change made by hand is picked up the next time CursorPie starts.
@@ -400,7 +412,7 @@ Reference:
 | `sleep_after_s` | Seconds without a pie or Settings before cached icons and the Settings copy are freed (10 to 3600, `0` = never) |
 | `apps` | Bundle identifiers. An empty list marks the general (fallback) profile; only the first such profile is kept, all others need at least one app |
 | `active` | Path of the active side-button mode, as indices (`[3, 1]` = slice 1 inside slice 3) |
-| `Key` | `key` is a macOS virtual key code (physical key). `mods` is a bitmask: Shift = 1, Ctrl = 2, Opt = 4, Cmd = 8 |
+| `Key` | `key` is a macOS virtual key code (physical key; Windows maps it to the key in the same position). `mods` is a bitmask: Shift = 1, Ctrl = 2, Opt/Alt = 4, Cmd/Win = 8 |
 
 Out-of-range values are clamped when the file is loaded. Rings are trimmed to 8 slices and menus to 5 levels.
 A file without a `"version"` field (the old v1 format) or with invalid JSON is rejected: CursorPie copies it to
@@ -417,7 +429,8 @@ Export writes `~/Downloads/cursorpie-config.json`.
 
 ```text
 Cargo.toml              dependencies, release profile, docs.rs metadata
-scripts/bundle.sh       builds and signs target/bundle/CursorPie.app
+scripts/bundle.sh       builds and signs target/bundle/CursorPie.app (macOS)
+scripts/package-windows.ps1  builds target\bundle\CursorPie-windows.zip (Windows)
 icon/                   sample images for icons (brackets, clipboard); not loaded automatically
 CONTRIBUTING.md         how to build, test and contribute
 src/
@@ -434,7 +447,7 @@ src/
   config/               config model, defaults, validation, load/save, import/export, backups,
                         profile sharing (`share.rs`)
   tap/                  global event tap and the gesture state machine
-  platform/             macOS glue: permissions, apps, login item, keyboard layout, shell tools
+  platform/             OS glue: macos/, windows/ and a test stub behind one facade; keymap.rs (key tables)
   ui/                   everything on the UI thread
     app/                eframe app: state, message handling, window management, idle sleep
     pie/                drawing the pie
@@ -460,7 +473,7 @@ changes. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and the pull-r
 
 ## Privacy
 
-CursorPie works entirely on your Mac. The app makes no network connections and collects no data.
+CursorPie works entirely on your computer. The app makes no network connections and collects no data.
 
 The event tap receives key events so that Settings can capture a shortcut while you record one. Outside of
 recording they are passed on untouched and are never stored or logged.
@@ -469,7 +482,10 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
 
 ## Known limitations
 
-- macOS only. The build fails on other platforms.
+- macOS and Windows only. Other platforms build a do-nothing stub that exists for unit tests.
+- Windows: only the middle button can be the trigger (Windows reports no extra buttons 6 to 8); per-app profiles
+  cannot tell UWP apps apart (they share `applicationframehost.exe`); with monitors at different scales the pie may
+  be placed slightly off when it moves between them; Windows may refuse to bring a window to the front.
 - Shortcut labels and the shifted-symbol display assume a US/ANSI layout. Key codes themselves are physical keys.
 - The back/forward side buttons are fixed to mouse buttons 4 and 5 (macOS button numbers 3 and 4).
   Only the trigger button is configurable.

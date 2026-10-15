@@ -1,6 +1,5 @@
 //! Shortcut model: virtual key code + modifier bitmask, with display labels.
 
-use core_graphics::event::CGEventFlags;
 use serde::{Deserialize, Serialize};
 
 /// Modifier bit: Shift.
@@ -25,6 +24,12 @@ pub mod key {
     pub const PAGE_UP: u16 = 116;
     /// Page Down.
     pub const PAGE_DOWN: u16 = 121;
+    /// Tab.
+    pub const TAB: u16 = 48;
+    /// Arrow left.
+    pub const LEFT: u16 = 123;
+    /// Arrow right.
+    pub const RIGHT: u16 = 124;
     /// Arrow up.
     pub const UP: u16 = 126;
     /// F13 (a safe default for a new shortcut slice).
@@ -57,6 +62,13 @@ impl Shortcut {
 
     /// Display text. Shift + a symbol key shows the resulting symbol ("+" instead of "Shift + =").
     pub fn label(&self) -> String {
+        self.label_for(crate::platform::OS)
+    }
+
+    /// [`label`](Self::label) with the modifier names of `os` ("Opt" and "Cmd" on macOS, "Alt" and
+    /// "Win" on Windows).
+    pub fn label_for(&self, os: crate::platform::Os) -> String {
+        let names = os.mod_names();
         let shift = self.mods & MOD_SHIFT != 0;
         let sym = if shift {
             shifted_symbol(self.key)
@@ -66,16 +78,16 @@ impl Shortcut {
 
         let mut parts: Vec<String> = Vec::new();
         if self.mods & MOD_CTRL != 0 {
-            parts.push("Ctrl".into());
+            parts.push(names.ctrl.into());
         }
         if self.mods & MOD_ALT != 0 {
-            parts.push("Opt".into());
+            parts.push(names.alt.into());
         }
         if shift && sym.is_none() {
-            parts.push("Shift".into());
+            parts.push(names.shift.into());
         }
         if self.mods & MOD_CMD != 0 {
-            parts.push("Cmd".into());
+            parts.push(names.cmd.into());
         }
         parts.push(match sym {
             Some(s) => s,
@@ -246,20 +258,127 @@ pub fn key_name(code: u16) -> String {
     format!("Key {code}")
 }
 
-/// Converts event flags from a `CGEvent` into a `MOD_*` bitmask.
-pub fn mods_from_flags(f: CGEventFlags) -> u8 {
-    let mut m = 0;
-    if f.contains(CGEventFlags::CGEventFlagShift) {
-        m |= MOD_SHIFT;
+#[cfg(test)]
+mod tests {
+    //! Characterization tests: they pin what the macOS build produced before Windows support was
+    //! added. Test threads never see the keyboard-layout snapshot (it is only built on the main
+    //! thread), so labels and `Shortcut::ch` use the US/ANSI fallback table here.
+    use super::*;
+
+    #[test]
+    fn modifier_bits_are_stable() {
+        // these values are stored in config.json files
+        assert_eq!((MOD_SHIFT, MOD_CTRL, MOD_ALT, MOD_CMD), (1, 2, 4, 8));
     }
-    if f.contains(CGEventFlags::CGEventFlagControl) {
-        m |= MOD_CTRL;
+
+    #[test]
+    fn key_constants_are_macos_virtual_key_codes() {
+        assert_eq!(key::SPACE, 49);
+        assert_eq!(key::RETURN, 36);
+        assert_eq!(key::DELETE, 51);
+        assert_eq!(key::PAGE_UP, 116);
+        assert_eq!(key::PAGE_DOWN, 121);
+        assert_eq!(key::UP, 126);
+        assert_eq!((key::TAB, key::LEFT, key::RIGHT), (48, 123, 124));
+        assert_eq!(key::F13, 105);
     }
-    if f.contains(CGEventFlags::CGEventFlagAlternate) {
-        m |= MOD_ALT;
+
+    #[test]
+    fn ch_resolves_through_the_ansi_fallback() {
+        assert_eq!(Shortcut::ch('z', MOD_CMD), Shortcut::new(6, MOD_CMD));
+        assert_eq!(Shortcut::ch('Z', 0), Shortcut::new(6, 0), "case is ignored");
+        assert_eq!(Shortcut::ch('[', 0), Shortcut::new(33, 0));
+        assert_eq!(Shortcut::ch(']', MOD_CMD), Shortcut::new(30, MOD_CMD));
+        assert_eq!(Shortcut::ch('-', 0).key, 27);
+        assert_eq!(Shortcut::ch('=', 0).key, 24);
+        assert_eq!(Shortcut::ch('4', MOD_CMD | MOD_SHIFT).key, 21);
+        assert_eq!(Shortcut::ch('q', 0).key, 12);
+        assert_eq!(
+            Shortcut::ch('\u{20ac}', 0).key,
+            0,
+            "unknown text falls back to key 0"
+        );
     }
-    if f.contains(CGEventFlags::CGEventFlagCommand) {
-        m |= MOD_CMD;
+
+    #[test]
+    fn labels_list_modifiers_in_a_fixed_order() {
+        assert_eq!(Shortcut::new(6, MOD_CMD).label(), "Cmd + Z");
+        assert_eq!(
+            Shortcut::new(6, MOD_CMD | MOD_SHIFT).label(),
+            "Shift + Cmd + Z"
+        );
+        assert_eq!(
+            Shortcut::new(6, MOD_CTRL | MOD_ALT | MOD_SHIFT | MOD_CMD).label(),
+            "Ctrl + Opt + Shift + Cmd + Z"
+        );
+        assert_eq!(Shortcut::new(key::SPACE, MOD_CMD).label(), "Cmd + Space");
+        assert_eq!(Shortcut::new(key::F13, 0).label(), "F13");
+        assert_eq!(Shortcut::new(key::UP, MOD_CTRL).label(), "Ctrl + Up");
     }
-    m
+
+    #[test]
+    fn labels_use_the_modifier_names_of_the_os() {
+        use crate::platform::Os;
+        let sc = Shortcut::new(6, MOD_CTRL | MOD_ALT | MOD_SHIFT | MOD_CMD);
+        assert_eq!(sc.label_for(Os::Mac), "Ctrl + Opt + Shift + Cmd + Z");
+        assert_eq!(sc.label_for(Os::Windows), "Ctrl + Alt + Shift + Win + Z");
+        assert_eq!(
+            Shortcut::new(key::SPACE, MOD_CMD).label_for(Os::Windows),
+            "Win + Space"
+        );
+    }
+
+    #[test]
+    fn key_names() {
+        assert_eq!(key_name(0), "A");
+        assert_eq!(key_name(42), "\\");
+        assert_eq!(key_name(50), "`");
+        assert_eq!(key_name(36), "Return");
+        assert_eq!(key_name(117), "Delete");
+        assert_eq!(key_name(51), "Backspace");
+        assert_eq!(key_name(10), "Key 10", "no name for an unmapped code");
+    }
+
+    #[test]
+    fn special_names_cover_the_keys_that_ignore_the_layout() {
+        for (code, name) in [
+            (36, "Return"),
+            (48, "Tab"),
+            (49, "Space"),
+            (53, "Esc"),
+            (115, "Home"),
+            (119, "End"),
+            (123, "Left"),
+            (124, "Right"),
+            (125, "Down"),
+            (126, "Up"),
+            (122, "F1"),
+            (111, "F12"),
+        ] {
+            assert_eq!(special_name(code), Some(name), "code {code}");
+        }
+        assert_eq!(special_name(0), None, "letters depend on the layout");
+        assert_eq!(special_name(127), None);
+    }
+
+    #[test]
+    fn ansi_table_has_no_duplicate_codes_or_names() {
+        let mut codes: Vec<_> = ANSI.iter().map(|(c, _)| *c).collect();
+        let mut names: Vec<_> = ANSI.iter().map(|(_, n)| n.to_string()).collect();
+        let (nc, nn) = (codes.len(), names.len());
+        codes.sort();
+        codes.dedup();
+        names.sort();
+        names.dedup();
+        assert_eq!((codes.len(), names.len()), (nc, nn));
+        assert_eq!(nc, 47, "26 letters, 10 digits and 11 punctuation keys");
+    }
+
+    #[test]
+    fn shortcut_json_shape_is_stable() {
+        let json = serde_json::to_string(&Shortcut::new(6, MOD_CMD)).unwrap();
+        assert_eq!(json, r#"{"key":6,"mods":8}"#);
+        let back: Shortcut = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, Shortcut::new(6, MOD_CMD));
+    }
 }

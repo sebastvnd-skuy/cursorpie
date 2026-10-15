@@ -81,7 +81,7 @@ pub(super) fn action_editor(
             ui.add(
                 text_field(s)
                     .desired_width(w)
-                    .hint_text("Safari  or  /Applications/X.app"),
+                    .hint_text(crate::platform::OS.open_app_hint()),
             );
             if ui.button("Pick…").clicked() {
                 out.pick_app = true;

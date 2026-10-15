@@ -1,7 +1,7 @@
 //! App icons for the center of a pie.
 //!
-//! The real icon comes from macOS (`platform::app_icon_tiff`: the image the Dock and Finder show, as a
-//! TIFF with one page per size). `load` picks the page that fits, decodes it and reduces it to a
+//! The real icon comes from the OS (`platform::app_icon`: on macOS the image the Dock and Finder show, as a
+//! TIFF with one page per size; on Windows an RGBA bitmap). `load` picks the page that fits, decodes it and reduces it to a
 //! white glyph: everything that differs from the icon's background color is kept (in white, with
 //! its own transparency) and the background itself is dropped.
 //!
@@ -38,19 +38,26 @@ pub fn bundle_for<'a>(apps: &'a [String], target: Option<&str>) -> Option<&'a st
 /// installed or its icon cannot be read. Failures are reported on stderr (once per attempt), so a
 /// missing icon can be diagnosed from `cargo run` instead of failing silently.
 pub fn load(bundle: &str) -> Option<egui::ColorImage> {
-    let Some(data) = platform::app_icon_tiff(bundle) else {
-        eprintln!("CursorPie: app icon for {bundle}: macOS returned no icon (app not found?)");
+    let Some(icon) = platform::app_icon(bundle) else {
+        eprintln!("CursorPie: app icon for {bundle}: the system returned no icon (app not found?)");
         return None;
     };
-    let img = match decode_best(&data) {
-        Ok(img) => img,
-        Err(why) => {
-            eprintln!(
-                "CursorPie: app icon for {bundle}: cannot decode the TIFF ({} bytes): {why}",
-                data.len()
-            );
-            return None;
-        }
+    let img = match icon {
+        platform::NativeIcon::Tiff(data) => match decode_best(&data) {
+            Ok(img) => img,
+            Err(why) => {
+                eprintln!(
+                    "CursorPie: app icon for {bundle}: cannot decode the TIFF ({} bytes): {why}",
+                    data.len()
+                );
+                return None;
+            }
+        },
+        platform::NativeIcon::Rgba {
+            width,
+            height,
+            data,
+        } => RgbaImage::from_raw(width, height, data)?,
     };
     let img = resize_straight(&img);
     let glyph = to_glyph(&img);

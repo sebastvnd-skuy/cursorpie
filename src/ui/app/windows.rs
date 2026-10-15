@@ -1,4 +1,4 @@
-//! Window management: showing the pie, opening/closing Settings, and the menu bar actions.
+//! Window management: showing the pie, opening/closing Settings, and the tray menu actions.
 
 use super::{App, CARD_SIZE, WIN_MARGIN};
 use crate::config::{self, MAX_ITEMS, cfg};
@@ -26,7 +26,7 @@ impl App {
                 eprintln!("CursorPie: could not update launch-at-login: {e}");
             }
             if let Some(t) = &self.tray {
-                t.login.set_checked(login);
+                t.set_login_checked(login);
             }
         }
         self.ed.icons.revalidate(); // re-read only the images that changed on disk
@@ -155,7 +155,7 @@ impl App {
         side::set_target(bundle, false);
     }
 
-    /// Current cursor position, or a fixed fallback if macOS cannot tell.
+    /// Current cursor position, or a fixed fallback if the OS cannot tell.
     fn cursor_or_default(&self) -> Pos2 {
         platform::cursor_pos()
             .map(|(x, y)| egui::pos2(x as f32, y as f32))
@@ -187,12 +187,12 @@ impl App {
             "swap_side" => self.swap_side(ctx),
             "pause" => {
                 if let Some(t) = &self.tray {
-                    PAUSED.store(t.pause.is_checked(), Ordering::SeqCst);
+                    PAUSED.store(t.pause_checked(), Ordering::SeqCst);
                 }
             }
             "login" => {
                 if let Some(t) = &self.tray {
-                    if let Err(e) = platform::set_launch_at_login(t.login.is_checked()) {
+                    if let Err(e) = platform::set_launch_at_login(t.login_checked()) {
                         eprintln!("CursorPie: could not update launch-at-login: {e}");
                     }
                 }

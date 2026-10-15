@@ -3,14 +3,15 @@
 //! Everything the About tab shows lives here, and [`BUNDLE_ID`] doubles as the LaunchAgent label.
 //! Edit these constants (and `Cargo.toml`, `LICENSE`, `scripts/bundle.sh`) to rebrand a fork.
 
-/// Display name, also used as the window title and menu bar tooltip.
+/// Display name, also used as the window title and tray tooltip.
 pub const APP_NAME: &str = "CursorPie";
 /// Version from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// One-line description shown under the name in About.
-pub const TAGLINE: &str = "A hold-to-open pie menu for macOS";
+pub const TAGLINE: &str = "A hold-to-open pie menu for macOS and Windows";
 
-/// Used as the LaunchAgent label and the .app bundle identifier (keep it unique, reverse-DNS style).
+/// Used as the LaunchAgent label and the .app bundle identifier on macOS (on Windows the startup entry is named
+/// after [`APP_NAME`]) (keep it unique, reverse-DNS style).
 pub const BUNDLE_ID: &str = "io.github.cursorpie";
 
 // TODO: replace these with your own details.
@@ -61,6 +62,11 @@ pub const CREDITS: &[(&str, &str, &str)] = &[
         "MIT / Zlib / Apache-2.0",
     ),
     (
+        "windows-sys",
+        "https://github.com/microsoft/windows-rs",
+        "MIT / Apache-2.0",
+    ),
+    (
         "serde",
         "https://github.com/serde-rs/serde",
         "MIT / Apache-2.0",
@@ -73,5 +79,5 @@ pub const CREDITS: &[(&str, &str, &str)] = &[
 ];
 
 /// Privacy statement shown in About.
-pub const PRIVACY: &str = "CursorPie works entirely on your Mac. It makes no network connections and collects no data. \
+pub const PRIVACY: &str = "CursorPie works entirely on your computer. It makes no network connections and collects no data. \
 Keyboard events are only inspected while you are recording a shortcut in Settings, and are never stored or logged.";

@@ -7,6 +7,7 @@ use super::state::{Ed, Rec, Slot};
 use crate::config::*;
 use crate::keys::{Shortcut, key};
 use crate::msg::Msg;
+use crate::platform::FileKind;
 use crate::tap::{RECORDING, SWALLOW_KEY};
 use crate::ui::draw::*;
 use crate::ui::settings::theme::*;
@@ -62,7 +63,7 @@ fn pick_icon(env: &Env, path: &[usize]) {
     spawn_file_picker(
         env.tx.clone(),
         env.ctx.clone(),
-        "public.image",
+        FileKind::Image,
         "Choose an icon image",
         move |file| {
             Some(Msg::IconPicked {
@@ -80,7 +81,7 @@ fn pick_app_for_action(env: &Env, path: &[usize], slot: Slot) {
     spawn_file_picker(
         env.tx.clone(),
         env.ctx.clone(),
-        "com.apple.application-bundle",
+        FileKind::App,
         "Choose an application",
         move |app| {
             Some(Msg::ActionAppPicked {

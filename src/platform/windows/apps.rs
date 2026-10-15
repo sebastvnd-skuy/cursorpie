@@ -1,0 +1,434 @@
+//! Running apps and the pointer: frontmost app, app under the pointer, app icons, activation.
+//!
+//! The **app id** of a window is the lower-case file name of its process's executable
+//! (`chrome.exe`). UWP apps all report `applicationframehost.exe`.
+
+use super::dpi::{last_scale, scale_at_physical};
+use super::util::{exe_id_from_path, from_wide, logical_to_px, px_to_logical, wide};
+use crate::geometry::Point;
+use crate::platform::{NativeIcon, ScreenRect};
+use std::time::Duration;
+use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM, POINT, RECT};
+use windows_sys::Win32::Graphics::Gdi::{
+    BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, DeleteObject,
+    EnumDisplayMonitors, GetDC, GetDIBits, GetMonitorInfoW, GetObjectW, HDC, HMONITOR, MONITORINFO,
+    ReleaseDC,
+};
+use windows_sys::Win32::Storage::FileSystem::SearchPathW;
+use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
+};
+use windows_sys::Win32::System::Threading::{
+    AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId, OpenProcess,
+    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+};
+use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+use windows_sys::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    BringWindowToTop, DestroyIcon, EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW,
+    GetCursorPos, GetForegroundWindow, GetIconInfo, GetWindowLongW, GetWindowTextLengthW,
+    GetWindowThreadProcessId, HICON, ICONINFO, IsIconic, IsWindowVisible, PrivateExtractIconsW,
+    SW_RESTORE, SetForegroundWindow, ShowWindow, WS_EX_TOOLWINDOW, WindowFromPoint,
+};
+
+/// Process id of the window `hwnd`.
+fn pid_of(hwnd: HWND) -> u32 {
+    let mut pid = 0u32;
+    // SAFETY: `pid` is a valid out-pointer.
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    pid
+}
+
+/// Full path of the executable of process `pid`.
+fn exe_path_of_pid(pid: u32) -> Option<String> {
+    // SAFETY: the handle is closed before returning; the buffer length is passed in `len`.
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return None;
+        }
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len);
+        CloseHandle(h);
+        (ok != 0).then(|| from_wide(&buf[..len as usize]))
+    }
+}
+
+/// App id of process `pid`.
+fn app_id_of_pid(pid: u32) -> Option<String> {
+    exe_id_from_path(&exe_path_of_pid(pid)?)
+}
+
+/// App id of the application in front.
+pub fn frontmost_bundle_id() -> Option<String> {
+    // SAFETY: plain query.
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.is_null() {
+        return None;
+    }
+    app_id_of_pid(pid_of(hwnd))
+}
+
+/// Window class of `hwnd`.
+fn class_of(hwnd: HWND) -> String {
+    let mut buf = [0u16; 128];
+    // SAFETY: the buffer length is passed along.
+    let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+    from_wide(&buf[..n.max(0) as usize])
+}
+
+/// Classes of the desktop and the taskbar: they belong to `explorer.exe` but are not "File Explorer".
+fn is_shell_surface(class: &str) -> bool {
+    matches!(
+        class,
+        "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+    )
+}
+
+/// App id of the app owning the window under `p` (logical points, as sent by the hook; the scale of
+/// that same event is used to get back to pixels). `None` for the desktop, the taskbar, CursorPie's
+/// own windows and anything that cannot be resolved.
+pub fn bundle_id_at(p: Point) -> Option<String> {
+    let s = last_scale();
+    let pt = POINT {
+        x: logical_to_px(p.x, s).round() as i32,
+        y: logical_to_px(p.y, s).round() as i32,
+    };
+    // SAFETY: plain queries.
+    unsafe {
+        let hwnd = WindowFromPoint(pt);
+        if hwnd.is_null() {
+            return None;
+        }
+        let root = GetAncestor(hwnd, GA_ROOT);
+        let root = if root.is_null() { hwnd } else { root };
+        if is_shell_surface(&class_of(root)) {
+            return None;
+        }
+        let pid = pid_of(root);
+        if pid == GetCurrentProcessId() {
+            return None;
+        }
+        app_id_of_pid(pid)
+    }
+}
+
+/// App id of an `.exe` path chosen in the file chooser.
+pub fn bundle_id_of(app_path: &str) -> Option<String> {
+    super::util::is_exe(app_path)
+        .then(|| exe_id_from_path(app_path))
+        .flatten()
+}
+
+/// Cursor position in logical points.
+pub fn cursor_pos() -> Option<(f64, f64)> {
+    let mut p = POINT { x: 0, y: 0 };
+    // SAFETY: `p` is a valid out-pointer.
+    if unsafe { GetCursorPos(&mut p) } == 0 {
+        return None;
+    }
+    let s = scale_at_physical(p.x, p.y);
+    Some((px_to_logical(p.x as f64, s), px_to_logical(p.y as f64, s)))
+}
+
+// ------------------------------------------------------------------ displays
+
+unsafe extern "system" fn collect_monitor(
+    mon: HMONITOR,
+    _dc: HDC,
+    _rect: *mut RECT,
+    data: LPARAM,
+) -> i32 {
+    // SAFETY: `data` is the `Vec` passed by `display_rects`, alive for the whole enumeration.
+    let out = unsafe { &mut *(data as *mut Vec<ScreenRect>) };
+    let mut info: MONITORINFO = unsafe { std::mem::zeroed() };
+    info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+    if unsafe { GetMonitorInfoW(mon, &mut info) } != 0 {
+        let (mut dx, mut dy) = (0u32, 0u32);
+        let dpi_ok = unsafe { GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy) } == 0;
+        let s = if dpi_ok {
+            super::util::scale_from_dpi(dx)
+        } else {
+            1.0
+        };
+        let r = info.rcMonitor;
+        out.push(ScreenRect {
+            x: px_to_logical(r.left as f64, s),
+            y: px_to_logical(r.top as f64, s),
+            w: px_to_logical((r.right - r.left) as f64, s),
+            h: px_to_logical((r.bottom - r.top) as f64, s),
+        });
+    }
+    1
+}
+
+/// Bounds of every monitor in logical points.
+pub fn display_rects() -> Vec<ScreenRect> {
+    let mut out: Vec<ScreenRect> = Vec::new();
+    // SAFETY: the callback only runs during this call and `out` outlives it.
+    unsafe {
+        EnumDisplayMonitors(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            Some(collect_monitor),
+            &mut out as *mut Vec<ScreenRect> as LPARAM,
+        );
+    }
+    out
+}
+
+// ---------------------------------------------------------------- activation
+
+struct Find {
+    pid_matches: Vec<u32>,
+    found: HWND,
+}
+
+unsafe extern "system" fn pick_window(hwnd: HWND, data: LPARAM) -> i32 {
+    // SAFETY: `data` is the `Find` passed by `activate_app`, alive during the enumeration.
+    let find = unsafe { &mut *(data as *mut Find) };
+    unsafe {
+        if IsWindowVisible(hwnd) == 0 || GetWindowTextLengthW(hwnd) == 0 {
+            return 1;
+        }
+        if GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW != 0 {
+            return 1;
+        }
+        if find.pid_matches.contains(&pid_of(hwnd)) {
+            find.found = hwnd;
+            return 0; // top-most match in z-order: stop
+        }
+    }
+    1
+}
+
+/// Process ids of every running process whose executable is `exe` (a lower-case file name).
+fn pids_of_exe(exe: &str) -> Vec<u32> {
+    let mut out = Vec::new();
+    // SAFETY: the snapshot handle is closed; `entry.dwSize` is set as the API requires.
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap.is_null() || snap as isize == -1 {
+            return out;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut ok = Process32FirstW(snap, &mut entry);
+        while ok != 0 {
+            if from_wide(&entry.szExeFile).eq_ignore_ascii_case(exe) {
+                out.push(entry.th32ProcessID);
+            }
+            ok = Process32NextW(snap, &mut entry);
+        }
+        CloseHandle(snap);
+    }
+    out
+}
+
+/// Brings the top-most window of the app `exe` to the front and waits (briefly) until Windows
+/// really has it there: keys sent too early would reach the previous app. Windows may refuse
+/// to change the foreground window, in which case this gives up after the wait.
+pub fn activate_app(exe: &str) {
+    if frontmost_bundle_id().as_deref() == Some(exe) {
+        return;
+    }
+    let mut find = Find {
+        pid_matches: pids_of_exe(exe),
+        found: std::ptr::null_mut(),
+    };
+    if find.pid_matches.is_empty() {
+        return;
+    }
+    // SAFETY: the callback only runs during `EnumWindows`; `find` outlives it. Thread attachment
+    // is undone right after the call.
+    unsafe {
+        EnumWindows(Some(pick_window), &mut find as *mut Find as LPARAM);
+        let hwnd = find.found;
+        if hwnd.is_null() {
+            return;
+        }
+        if IsIconic(hwnd) != 0 {
+            ShowWindow(hwnd, SW_RESTORE);
+        }
+        // a process may only take the foreground while it shares input state with it
+        let fg = GetForegroundWindow();
+        let fg_thread = if fg.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(fg, std::ptr::null_mut())
+        };
+        let me = GetCurrentThreadId();
+        let attached =
+            fg_thread != 0 && fg_thread != me && AttachThreadInput(me, fg_thread, 1) != 0;
+        BringWindowToTop(hwnd);
+        SetForegroundWindow(hwnd);
+        if attached {
+            AttachThreadInput(me, fg_thread, 0);
+        }
+    }
+    for _ in 0..30 {
+        std::thread::sleep(Duration::from_millis(15));
+        if frontmost_bundle_id().as_deref() == Some(exe) {
+            std::thread::sleep(Duration::from_millis(40)); // let its window take the keyboard focus
+            return;
+        }
+    }
+}
+
+// --------------------------------------------------------------------- icons
+
+/// Full path of the executable for an app id: a running process first, then the search path.
+fn exe_path_for(exe: &str) -> Option<String> {
+    if let Some(path) = pids_of_exe(exe).into_iter().find_map(exe_path_of_pid) {
+        return Some(path);
+    }
+    let name = wide(exe);
+    let mut buf = [0u16; 1024];
+    // SAFETY: the buffer length is passed along; null path/extension mean "default search".
+    let n = unsafe {
+        SearchPathW(
+            std::ptr::null(),
+            name.as_ptr(),
+            std::ptr::null(),
+            buf.len() as u32,
+            buf.as_mut_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    (n > 0 && (n as usize) < buf.len()).then(|| from_wide(&buf[..n as usize]))
+}
+
+/// A 128 px icon of the executable (the size of the glyph texture), or the large shell icon.
+fn icon_handle(path: &str) -> Option<HICON> {
+    let w = wide(path);
+    // SAFETY: `hicon` receives at most one handle, as requested by the `1`.
+    unsafe {
+        let mut hicon: HICON = std::ptr::null_mut();
+        let got = PrivateExtractIconsW(
+            w.as_ptr(),
+            0,
+            128,
+            128,
+            &mut hicon,
+            std::ptr::null_mut(),
+            1,
+            0,
+        );
+        if got > 0 && got != u32::MAX && !hicon.is_null() {
+            return Some(hicon);
+        }
+        let mut info: SHFILEINFOW = std::mem::zeroed();
+        let r = SHGetFileInfoW(
+            w.as_ptr(),
+            0,
+            &mut info,
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON,
+        );
+        (r != 0 && !info.hIcon.is_null()).then_some(info.hIcon)
+    }
+}
+
+/// Reads the pixels of a 32-bit icon bitmap as BGRA, top-down.
+unsafe fn bitmap_bgra(
+    bmp: windows_sys::Win32::Graphics::Gdi::HBITMAP,
+    w: i32,
+    h: i32,
+) -> Option<Vec<u8>> {
+    let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
+    bmi.bmiHeader = BITMAPINFOHEADER {
+        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: w,
+        biHeight: -h, // negative: top-down rows
+        biPlanes: 1,
+        biBitCount: 32,
+        biCompression: BI_RGB,
+        biSizeImage: 0,
+        biXPelsPerMeter: 0,
+        biYPelsPerMeter: 0,
+        biClrUsed: 0,
+        biClrImportant: 0,
+    };
+    let mut px = vec![0u8; (w * h * 4) as usize];
+    let dc = unsafe { GetDC(std::ptr::null_mut()) };
+    let lines = unsafe {
+        GetDIBits(
+            dc,
+            bmp,
+            0,
+            h as u32,
+            px.as_mut_ptr().cast(),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        )
+    };
+    unsafe { ReleaseDC(std::ptr::null_mut(), dc) };
+    (lines == h).then_some(px)
+}
+
+/// The real icon of the app with this id as RGBA, or `None` when the app cannot be found.
+pub fn app_icon(exe: &str) -> Option<NativeIcon> {
+    let path = exe_path_for(exe)?;
+    let hicon = icon_handle(&path)?;
+    // SAFETY: every GDI object created below is deleted, and the icon handle destroyed.
+    unsafe {
+        let mut ii: ICONINFO = std::mem::zeroed();
+        if GetIconInfo(hicon, &mut ii) == 0 {
+            DestroyIcon(hicon);
+            return None;
+        }
+        let mut bm: BITMAP = std::mem::zeroed();
+        let ok = GetObjectW(
+            ii.hbmColor,
+            std::mem::size_of::<BITMAP>() as i32,
+            (&mut bm as *mut BITMAP).cast(),
+        );
+        let result = (ok != 0 && bm.bmWidth > 0 && bm.bmHeight > 0)
+            .then(|| {
+                let (w, h) = (bm.bmWidth, bm.bmHeight);
+                let mut color = bitmap_bgra(ii.hbmColor, w, h)?;
+                let mask = bitmap_bgra(ii.hbmMask, w, h)
+                    .map(|m| m.chunks_exact(4).map(|p| p[0]).collect::<Vec<u8>>());
+                super::util::bgra_to_rgba(&mut color, mask.as_deref());
+                Some(NativeIcon::Rgba {
+                    width: w as u32,
+                    height: h as u32,
+                    data: color,
+                })
+            })
+            .flatten();
+        DeleteObject(ii.hbmColor);
+        DeleteObject(ii.hbmMask);
+        DestroyIcon(hicon);
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_desktop_and_the_taskbar_are_not_apps() {
+        for c in [
+            "Progman",
+            "WorkerW",
+            "Shell_TrayWnd",
+            "Shell_SecondaryTrayWnd",
+        ] {
+            assert!(is_shell_surface(c));
+        }
+        assert!(
+            !is_shell_surface("CabinetWClass"),
+            "a File Explorer window is an app"
+        );
+        assert!(!is_shell_surface("Chrome_WidgetWin_1"));
+    }
+
+    #[test]
+    fn app_ids_come_from_exe_paths_only() {
+        assert_eq!(bundle_id_of(r"C:\Apps\Code.exe"), Some("code.exe".into()));
+        assert_eq!(bundle_id_of(r"C:\Apps\Code.lnk"), None);
+    }
+}

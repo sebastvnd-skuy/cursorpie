@@ -179,13 +179,13 @@ impl App {
                 ui.spacing_mut().item_spacing.x = GAP;
                 ui.add_enabled_ui(can_undo, |ui| {
                     let undo = ui.add_sized(half, egui::Button::new("Undo"));
-                    if undo.on_hover_text("Undo the last change (Cmd+Z)").clicked() {
+                    if undo.on_hover_text(format!("Undo the last change ({}+Z)", crate::platform::OS.primary_name())).clicked() {
                         action = UiAction::Undo;
                     }
                 });
                 ui.add_enabled_ui(can_redo, |ui| {
                     let redo = ui.add_sized(half, egui::Button::new("Redo"));
-                    if redo.on_hover_text("Redo (Cmd+Shift+Z)").clicked() {
+                    if redo.on_hover_text(format!("Redo ({}+Shift+Z)", crate::platform::OS.primary_name())).clicked() {
                         action = UiAction::Redo;
                     }
                 });
@@ -238,16 +238,23 @@ impl App {
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
             |ui| {
                 if !platform::is_trusted_cached() || !TAP_ACTIVE.load(Ordering::SeqCst) {
-                    ui.label(RichText::new("⚠ Accessibility permission needed").color(BAD));
-                    if ui.small_button("Open System Settings").clicked() {
-                        platform::open_accessibility_settings();
+                    if platform::OS.needs_permission() {
+                        ui.label(RichText::new("⚠ Accessibility permission needed").color(BAD));
+                        if ui.small_button("Open System Settings").clicked() {
+                            platform::open_accessibility_settings();
+                        }
+                    } else {
+                        ui.label(RichText::new("⚠ Mouse hook not running").color(BAD));
                     }
                 } else if let Some((msg, _)) = &self.toast {
                     ui.label(RichText::new(msg).color(accent));
                 } else {
                     muted(
                         ui,
-                        "Esc cancels  ·  Cmd+Z undoes  ·  Save applies every tab at once",
+                        &format!(
+                            "Esc cancels  ·  {}+Z undoes  ·  Save applies every tab at once",
+                            platform::OS.primary_name()
+                        ),
                     );
                 }
             },

@@ -339,12 +339,22 @@ pub fn add_profile(cfg: &mut Config, mut profile: Profile) -> Result<usize, Stri
     Ok(cfg.profiles.len() - 1)
 }
 
-/// App identifiers trimmed, without blanks and duplicates (order kept).
+/// App identifiers in the canonical form of this OS (trimmed; lower case on Windows), without
+/// blanks and duplicates (order kept).
 pub fn clean_apps(apps: &[String]) -> Vec<String> {
+    clean_apps_for(crate::platform::OS, apps)
+}
+
+/// [`clean_apps`] for a given OS.
+pub fn clean_apps_for(os: crate::platform::Os, apps: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for a in apps.iter().map(|a| a.trim()).filter(|a| !a.is_empty()) {
-        if !out.iter().any(|o| o == a) {
-            out.push(a.to_string());
+    for a in apps
+        .iter()
+        .map(|a| os.normalize_app_id(a))
+        .filter(|a| !a.is_empty())
+    {
+        if !out.iter().any(|o| os.app_ids_equal(o, &a)) {
+            out.push(a);
         }
     }
     out
@@ -552,5 +562,33 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
         assert_eq!(clean_apps(&v), vec!["a", "b"]);
+    }
+    #[test]
+    fn app_lists_are_cleaned_per_os() {
+        use crate::platform::Os;
+        let v: Vec<String> = [" Chrome.exe ", "chrome.EXE", "", "code.exe"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(clean_apps_for(Os::Windows, &v), ["chrome.exe", "code.exe"]);
+        // macOS keeps bundle ids exactly as typed
+        assert_eq!(
+            clean_apps_for(Os::Mac, &v),
+            ["Chrome.exe", "chrome.EXE", "code.exe"]
+        );
+    }
+
+    #[test]
+    fn image_path_only_accepts_image_files() {
+        assert_eq!(image_path("hello"), None);
+        assert_eq!(image_path("app:com.apple.Safari"), None);
+        assert_eq!(image_path("<>"), None);
+        assert_eq!(image_path("  a.PNG ").unwrap(), PathBuf::from("a.PNG"));
+        assert_eq!(image_path("/x/y.webp").unwrap(), PathBuf::from("/x/y.webp"));
+        assert_eq!(
+            image_path("~/pics/u.jpeg").unwrap(),
+            crate::config::home().join("pics/u.jpeg")
+        );
+        assert_eq!(image_path("notes.txt"), None);
     }
 }

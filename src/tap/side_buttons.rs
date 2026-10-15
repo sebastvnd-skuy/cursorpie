@@ -1,11 +1,10 @@
 //! Back/forward side buttons: send the active mode's actions, otherwise pass through.
 
 use super::resolve::{remember_target, run_action, target_bundle_at};
-use super::{Gesture, SIDE_BACK};
+use super::{Gesture, Kind, SIDE_BACK, Verdict};
 use crate::config::{Action, ItemKind, cfg, item_at, lock};
+use crate::geometry::Point;
 use crate::side;
-use core_graphics::event::{CGEventType, CallbackResult};
-use core_graphics::geometry::CGPoint;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -16,13 +15,13 @@ static SIDE_SWALLOWED: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::ne
 /// Which pie they follow is decided by `side` (see there); `p` is where the pointer is.
 pub(super) fn handle_side(
     state: &Arc<Mutex<Gesture>>,
-    etype: CGEventType,
+    kind: Kind,
     button: i64,
-    p: CGPoint,
-) -> CallbackResult {
+    p: Point,
+) -> Verdict {
     let idx = if button == SIDE_BACK { 0 } else { 1 };
-    match etype {
-        CGEventType::OtherMouseDown => {
+    match kind {
+        Kind::Down => {
             let (pie_profile, hovered) = {
                 let g = lock(state);
                 match &*g {
@@ -75,26 +74,25 @@ pub(super) fn handle_side(
 
             if matches!(action, Action::Nothing) && !in_pie {
                 SIDE_SWALLOWED[idx].store(false, Ordering::SeqCst);
-                return CallbackResult::Keep; // native back/forward keeps working
+                return Verdict::Keep; // native back/forward keeps working
             }
             SIDE_SWALLOWED[idx].store(true, Ordering::SeqCst);
             run_action(action, target);
-            CallbackResult::Drop
+            Verdict::Drop
         }
-        CGEventType::OtherMouseUp => {
+        Kind::Up => {
             if SIDE_SWALLOWED[idx].swap(false, Ordering::SeqCst) {
-                CallbackResult::Drop
+                Verdict::Drop
             } else {
-                CallbackResult::Keep
+                Verdict::Keep
             }
         }
-        CGEventType::OtherMouseDragged => {
+        Kind::Drag => {
             if SIDE_SWALLOWED[idx].load(Ordering::SeqCst) {
-                CallbackResult::Drop
+                Verdict::Drop
             } else {
-                CallbackResult::Keep
+                Verdict::Keep
             }
         }
-        _ => CallbackResult::Keep,
     }
 }

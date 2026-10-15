@@ -1,9 +1,9 @@
 //! The interactive pie in Settings: drawing, hit-testing and clicks.
 use super::state::Ed;
 use crate::config::*;
+use crate::geometry::Point;
 use crate::geometry::*;
 use crate::ui::draw::*;
-use core_graphics::geometry::CGPoint;
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Vec2};
 use std::f32::consts::TAU;
 
@@ -46,8 +46,8 @@ pub(super) fn pie_designer(
             Hit::Center
         } else {
             let i = slice_at(
-                CGPoint::new(c.x as f64, c.y as f64),
-                CGPoint::new(p.x as f64, p.y as f64),
+                Point::new(c.x as f64, c.y as f64),
+                Point::new(p.x as f64, p.y as f64),
                 total,
                 inner,
             );

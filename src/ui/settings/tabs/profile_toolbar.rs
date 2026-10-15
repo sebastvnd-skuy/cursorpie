@@ -60,13 +60,13 @@ fn new_profile_form(
         ui.add(
             text_field(&mut ed.new_profile_app)
                 .desired_width(220.0)
-                .hint_text("bundle id, e.g. com.apple.Safari"),
+                .hint_text(platform::OS.app_id_hint()),
         );
         if ui.button("Pick…").clicked() {
             spawn_file_picker(
                 tx.clone(),
                 ctx.clone(),
-                "com.apple.application-bundle",
+                platform::FileKind::App,
                 "Choose an application",
                 |file| platform::bundle_id_of(&file).map(Msg::NewProfileAppPicked),
             );
@@ -197,7 +197,7 @@ pub(super) fn profile_toolbar(
                 ui.add(
                     text_field(&mut ed.new_app)
                         .desired_width(170.0)
-                        .hint_text("bundle id, e.g. com.apple.Safari"),
+                        .hint_text(platform::OS.app_id_hint()),
                 );
                 if ui.button("Add").clicked() {
                     let id = ed.new_app.trim().to_string();
@@ -210,7 +210,7 @@ pub(super) fn profile_toolbar(
                     spawn_file_picker(
                         tx.clone(),
                         ctx.clone(),
-                        "com.apple.application-bundle",
+                        platform::FileKind::App,
                         "Choose an application",
                         move |file| {
                             platform::bundle_id_of(&file)
@@ -227,7 +227,7 @@ pub(super) fn profile_toolbar(
             if ui.button("Export this profile…").clicked() {
                 match share::export_to_downloads(prof) {
                     Ok(path) => {
-                        platform::reveal_in_finder(&path);
+                        platform::reveal_in_file_manager(&path);
                         notice(tx, ctx, format!("Exported to {}", path.display()));
                     }
                     Err(e) => notice(tx, ctx, format!("Export failed: {e}")),
@@ -238,7 +238,7 @@ pub(super) fn profile_toolbar(
                 spawn_file_picker(
                     tx.clone(),
                     ctx.clone(),
-                    "public.json",
+                    platform::FileKind::Json,
                     "Choose a CursorPie profile",
                     |file| Some(Msg::ProfileImportPicked(file)),
                 );

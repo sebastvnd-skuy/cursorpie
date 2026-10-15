@@ -240,7 +240,7 @@ pub fn user_icons() -> Vec<String> {
     v
 }
 
-/// Opens the icons folder in Finder.
+/// Opens the icons folder in the file manager.
 pub fn open_icons_folder() {
-    platform::spawn_reaped(std::process::Command::new("open").arg(user_icons_dir()));
+    platform::open_path(&user_icons_dir());
 }

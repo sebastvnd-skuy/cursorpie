@@ -1,18 +1,13 @@
 //! Executes [`Action`]s on a single worker thread so they always run in the order they were triggered.
 //!
 //! [`run_in`] only queues a job, so it is safe to call from the event-tap callback. The worker (started
-//! by [`init`]) sends keys by posting `CGEvent`s, and shells out to `open` and `/bin/sh` for everything
-//! else. Events posted here carry [`SYNTH_TAG`] so the event tap ignores them.
+//! by [`init`]) sends keys through the platform backend (`CGEvent` on macOS, `SendInput` on Windows)
+//! and launches apps, URLs and shell commands through it as well. Events posted here carry [`SYNTH_TAG`] so the event tap ignores them.
 
 use crate::config::Action;
-use crate::keys::*;
+use crate::geometry::Point;
 use crate::platform;
-use core_graphics::event::{
-    CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGKeyCode, CGMouseButton, EventField,
-};
-use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use core_graphics::geometry::CGPoint;
-use std::process::Command;
+use crate::tap::Kind;
 use std::sync::{OnceLock, mpsc};
 use std::time::Duration;
 
@@ -40,7 +35,7 @@ pub fn init() {
                 if let Some(app) = job.focus.as_deref()
                     && sends_keys(&job.action)
                 {
-                    bring_to_front(app);
+                    platform::activate_app(app);
                 }
                 execute(&job.action);
             }
@@ -69,35 +64,19 @@ fn sends_keys(action: &Action) -> bool {
     }
 }
 
-/// Activates an app and waits (briefly) until macOS really has it in front: `open` returns
-/// before the switch is done, and keys sent too early would reach the previous app.
-fn bring_to_front(bundle: &str) {
-    if platform::frontmost_bundle_id().as_deref() == Some(bundle) {
-        return;
-    }
-    platform::spawn_reaped(Command::new("open").arg("-b").arg(bundle));
-    for _ in 0..30 {
-        std::thread::sleep(Duration::from_millis(15));
-        if platform::frontmost_bundle_id().as_deref() == Some(bundle) {
-            std::thread::sleep(Duration::from_millis(40)); // let its window become the key window
-            return;
-        }
-    }
-}
-
 /// Runs one action on the worker thread. A sequence waits 40 ms between steps.
 fn execute(action: &Action) {
     match action {
         Action::Nothing => {}
-        Action::Key(sc) => press(*sc),
+        Action::Key(sc) => platform::press_shortcut(*sc),
         Action::OpenApp(app) if !app.trim().is_empty() => {
-            platform::spawn_reaped(Command::new("open").arg("-a").arg(app.trim()));
+            platform::open_app(app.trim());
         }
         Action::OpenUrl(target) if !target.trim().is_empty() => {
-            platform::spawn_reaped(Command::new("open").arg(target.trim()));
+            platform::open_url(target.trim());
         }
         Action::Command(cmd) if !cmd.trim().is_empty() => {
-            platform::spawn_reaped(Command::new("/bin/sh").arg("-c").arg(cmd));
+            platform::run_shell(cmd);
         }
         Action::Sequence(steps) => {
             for s in steps {
@@ -109,65 +88,15 @@ fn execute(action: &Action) {
     }
 }
 
-/// Presses modifiers, the key, then releases everything in reverse order.
-fn press(sc: Shortcut) {
-    let Ok(src) = CGEventSource::new(CGEventSourceStateID::HIDSystemState) else {
-        return;
-    };
-    let none = CGEventFlags::CGEventFlagNull;
-    let table: [(u8, CGKeyCode, CGEventFlags); 4] = [
-        (MOD_CTRL, 59, CGEventFlags::CGEventFlagControl),
-        (MOD_ALT, 58, CGEventFlags::CGEventFlagAlternate),
-        (MOD_SHIFT, 56, CGEventFlags::CGEventFlagShift),
-        (MOD_CMD, 55, CGEventFlags::CGEventFlagCommand),
-    ];
-
-    // (modifier keycode, cumulative flags once that modifier is down)
-    let mut seq: Vec<(CGKeyCode, CGEventFlags)> = Vec::new();
-    let mut acc = none;
-    for (bit, code, flag) in table {
-        if sc.mods & bit != 0 {
-            acc |= flag;
-            seq.push((code, acc));
-        }
-    }
-
-    for (code, flags) in &seq {
-        post_key(&src, *code, true, *flags);
-    }
-    post_key(&src, sc.key, true, acc);
-    post_key(&src, sc.key, false, acc);
-    for i in (0..seq.len()).rev() {
-        let after = if i == 0 { none } else { seq[i - 1].1 };
-        post_key(&src, seq[i].0, false, after);
-    }
-}
-
-/// Posts one key event with the given modifier flags, tagged with [`SYNTH_TAG`].
-fn post_key(src: &CGEventSource, code: CGKeyCode, down: bool, flags: CGEventFlags) {
-    if let Ok(ev) = CGEvent::new_keyboard_event(src.clone(), code, down) {
-        ev.set_flags(flags);
-        ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, SYNTH_TAG);
-        ev.post(CGEventTapLocation::HID);
-        std::thread::sleep(Duration::from_millis(3));
-    }
-}
-
 /// Re-posts a swallowed mouse press/release (used when a quick click must reach the app after all).
-pub fn post_mouse(pos: CGPoint, ty: CGEventType, button: i64) {
-    if let Ok(src) = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-        && let Ok(ev) = CGEvent::new_mouse_event(src, ty, pos, CGMouseButton::Center)
-    {
-        ev.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, button);
-        ev.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
-        ev.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, SYNTH_TAG);
-        ev.post(CGEventTapLocation::HID);
-    }
+pub fn post_mouse(pos: Point, kind: Kind, button: i64) {
+    platform::post_mouse(pos, kind, button);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keys::{MOD_CMD, Shortcut};
 
     #[test]
     fn only_key_actions_need_the_target_in_front() {
@@ -182,5 +111,12 @@ mod tests {
         assert!(!sends_keys(&Action::Sequence(vec![Action::OpenUrl(
             "https://example.com".into()
         )])));
+    }
+
+    #[test]
+    fn the_synthetic_event_tag_is_stable() {
+        // events carrying this value are ignored by the event tap; changing it is harmless but
+        // must be done in one place only
+        assert_eq!(SYNTH_TAG, 0x504F_5055);
     }
 }

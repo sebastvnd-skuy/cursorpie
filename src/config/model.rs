@@ -14,11 +14,12 @@ pub enum Action {
     #[default]
     Nothing,
     Key(Shortcut),
-    /// App name ("Safari") or path ("/Applications/Safari.app"), passed to `open -a`.
+    /// App name ("Safari") or path ("/Applications/Safari.app"), passed to `open -a` on macOS. On
+    /// Windows a program name ("chrome") or the path of an `.exe`.
     OpenApp(String),
-    /// URL or file path, passed to `open`.
+    /// URL or file path, passed to `open` (macOS) or opened with its default handler (Windows).
     OpenUrl(String),
-    /// Shell command, run with `/bin/sh -c`.
+    /// Shell command, run with `/bin/sh -c` (macOS) or `cmd /C` (Windows).
     Command(String),
     Sequence(Vec<Action>),
 }
@@ -107,7 +108,8 @@ impl Item {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Profile {
     pub name: String,
-    /// Bundle identifiers, e.g. "com.apple.Safari". Empty = fallback profile.
+    /// App ids: bundle identifiers on macOS ("com.apple.Safari"), lower-case executable names on
+    /// Windows ("chrome.exe"). Empty = fallback profile.
     pub apps: Vec<String>,
     pub items: Vec<Item>,
     /// Path (indices) of the item whose side-button actions are currently active.
@@ -198,9 +200,11 @@ impl Config {
     /// Index of the profile that lists `bundle`, if any.
     pub fn app_profile_for(&self, bundle: Option<&str>) -> Option<usize> {
         let b = bundle?;
-        self.profiles
-            .iter()
-            .position(|p| p.apps.iter().any(|a| a == b))
+        self.profiles.iter().position(|p| {
+            p.apps
+                .iter()
+                .any(|a| crate::platform::OS.app_ids_equal(a, b))
+        })
     }
 
     /// Which profile applies for the given frontmost app.

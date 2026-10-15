@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Test
+        run: cargo test --all-targets
+      - name: Test doc examples
+        run: cargo test --doc
+      - name: Build release
+        if: matrix.os != 'ubuntu-latest'
+        run: cargo build --release
+      # type-checks the Windows backend and runs its pure helpers on macOS and Linux too
+      - name: Windows backend checks
+        if: matrix.os != 'windows-latest'
+        run: cargo test --features check-windows

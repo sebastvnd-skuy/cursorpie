@@ -13,7 +13,7 @@ use eframe::egui::{self, Key, Modifiers};
 use std::time::Instant;
 
 impl App {
-    /// Handles Cmd+Z, Cmd+Shift+Z and Cmd+Y, unless a text field or the shortcut recorder owns
+    /// Handles Cmd+Z, Cmd+Shift+Z and Cmd+Y (Ctrl on Windows), unless a text field or the shortcut recorder owns
     /// the keyboard (a text field has an undo of its own).
     pub(in crate::ui::settings) fn history_keys(&mut self, ctx: &egui::Context) {
         if self.closing.is_some() || self.ed.recording.is_some() || ctx.egui_wants_keyboard_input()
@@ -41,7 +41,8 @@ impl App {
             ctx.request_repaint();
             let left = self.history.undo_steps();
             self.say(format!(
-                "Undone ({left} more can be undone). Cmd+Shift+Z redoes it."
+                "Undone ({left} more can be undone). {}+Shift+Z redoes it.",
+                crate::platform::OS.primary_name()
             ));
         } else {
             self.say("Nothing to undo.");

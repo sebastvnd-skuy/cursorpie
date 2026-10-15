@@ -1,18 +1,20 @@
 //! Helpers that shell out to tools shipped with macOS (`open`, `osascript`, `mdls`, `afplay`).
 
+use crate::platform::{FileKind, spawn_reaped};
 use std::process::Command;
 
-/// Starts a process and reaps its exit status on a tiny thread, so it never becomes a zombie.
-pub fn spawn_reaped(cmd: &mut Command) {
-    if let Ok(mut child) = cmd.spawn() {
-        std::thread::spawn(move || {
-            let _ = child.wait();
-        });
+/// Uniform Type Identifier that `osascript` filters on.
+fn uti(kind: FileKind) -> &'static str {
+    match kind {
+        FileKind::Image => "public.image",
+        FileKind::Json => "public.json",
+        FileKind::App => "com.apple.application-bundle",
     }
 }
 
-/// Native file chooser through osascript (no extra dependency). `uti` e.g. "public.image".
-pub fn choose_file(uti: &str, prompt: &str) -> Option<String> {
+/// Native file chooser through osascript (no extra dependency).
+pub fn choose_file(kind: FileKind, prompt: &str) -> Option<String> {
+    let uti = uti(kind);
     let script =
         format!(r#"POSIX path of (choose file of type {{"{uti}"}} with prompt "{prompt}")"#);
     let out = Command::new("osascript")
@@ -38,8 +40,28 @@ pub fn bundle_id_of(app_path: &str) -> Option<String> {
 }
 
 /// Reveals a file in Finder.
-pub fn reveal_in_finder(path: &std::path::Path) {
+pub fn reveal_in_file_manager(path: &std::path::Path) {
     spawn_reaped(Command::new("open").arg("-R").arg(path));
+}
+
+/// Opens a folder or file with its default app (`open <path>`).
+pub fn open_path(path: &std::path::Path) {
+    spawn_reaped(Command::new("open").arg(path));
+}
+
+/// Launches an app by name or path (`open -a`).
+pub fn open_app(app: &str) {
+    spawn_reaped(Command::new("open").arg("-a").arg(app));
+}
+
+/// Opens a URL or a file path with the default handler (`open`).
+pub fn open_url(target: &str) {
+    spawn_reaped(Command::new("open").arg(target));
+}
+
+/// Runs a shell command (`/bin/sh -c`).
+pub fn run_shell(cmd: &str) {
+    spawn_reaped(Command::new("/bin/sh").arg("-c").arg(cmd));
 }
 
 /// Soft tick used as hover feedback (afplay ships with macOS).

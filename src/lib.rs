@@ -1,6 +1,6 @@
 //! # CursorPie
 //!
-//! A hold-to-open **pie menu for macOS**: hold a mouse button, flick toward a slice, release.
+//! A hold-to-open **pie menu for macOS and Windows**: hold a mouse button, flick toward a slice, release.
 //! A slice can send a shortcut, launch an app, open a URL, run a shell command, open a submenu,
 //! or remap the mouse's back/forward buttons. Every app can have its own pie ("profile").
 //!
@@ -32,19 +32,21 @@
 //! | [`geometry`] | any thread | pie sizes and slice hit-testing (shared by tap and UI) |
 //! | [`keys`] | any thread | shortcut model (key code + modifiers) and its labels |
 //! | [`msg`] | any thread | messages sent *to* the UI thread |
-//! | [`platform`] | any thread (some main only) | macOS glue: permissions, apps, login item, keyboard layout |
+//! | [`platform`] | any thread (some main only) | OS glue: permissions, apps, login item, keyboard layout (macOS, Windows, stub) |
 //! | [`ui`] | main thread | eframe app, pie renderer, Settings window, menu bar icon |
 //! | [`about`] | - | name, version, links shown in the About tab |
 //!
 //! ## Platform
 //!
-//! macOS only (11 or later). Building for another target fails with a `compile_error!`.
+//! macOS (11 or later) and Windows (10 1809 or later). Other targets build against a do-nothing stub
+//! backend so the portable code can be unit tested there; see [`platform`]. The Windows port is
+//! described in `docs/WINDOWS_MIGRATION.md`.
 //! To read these docs locally run `cargo docs` (an alias for
 //! `cargo doc --no-deps --document-private-items --open`, see `.cargo/config.toml`).
 //! When published, docs.rs builds them for the Apple targets listed in `Cargo.toml`.
 
-#[cfg(not(target_os = "macos"))]
-compile_error!("CursorPie only supports macOS.");
+// The Linux stub has no hook, so the gesture machinery is only exercised by tests there.
+#![cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 
 pub mod about;
 pub mod actions;
@@ -78,17 +80,21 @@ pub fn run() -> eframe::Result<()> {
     let (tx, rx) = mpsc::channel();
     let win = config::cfg().pie_size;
 
+    let viewport = egui::ViewportBuilder::default()
+        .with_inner_size([win, win])
+        .with_decorations(false)
+        .with_transparent(true)
+        .with_has_shadow(false)
+        .with_resizable(false)
+        .with_always_on_top()
+        .with_mouse_passthrough(true)
+        .with_active(false)
+        .with_visible(false);
+    // no taskbar button for the hidden pie window (Windows only; macOS hides the Dock icon instead)
+    #[cfg(windows)]
+    let viewport = viewport.with_taskbar(false);
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([win, win])
-            .with_decorations(false)
-            .with_transparent(true)
-            .with_has_shadow(false)
-            .with_resizable(false)
-            .with_always_on_top()
-            .with_mouse_passthrough(true)
-            .with_active(false)
-            .with_visible(false),
+        viewport,
         ..Default::default()
     };
 

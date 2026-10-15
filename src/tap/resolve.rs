@@ -5,10 +5,10 @@ use crate::actions;
 use crate::config::{
     self, Action, AppGesture, Item, ItemKind, MAX_DEPTH, TargetApp, cfg, items_at,
 };
+use crate::geometry::Point;
 use crate::geometry::{pie_inner, pie_outer, slice_at};
 use crate::platform;
 use crate::side;
-use core_graphics::geometry::CGPoint;
 
 /// Result of testing the cursor against the pie.
 pub(super) struct Hit {
@@ -18,7 +18,7 @@ pub(super) struct Hit {
 }
 
 /// Which slice is under `p`, and whether `p` crossed the outer rim over a submenu slice.
-pub(super) fn eval(profile: usize, path: &[usize], center: CGPoint, p: CGPoint) -> Hit {
+pub(super) fn eval(profile: usize, path: &[usize], center: Point, p: Point) -> Hit {
     let c = cfg();
     let win = c.pie_size;
     let Some(items) = c
@@ -82,7 +82,7 @@ pub(super) fn run_action(action: Action, target: Option<String>) {
 
 /// The app a gesture at `p` is about: the app in front, or the app whose window is under `p`
 /// (falling back to the app in front when that cannot be told).
-pub(super) fn target_bundle_at(p: CGPoint) -> Option<String> {
+pub(super) fn target_bundle_at(p: Point) -> Option<String> {
     let mode = cfg().target_app;
     match mode {
         TargetApp::Focused => platform::frontmost_bundle_id(),
@@ -97,7 +97,7 @@ pub(super) fn remember_target(bundle: Option<String>) {
 }
 
 /// (profile for HOLD, the app's own profile for DOUBLE-CLICK)
-pub(super) fn resolve_profiles(p: CGPoint) -> (usize, Option<usize>) {
+pub(super) fn resolve_profiles(p: Point) -> (usize, Option<usize>) {
     let bundle = target_bundle_at(p);
     remember_target(bundle.clone());
     let c = cfg();

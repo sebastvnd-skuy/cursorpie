@@ -54,7 +54,7 @@ impl App {
                     .selected_text(name(cfg.trigger_button))
                     .width(ui.available_width())
                     .show_ui(ui, |ui| {
-                        for b in [2i64, 5, 6, 7] {
+                        for &b in crate::platform::OS.trigger_buttons() {
                             ui.selectable_value(&mut cfg.trigger_button, b, name(b));
                         }
                     });
@@ -184,7 +184,10 @@ impl App {
                 color_row(ui, "Other-pie color", &mut cfg.inactive_color);
                 slider_row(
                     ui,
-                    "Show the pie after switching (menu bar)",
+                    &format!(
+                        "Show the pie after switching ({})",
+                        crate::platform::OS.tray_name()
+                    ),
                     &mut cfg.preview_ms,
                     0..=2000,
                     " ms",

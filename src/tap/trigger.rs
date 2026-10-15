@@ -6,51 +6,47 @@
 
 use super::gesture::Gesture;
 use super::resolve::{eval, resolve_profiles, select};
-use super::{DRAG_TOLERANCE, FLICK_DISTANCE, NEXT_ID};
-use crate::actions::{SYNTH_TAG, post_mouse};
+use super::{DRAG_TOLERANCE, FLICK_DISTANCE, Kind, NEXT_ID, Verdict};
+use crate::actions::post_mouse;
 use crate::config::{cfg, lock};
+use crate::geometry::Point;
 use crate::msg::{Msg, Notifier};
-use core_graphics::event::{CGEvent, CGEventTapLocation, CGEventType, CallbackResult, EventField};
-use core_graphics::geometry::CGPoint;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 /// Dispatches one event of the trigger button according to the current gesture state.
+/// `replay_drag` re-posts the original drag event to the app (see `on_drag_pending`).
 pub(super) fn handle(
     state: &Arc<Mutex<Gesture>>,
     notifier: &Notifier,
-    etype: CGEventType,
-    event: &CGEvent,
+    kind: Kind,
+    p: Point,
     button: i64,
     flick: bool,
-) -> CallbackResult {
-    let p = event.location();
+    replay_drag: &dyn Fn(),
+) -> Verdict {
     let g = lock(state);
 
-    match (etype, &*g) {
-        (CGEventType::OtherMouseDown, _) => on_press(state, notifier, g, p, button),
-        (CGEventType::OtherMouseDragged, Gesture::Pending { .. }) => {
-            on_drag_pending(notifier, g, event, p, button, flick)
+    match (kind, &*g) {
+        (Kind::Down, _) => on_press(state, notifier, g, p, button),
+        (Kind::Drag, Gesture::Pending { .. }) => {
+            on_drag_pending(notifier, g, replay_drag, p, button, flick)
         }
-        (CGEventType::OtherMouseDragged, Gesture::ActivePie { .. }) => {
-            on_drag_in_pie(notifier, g, p)
-        }
-        (CGEventType::OtherMouseUp, Gesture::Pending { .. }) => {
-            on_release_pending(state, g, button)
-        }
-        (CGEventType::OtherMouseUp, Gesture::ActivePie { .. }) => on_release_in_pie(notifier, g, p),
-        (CGEventType::OtherMouseUp, Gesture::InSettings) => {
+        (Kind::Drag, Gesture::ActivePie { .. }) => on_drag_in_pie(notifier, g, p),
+        (Kind::Up, Gesture::Pending { .. }) => on_release_pending(state, g, button),
+        (Kind::Up, Gesture::ActivePie { .. }) => on_release_in_pie(notifier, g, p),
+        (Kind::Up, Gesture::InSettings) => {
             release_to_idle(g);
-            CallbackResult::Drop
+            Verdict::Drop
         }
-        (CGEventType::OtherMouseUp, Gesture::Passthrough) => {
+        (Kind::Up, Gesture::Passthrough) => {
             release_to_idle(g);
-            CallbackResult::Keep
+            Verdict::Keep
         }
-        (CGEventType::OtherMouseDragged, Gesture::Passthrough) => CallbackResult::Keep,
-        (CGEventType::OtherMouseDragged, Gesture::InSettings) => CallbackResult::Drop,
-        _ => CallbackResult::Keep,
+        (Kind::Drag, Gesture::Passthrough) => Verdict::Keep,
+        (Kind::Drag, Gesture::InSettings) => Verdict::Drop,
+        _ => Verdict::Keep,
     }
 }
 
@@ -65,9 +61,9 @@ fn on_press<'a>(
     state: &'a Arc<Mutex<Gesture>>,
     notifier: &Notifier,
     mut g: MutexGuard<'a, Gesture>,
-    p: CGPoint,
+    p: Point,
     button: i64,
-) -> CallbackResult {
+) -> Verdict {
     let (hold_profile, app) = resolve_profiles(p);
     // lets the UI load the icons while the hold timer runs (never blocks, see the tap rules)
     notifier.send(Msg::Warm {
@@ -78,7 +74,7 @@ fn on_press<'a>(
 
     // (A) second press inside the double-click window: open the app's own pie at once
     let prev = std::mem::replace(&mut *g, Gesture::Idle);
-    let mut late: Option<CGPoint> = None;
+    let mut late: Option<Point> = None;
     if let Gesture::WaitSecond {
         pos: first,
         app: ap,
@@ -102,14 +98,14 @@ fn on_press<'a>(
                 profile: ap,
                 path: Vec::new(),
             });
-            return CallbackResult::Drop; // no "open Settings" timer for an app pie
+            return Verdict::Drop; // no "open Settings" timer for an app pie
         }
         late = Some(first); // too late: the first click still has to reach the app
     }
     if let Some(first) = late {
         drop(g);
-        post_mouse(first, CGEventType::OtherMouseDown, button);
-        post_mouse(first, CGEventType::OtherMouseUp, button);
+        post_mouse(first, Kind::Down, button);
+        post_mouse(first, Kind::Up, button);
         g = lock(state);
     }
 
@@ -123,7 +119,7 @@ fn on_press<'a>(
     };
     drop(g);
     spawn_hold_timer(state.clone(), notifier.clone(), id);
-    CallbackResult::Drop
+    Verdict::Drop
 }
 
 /// Timer thread for one press: opens the pie after `pie_hold_ms`, and Settings after
@@ -207,8 +203,8 @@ fn spawn_double_timer(st: Arc<Mutex<Gesture>>, id: u64, button: i64, ms: u64) {
             found
         };
         if let Some(p) = replay {
-            post_mouse(p, CGEventType::OtherMouseDown, button);
-            post_mouse(p, CGEventType::OtherMouseUp, button);
+            post_mouse(p, Kind::Down, button);
+            post_mouse(p, Kind::Up, button);
         }
     });
 }
@@ -218,16 +214,16 @@ fn spawn_double_timer(st: Arc<Mutex<Gesture>>, id: u64, button: i64, ms: u64) {
 fn on_drag_pending(
     notifier: &Notifier,
     mut g: MutexGuard<'_, Gesture>,
-    event: &CGEvent,
-    p: CGPoint,
+    replay_drag: &dyn Fn(),
+    p: Point,
     button: i64,
     flick: bool,
-) -> CallbackResult {
+) -> Verdict {
     let Gesture::Pending {
         id, pos, profile, ..
     } = &*g
     else {
-        return CallbackResult::Drop;
+        return Verdict::Drop;
     };
     let (id, start, profile) = (*id, *pos, *profile);
     let limit = if flick {
@@ -256,22 +252,16 @@ fn on_drag_pending(
             // a real drag: hand the gesture back to the app (e.g. panning)
             *g = Gesture::Passthrough;
             drop(g);
-            post_mouse(start, CGEventType::OtherMouseDown, button);
-            let drag = event.clone();
-            drag.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, SYNTH_TAG);
-            drag.post(CGEventTapLocation::HID);
+            post_mouse(start, Kind::Down, button);
+            replay_drag();
         }
     }
-    CallbackResult::Drop
+    Verdict::Drop
 }
 
 /// Moved while the pie is open: update the hovered slice, or enter a submenu when the cursor
 /// crosses the rim over one.
-fn on_drag_in_pie(
-    notifier: &Notifier,
-    mut g: MutexGuard<'_, Gesture>,
-    p: CGPoint,
-) -> CallbackResult {
+fn on_drag_in_pie(notifier: &Notifier, mut g: MutexGuard<'_, Gesture>, p: Point) -> Verdict {
     let Gesture::ActivePie {
         center,
         profile,
@@ -280,7 +270,7 @@ fn on_drag_in_pie(
         ..
     } = &mut *g
     else {
-        return CallbackResult::Drop;
+        return Verdict::Drop;
     };
     let hit = eval(*profile, path, *center, p);
     if hit.enter {
@@ -303,7 +293,7 @@ fn on_drag_in_pie(
         drop(g);
         notifier.send(Msg::Hover(hit.hover));
     }
-    CallbackResult::Drop
+    Verdict::Drop
 }
 
 /// Released before the pie opened: a click. Pass it on, or wait for a second click if the app
@@ -312,9 +302,9 @@ fn on_release_pending(
     state: &Arc<Mutex<Gesture>>,
     mut g: MutexGuard<'_, Gesture>,
     button: i64,
-) -> CallbackResult {
+) -> Verdict {
     let Gesture::Pending { id, pos, app, .. } = &*g else {
-        return CallbackResult::Drop;
+        return Verdict::Drop;
     };
     let (id, start, app) = (*id, *pos, *app);
     match app {
@@ -332,19 +322,15 @@ fn on_release_pending(
         None => {
             *g = Gesture::Idle;
             drop(g);
-            post_mouse(start, CGEventType::OtherMouseDown, button);
-            post_mouse(start, CGEventType::OtherMouseUp, button);
+            post_mouse(start, Kind::Down, button);
+            post_mouse(start, Kind::Up, button);
         }
     }
-    CallbackResult::Drop
+    Verdict::Drop
 }
 
 /// Released while the pie is open: run the slice under the cursor (if any) and close the pie.
-fn on_release_in_pie(
-    notifier: &Notifier,
-    mut g: MutexGuard<'_, Gesture>,
-    p: CGPoint,
-) -> CallbackResult {
+fn on_release_in_pie(notifier: &Notifier, mut g: MutexGuard<'_, Gesture>, p: Point) -> Verdict {
     let Gesture::ActivePie {
         center,
         profile,
@@ -352,7 +338,7 @@ fn on_release_in_pie(
         ..
     } = &*g
     else {
-        return CallbackResult::Drop;
+        return Verdict::Drop;
     };
     let (center, profile, path) = (*center, *profile, path.clone());
     *g = Gesture::Idle;
@@ -361,5 +347,5 @@ fn on_release_in_pie(
         select(profile, &path, h);
     }
     notifier.send(Msg::HidePie);
-    CallbackResult::Drop
+    Verdict::Drop
 }

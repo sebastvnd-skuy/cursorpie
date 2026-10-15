@@ -1,7 +1,7 @@
 //! Accessibility permission (needed for the event tap) and shortcuts to the System Settings pages.
 
-use super::shell::spawn_reaped;
 use crate::config::lock;
+use crate::platform::spawn_reaped;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};

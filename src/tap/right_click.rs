@@ -1,10 +1,9 @@
 //! Right-click while the pie is open: switches which pie the side buttons follow.
 
-use super::Gesture;
+use super::{Gesture, Kind, Verdict};
 use crate::config::{cfg, lock};
 use crate::msg::{Msg, Notifier};
 use crate::side;
-use core_graphics::event::{CGEventType, CallbackResult};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -16,10 +15,10 @@ static RIGHT_SWALLOWED: AtomicBool = AtomicBool::new(false);
 pub(super) fn handle_right(
     state: &Arc<Mutex<Gesture>>,
     notifier: &Notifier,
-    etype: CGEventType,
-) -> CallbackResult {
-    match etype {
-        CGEventType::RightMouseDown => {
+    kind: Kind,
+) -> Verdict {
+    match kind {
+        Kind::Down => {
             let open = {
                 let g = lock(state);
                 match &*g {
@@ -28,11 +27,11 @@ pub(super) fn handle_right(
                 }
             };
             let Some(hover) = open else {
-                return CallbackResult::Keep; // no pie open: a normal right-click
+                return Verdict::Keep; // no pie open: a normal right-click
             };
             let enabled = cfg().right_click_switch;
             if !enabled {
-                return CallbackResult::Keep;
+                return Verdict::Keep;
             }
             RIGHT_SWALLOWED.store(true, Ordering::SeqCst);
             let target = side::target();
@@ -43,20 +42,20 @@ pub(super) fn handle_right(
             if switched.is_some() {
                 notifier.send(Msg::Hover(hover)); // wakes the UI so the ring is redrawn
             }
-            CallbackResult::Drop
+            Verdict::Drop
         }
-        CGEventType::RightMouseUp => {
+        Kind::Up => {
             if RIGHT_SWALLOWED.swap(false, Ordering::SeqCst) {
-                CallbackResult::Drop
+                Verdict::Drop
             } else {
-                CallbackResult::Keep
+                Verdict::Keep
             }
         }
-        _ => {
+        Kind::Drag => {
             if RIGHT_SWALLOWED.load(Ordering::SeqCst) {
-                CallbackResult::Drop
+                Verdict::Drop
             } else {
-                CallbackResult::Keep
+                Verdict::Keep
             }
         }
     }

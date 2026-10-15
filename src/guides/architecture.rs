@@ -13,21 +13,21 @@
 //! * [Idle sleep and caches](#idle-sleep-and-caches)
 //! * [Undo, redo and backups](#undo-redo-and-backups)
 //! * [Rules for the event-tap callback](#rules-for-the-event-tap-callback)
-//! * [macOS APIs and external tools](#macos-apis-and-external-tools)
+//! * [OS APIs and external tools](#os-apis-and-external-tools)
 //!
 //! ## Threads
 //!
 //! | Thread | Started by | Owns | Talks to the others through |
 //! |---|---|---|---|
 //! | **main / UI** | `eframe::run_native` in [`crate::run`] | the [`App`](crate::ui::app::App), every egui window, the menu bar icon, the keyboard-layout snapshot | receives [`Msg`](crate::msg::Msg) values |
-//! | **`cursorpie-tap`** | [`tap::spawn`](crate::tap::spawn) | the `CGEventTap`, its `CFRunLoop`, the gesture state | sends `Msg` (`Warm`, `ShowPie`, ...) through a [`Notifier`](crate::msg::Notifier); enqueues actions |
+//! | **`cursorpie-tap`** | [`tap::spawn`](crate::tap::spawn) | the OS hook (`CGEventTap` + `CFRunLoop`, or the Windows low-level hooks + message loop), the gesture state | sends `Msg` (`Warm`, `ShowPie`, ...) through a [`Notifier`](crate::msg::Notifier); enqueues actions |
 //! | **`cursorpie-actions`** | [`actions::init`](crate::actions::init) | the queue of [`Action`](crate::config::Action)s to execute | receives jobs from [`actions::run_in`](crate::actions::run_in) |
 //! | short-lived | on demand | hold timer, double-click timer, file chooser, config save | send `Msg` or touch shared state |
 //!
 //! Why separate threads?
 //!
-//! * The tap callback is on the input path of the whole system. If it is slow macOS disables the
-//!   tap, so it only *decides* and never *does* anything slow.
+//! * The tap callback is on the input path of the whole system. If it is slow the OS disables the
+//!   hook (macOS says so; Windows silently removes it), so it only *decides* and never *does* anything slow.
 //! * Actions (sending keys, spawning `open`, sleeping 40 ms between sequence steps) must run in
 //!   the order the user triggered them, so they all go through one worker.
 //! * egui must be driven from the main thread.
@@ -214,30 +214,43 @@
 //! 1. **Never block for long.** No sleeping, no waiting for a process, no file I/O. Spawn a
 //!    thread instead (see the hold timer, `config::set_active`).
 //! 2. **Never panic out of it.** `tap::guarded` wraps the handler in `catch_unwind` and
-//!    returns `CallbackResult::Keep` (the event passes through) on a panic.
+//!    returns `Keep` (the event passes through) on a panic.
 //! 3. **Fail open.** When unsure, `Keep` the event. Only swallow events that this program is
 //!    sure it owns (the trigger button, the side buttons while they run an action, the right
 //!    button while a pie is open, a key while recording a shortcut).
 //! 4. **Release the gesture lock before sending messages or posting events.** The transition
 //!    functions in `tap::trigger` take the `MutexGuard` by value so they can `drop` it first.
 //! 5. **Ignore your own events.** Anything posted by [`actions`](crate::actions) is tagged with
-//!    `SYNTH_TAG` and skipped at the top of `handle`.
+//!    `SYNTH_TAG` and skipped by the native hook glue before `dispatch`.
 //!
-//! ## macOS APIs and external tools
+//! ## OS APIs and external tools
 //!
-//! | Need | How | Where |
-//! |---|---|---|
-//! | global mouse/keyboard events | `CGEventTap` (HID, head insert, active) | [`tap`](crate::tap) |
-//! | send keys / replay clicks | `CGEvent` posted to the HID tap location | [`actions`](crate::actions) |
-//! | Accessibility permission | `AXIsProcessTrusted` | [`platform`](crate::platform) |
-//! | frontmost app | `NSWorkspace` | `platform::frontmost_bundle_id` |
-//! | app under the pointer | `CGWindowListCopyWindowInfo` + `NSRunningApplication` | `platform::bundle_id_at` |
-//! | real app icon | `NSWorkspace.iconForFile` as TIFF, decoded by the `tiff` crate | [`ui::appicon`](crate::ui::appicon) |
-//! | give freed memory back | `malloc_zone_pressure_relief` | [`platform::release_unused_memory`](crate::platform::release_unused_memory) |
-//! | key labels on any layout | TIS + `UCKeyTranslate`, snapshot taken on the main thread | [`platform::layout`](crate::platform::layout) |
-//! | menu bar icon | `tray-icon` / `muda` | [`ui::tray`](crate::ui::tray) |
-//! | no Dock icon | `NSApplicationActivationPolicyAccessory` | `platform::set_accessory_policy` |
-//! | launch at login | a LaunchAgent plist | `platform::set_launch_at_login` |
-//! | open apps / URLs, file chooser, bundle id of an `.app`, hover tick | `open`, `osascript`, `mdls`, `afplay` | [`platform`](crate::platform) |
+//! Each need is met by one function of the [`platform`](crate::platform) facade (or by the `tap`
+//! glue); the macOS and Windows implementations sit side by side in `platform/macos/` and
+//! `platform/windows/`. The [Windows migration plan](https://github.com/sebastvnd/cursorpie/blob/main/docs/WINDOWS_MIGRATION.md)
+//! explains the design.
 //!
-//! The tools in the last row ship with macOS, so the app needs nothing installed.
+//! | Need | macOS | Windows | Where |
+//! |---|---|---|---|
+//! | global mouse/keyboard events | `CGEventTap` (HID, head insert, active) | `WH_MOUSE_LL` + `WH_KEYBOARD_LL` | [`tap`](crate::tap) |
+//! | send keys / replay clicks | `CGEvent` posted to the HID tap location | `SendInput` | `platform::press_shortcut`, `platform::post_mouse` |
+//! | permission | `AXIsProcessTrusted` (Accessibility) | none | [`platform`](crate::platform) |
+//! | frontmost app | `NSWorkspace` | `GetForegroundWindow` + process image name | `platform::frontmost_bundle_id` |
+//! | app under the pointer | `CGWindowListCopyWindowInfo` + `NSRunningApplication` | `WindowFromPoint` | `platform::bundle_id_at` |
+//! | real app icon | `NSWorkspace.iconForFile` as TIFF, decoded by the `tiff` crate | `PrivateExtractIconsW` as RGBA | [`ui::appicon`](crate::ui::appicon) |
+//! | give freed memory back | `malloc_zone_pressure_relief` | `SetProcessWorkingSetSize(-1, -1)` | `platform::release_unused_memory` |
+//! | key labels on any layout | TIS + `UCKeyTranslate`, snapshot taken on the main thread | `MapVirtualKeyExW` + `ToUnicodeEx` | [`platform::layout`](crate::platform::layout) |
+//! | tray icon | `tray-icon` / `muda` (menu bar) | `tray-icon` / `muda` (notification area) | [`ui::tray`](crate::ui::tray) |
+//! | no Dock / taskbar entry | `NSApplicationActivationPolicyAccessory` | `with_taskbar(false)` | `platform::set_accessory_policy`, [`run`](crate::run) |
+//! | launch at login | a LaunchAgent plist | `HKCU\...\Run` value | `platform::set_launch_at_login` |
+//! | open apps / URLs, file chooser, app id of a file, hover tick | `open`, `osascript`, `mdls`, `afplay` | `ShellExecuteW`, `GetOpenFileNameW`, file name, `MessageBeep` | [`platform`](crate::platform) |
+//!
+//! The macOS tools ship with the system, so the app needs nothing installed on either OS.
+//!
+//! ### Portable layer
+//!
+//! The hook glue converts each native event to an `Ev` and calls `tap::dispatch`, which answers
+//! `Keep` or `Drop`. Key codes in events and in `config.json` are **macOS virtual key codes**; the
+//! Windows backend translates at the edge with [`platform::keymap`](crate::platform::keymap).
+//! Coordinates are logical points ([`geometry::Point`](crate::geometry::Point)); on Windows the
+//! hook divides pixels by the monitor scale. On Windows a pointer move is never swallowed.

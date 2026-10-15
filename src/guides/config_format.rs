@@ -21,8 +21,10 @@
 //!
 //! `Action` is `Nothing | Key(Shortcut) | OpenApp | OpenUrl | Command | Sequence(Vec<Action>)`.
 //! `Shortcut` is `{ key, mods }`, where `key` is a macOS *virtual key code* (a physical key
-//! position) and `mods` a bitmask: Shift = 1, Ctrl = 2, Opt = 4, Cmd = 8
-//! (see [`keys`](crate::keys)). Enums use serde's default external tagging, e.g.
+//! position) and `mods` a bitmask: Shift = 1, Ctrl = 2, Opt = 4 (Alt), Cmd = 8 (the Windows key
+//! on Windows) (see [`keys`](crate::keys)). The codes are the same on every OS: Windows translates
+//! them to the key in the same physical position, so a profile shared from a Mac imports on Windows.
+//! `Profile::apps` holds bundle ids on macOS and lower-case executable names on Windows. Enums use serde's default external tagging, e.g.
 //! `{"Run": {"OpenApp": "Notes"}}`.
 //!
 //! The full annotated example and the table of fields are in the repository `README.md`.
