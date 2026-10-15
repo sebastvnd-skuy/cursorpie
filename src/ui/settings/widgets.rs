@@ -1,6 +1,7 @@
-//! Small widgets reused by the editors: chips, icon buttons, tiles, sidebar entries, panels, choices.
+//! Small widgets reused by the editors: chips, icon buttons, tiles, top bar cells, badges, panels,
+//! choices.
 //!
-//! All of them are square and take their colors from [`theme`](super::theme).
+//! All of them are almost square and take their colors from [`theme`](super::theme).
 
 use super::theme::*;
 use crate::keys::Shortcut;
@@ -77,48 +78,89 @@ pub(in crate::ui::settings) fn tile(
 
 // ------------------------------------------------------------------ layout helpers
 
-/// One entry of the sidebar: full width, a bar in the accent color on the left when selected.
-pub(in crate::ui::settings) fn nav_item(
+/// A flat, text-only cell for the top bar: monospace caps, `height` high, as wide as its label.
+///
+/// With `fill` it is a solid block (the selected tab, the primary button); without, it is
+/// transparent and lights up under the pointer. A disabled cell is dimmed and ignores clicks, but
+/// still reports hovers so it can carry a tooltip. Labels are given in capitals by the caller.
+pub(in crate::ui::settings) fn bar_button(
     ui: &mut egui::Ui,
     label: &str,
-    on: bool,
-    accent: Color32,
-    width: f32,
+    enabled: bool,
+    fill: Option<Color32>,
+    fg: Color32,
+    height: f32,
 ) -> egui::Response {
-    let (rect, resp) =
-        ui.allocate_exact_size(Vec2::new(width, CONTROL_H + 4.0), egui::Sense::click());
-    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-    let bg = if on {
-        HOT
-    } else if resp.hovered() {
-        IDLE
+    const PAD_X: f32 = 14.0;
+    let fg = if enabled { fg } else { fg.gamma_multiply(0.4) };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), egui::FontId::monospace(11.5), fg);
+    let text_size = galley.size();
+    let sense = if enabled {
+        egui::Sense::click()
     } else {
-        Color32::TRANSPARENT
+        egui::Sense::hover()
+    };
+    let width = text_size.x.ceil() + 2.0 * PAD_X;
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), sense);
+    let bg = match fill {
+        Some(f) => f,
+        None if enabled && resp.hovered() => IDLE,
+        None => Color32::TRANSPARENT,
     };
     let painter = ui.painter();
     painter.rect_filled(rect, RADIUS, bg);
-    if on {
-        let bar = egui::Rect::from_min_size(rect.min, Vec2::new(3.0, rect.height()));
-        painter.rect_filled(bar, RADIUS, accent);
-    }
-    painter.text(
-        egui::pos2(rect.min.x + 14.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(14.0),
-        if on { TEXT } else { MUTED },
+    painter.galley(
+        egui::pos2(
+            (rect.center().x - text_size.x / 2.0).round(),
+            (rect.center().y - text_size.y / 2.0).round(),
+        ),
+        galley,
+        fg,
     );
-    resp
+    if enabled {
+        resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        resp
+    }
 }
 
-/// A card heading: monospace, like the labels of a status bar.
+/// One tab of the top bar. The selected tab is a solid light block with dark text, the others
+/// are quiet text: which tab you are on is the loudest thing in the bar.
+pub(in crate::ui::settings) fn tab_item(
+    ui: &mut egui::Ui,
+    label: &str,
+    on: bool,
+    height: f32,
+) -> egui::Response {
+    if on {
+        bar_button(ui, label, true, Some(TEXT), BG, height)
+    } else {
+        bar_button(ui, label, true, None, MUTED, height)
+    }
+}
+
+/// A small outlined status label such as the version or "OK": monospace caps in `color`, with a
+/// hairline and a faint wash of the same color behind it.
+pub(in crate::ui::settings) fn badge(ui: &mut egui::Ui, text: &str, color: Color32) {
+    egui::Frame::new()
+        .fill(color.gamma_multiply(0.10))
+        .stroke(Stroke::new(1.0, color.gamma_multiply(0.55)))
+        .corner_radius(RADIUS)
+        .inner_margin(egui::Margin::symmetric(8, 2))
+        .show(ui, |ui| {
+            ui.label(RichText::new(text).monospace().size(11.0).color(color));
+        });
+}
+
+/// A card heading: small monospace capitals in the secondary color, like a label on a status bar.
 pub(in crate::ui::settings) fn card_title(ui: &mut egui::Ui, text: &str) {
     ui.label(
-        RichText::new(text)
+        RichText::new(text.to_uppercase())
             .monospace()
-            .size(13.0)
-            .strong()
-            .color(TEXT),
+            .size(11.5)
+            .color(MUTED),
     );
 }
 
@@ -262,8 +304,20 @@ pub(in crate::ui::settings) fn draw_logo(
     for i in 0..SLICES {
         let a0 = -TAU / 4.0 + step * i as f32 + gap / 2.0;
         let a1 = a0 + step - gap;
-        let color = if i == 0 { accent } else { HOT };
-        painter.add(ring_slice(center, radius * 0.42, radius, a0, a1, color));
+        let color = if i == 0 {
+            accent
+        } else {
+            MUTED.gamma_multiply(0.4)
+        };
+        painter.add(ring_slice(
+            painter,
+            center,
+            radius * 0.42,
+            radius,
+            a0,
+            a1,
+            color,
+        ));
     }
     // cursor arrow in the hub
     let p = |x: f32, y: f32| center + Vec2::new(x, y) * radius;

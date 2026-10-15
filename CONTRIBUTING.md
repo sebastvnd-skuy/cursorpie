@@ -50,7 +50,8 @@ src/cache.rs       bounded LRU cache (icon textures)
 src/history.rs     undo / redo snapshots (Settings editor)
 src/side.rs        which pie the back/forward buttons follow
 src/platform/      OS glue behind one facade: macos/, windows/, stub.rs, plus keymap.rs (key tables)
-docs/              WINDOWS_MIGRATION.md: design, phases and the manual test checklist
+docs/              WINDOWS_MIGRATION.md: design, phases and the manual test checklist;
+                   UI_DESIGN.md: look, rendering rules and the manual visual checklist
 src/ui/            everything on the UI thread: app, pie renderer, Settings, menu bar icon,
                    icon cache (`icons.rs`) and idle policy (`sleep.rs`)
 src/guides/        long-form developer docs (rendered by rustdoc)
@@ -73,9 +74,13 @@ flow and the rules that keep the event tap safe.
   never block in the callback, never panic out of it, pass events through when unsure, release
   the gesture lock before sending messages, and keep the lock order *gesture, then config, then
   side state*.
-- **Keep the Settings look consistent.** Square corners, colors and spacing come from
+- **Keep the Settings look consistent.** Colors, corner radii and spacing come from
   `src/ui/settings/theme.rs` (controls are 32 px high, the gap is 8 px), controls from
-  `src/ui/settings/widgets.rs` (see `guides::extending`). No emoji on buttons.
+  `src/ui/settings/widgets.rs` (see `guides::extending` and `docs/UI_DESIGN.md`). No emoji on buttons.
+- **Keep drawing sharp.** Never push a hand-made `egui::Mesh` for something with an edge: use
+  `ui::draw::ring_slice` (anti-aliased) or an egui shape. Drive animations with `ui::draw::step_linear`
+  plus one easing curve, not by feeding an exponential through an easing function. Test the geometry
+  and math you add (see the tests in `src/ui/draw.rs`).
 - **Bound every cache and give it a way out.** Anything the UI keeps between frames (textures,
   decoded images, lists read from disk) needs a size limit, and must be dropped in
   `App::enter_sleep` or when Settings closes (see `guides::architecture`, *Idle sleep and

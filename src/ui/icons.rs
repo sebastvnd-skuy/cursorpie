@@ -22,8 +22,9 @@ use eframe::egui;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
-/// Most textures kept between frames. An icon is at most 128 x 128 pixels (64 KiB), so this is
-/// a few MiB at the very most.
+/// Most textures kept between frames. An icon is at most
+/// [`ICON_MAX_PX`](crate::ui::draw::ICON_MAX_PX) pixels on its longest side (128 x 128 = 64 KiB),
+/// so this is a few MiB at the very most.
 pub const CAPACITY: usize = 96;
 
 /// How long to wait before trying again to load an app icon that could not be loaded.

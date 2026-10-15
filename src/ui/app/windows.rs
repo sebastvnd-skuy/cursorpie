@@ -121,9 +121,11 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
             egui::WindowLevel::AlwaysOnTop,
         ));
+        // whole points: a window on a half-point offset is resampled by the compositor on
+        // standard-density screens, which softens everything drawn in it
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-            x as f32 - w / 2.0,
-            y as f32 - w / 2.0,
+            (x as f32 - w / 2.0).round(),
+            (y as f32 - w / 2.0).round(),
         )));
         if !self.visible {
             self.visible = true;

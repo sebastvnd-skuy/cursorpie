@@ -15,18 +15,6 @@ fn link_row(ui: &mut egui::Ui, label: &str, text: &str, url: &str) {
     });
 }
 
-/// A small boxed label such as the version.
-fn badge(ui: &mut egui::Ui, text: &str, color: Color32) {
-    egui::Frame::new()
-        .fill(INPUT)
-        .stroke(egui::Stroke::new(1.0, BORDER))
-        .corner_radius(RADIUS)
-        .inner_margin(egui::Margin::symmetric(8, 2))
-        .show(ui, |ui| {
-            ui.label(RichText::new(text).monospace().size(12.0).color(color));
-        });
-}
-
 /// A button that opens `url` in the browser.
 fn link_button(ui: &mut egui::Ui, text: &str, url: &str) {
     let b = egui::Button::new(text).min_size(Vec2::new(0.0, CONTROL_H));
@@ -54,8 +42,8 @@ pub(in crate::ui::settings) fn about_tab(ui: &mut egui::Ui, accent: Color32) {
                         .color(TEXT),
                 );
                 ui.horizontal(|ui| {
-                    badge(ui, &format!("v{VERSION}"), accent);
-                    badge(ui, LICENSE_NAME, MUTED);
+                    badge(ui, &format!("V{VERSION}"), accent);
+                    badge(ui, &LICENSE_NAME.to_uppercase(), MUTED);
                 });
                 muted(ui, TAGLINE);
             });

@@ -23,6 +23,7 @@ into something more useful. Profiles let every app have its own pie.
 - [Undo, redo and backups](#undo-redo-and-backups)
 - [Sharing a profile](#sharing-a-profile)
 - [Memory and performance](#memory-and-performance)
+- [Look and rendering](#look-and-rendering)
 - [Configuration file](#configuration-file)
 - [Project layout](#project-layout)
 - [Developer documentation](#developer-documentation)
@@ -92,9 +93,12 @@ Actions run on one worker thread so they always execute in the order you trigger
 
 - Slice icons can be text, emoji, or an image (`.png`, `.jpg`, `.jpeg`, `.webp`). A path may start with `~/`.
 - Adjustable pie size (140 to 360 px), accent color, and timings.
-- The Settings window has a flat, square look inspired by tiling window managers such as Hyprland: a sidebar
-  for navigation (Save / Cancel / Quit always in the same place), hairline borders, no rounded corners, and
-  the accent color as the focus border.
+- The Settings window has a modern, dense "pro tool" look: a graphite window with rounded corners, a top bar
+  with the tabs and the Undo / Redo / Cancel / Save buttons (always in the same place), hairline borders,
+  small monospace labels and a status footer. The accent color is the only saturated color. See
+  [Look and rendering](#look-and-rendering).
+- The pie and Settings are drawn with anti-aliased edges and a fixed-duration open animation, so they stay
+  sharp and smooth on standard and Retina screens.
 - Optional soft tick sound when the hovered slice changes.
 - In an app that has its own pie, the outer ring shows which pie the side buttons follow: accent color = this pie,
   red (changeable) = the other one. See [Side buttons and app pies](#side-buttons-and-app-pies).
@@ -212,7 +216,7 @@ uses the app in front.
 
 Open it from the menu bar icon or by holding the trigger in the center of the pie.
 **Save** applies and stores your changes. **Cancel**, **Esc** and **Cmd+W** (Ctrl+W on Windows) discard them.
-**Undo** and **Redo** (sidebar, or **Cmd+Z** / **Cmd+Shift+Z**, Ctrl on Windows) step back and forward through your
+**Undo** and **Redo** (top bar, or **Cmd+Z** / **Cmd+Shift+Z**, Ctrl on Windows) step back and forward through your
 edits while Settings is open; see [Undo, redo and backups](#undo-redo-and-backups).
 
 **Menu**
@@ -250,7 +254,7 @@ Deleting a slice or a whole profile by accident is easy to fix.
 **While Settings is open**, every change you make is recorded: adding, deleting or moving slices and
 profiles, editing actions and apps, changing any option, importing a file and **Reset to defaults**.
 
-- **Undo** / **Redo** are in the sidebar, or press **Cmd+Z** and **Cmd+Shift+Z** (**Cmd+Y** also redoes; Ctrl instead of Cmd on Windows).
+- **Undo** / **Redo** are in the top bar, or press **Cmd+Z** and **Cmd+Shift+Z** (**Cmd+Y** also redoes; Ctrl instead of Cmd on Windows).
 - Typing and dragging a slider count as **one** step, not one per keystroke: a step ends when you pause
   for a moment.
 - Up to 50 steps are kept. Making a new change after an undo discards the steps you undid.
@@ -310,6 +314,25 @@ CursorPie sits in the menu bar all day, so it is built to cost almost nothing wh
 
 What sleep cannot free: the text rendering and graphics buffers that the UI library keeps for the process
 lifetime. That is a fixed base cost, not something that grows with use.
+
+## Look and rendering
+
+The interface is drawn by [egui](https://github.com/emilk/egui), which has no native widgets, so how
+sharp and smooth it looks depends on how it is drawn. CursorPie takes care of the following:
+
+- **Anti-aliased slices.** The slices of the pie are custom meshes, which egui draws as they are. Each slice
+  gets a one-pixel fade on every edge (see `ui::draw::ring_slice_mesh`), the same trick egui uses for its
+  own shapes, so edges are smooth instead of stair-stepped. The feather is one *physical* pixel, so it is
+  right on Retina and on standard screens.
+- **Crisp window.** The Settings window is snapped to whole pixels, has a rounded one-point outline and no
+  gradient mesh border. The pie window is placed on a whole point.
+- **Sharp icons.** Image icons are premultiplied and scaled with a Lanczos filter when they are loaded
+  (at most 128 px), which avoids dark halos and shimmering edges.
+- **Smooth animation.** The pie opens in 0.22 s and closes in 0.12 s on a linear clock with one easing
+  curve on top, so the duration is the same at 60 and 144 fps and the end is crisp.
+
+If an edge still looks soft on your screen, open an issue and mention your display scaling. The design
+rules and how to test rendering changes are in [docs/UI_DESIGN.md](docs/UI_DESIGN.md).
 
 ## Configuration file
 
@@ -433,6 +456,7 @@ scripts/bundle.sh       builds and signs target/bundle/CursorPie.app (macOS)
 scripts/package-windows.ps1  builds target\bundle\CursorPie-windows.zip (Windows)
 icon/                   sample images for icons (brackets, clipboard); not loaded automatically
 CONTRIBUTING.md         how to build, test and contribute
+docs/                   WINDOWS_MIGRATION.md (Windows port), UI_DESIGN.md (look and rendering rules)
 src/
   main.rs               thin binary: calls cursorpie::run()
   lib.rs                crate root: module list, run()

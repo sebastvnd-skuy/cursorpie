@@ -26,7 +26,7 @@ use std::sync::mpsc;
 use std::time::Instant;
 
 /// Settings card size. The window is larger by WIN_MARGIN on each side for the drop shadow.
-pub const CARD_SIZE: [f32; 2] = [960.0, 640.0];
+pub const CARD_SIZE: [f32; 2] = [1000.0, 680.0];
 /// Space around the card for its drop shadow (window size = card size + 2 x margin).
 pub const WIN_MARGIN: f32 = 28.0;
 

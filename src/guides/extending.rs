@@ -87,8 +87,8 @@
 //!
 //! ## Keep the Settings look consistent
 //!
-//! The Settings window is flat and square, like a tiling window manager (Hyprland). When you add
-//! or change a widget:
+//! The Settings window is a dense, quiet "tool" UI: a graphite window with rounded corners, hairline
+//! borders and almost square controls (see `docs/UI_DESIGN.md`). When you add or change a widget:
 //!
 //! 1. Take colors, radius, spacing and height from `ui/settings/theme.rs` (`BG`, `CARD`, `IDLE`,
 //!    `HOT`, `BORDER`, `RADIUS`, `GAP`, `CONTROL_H`). Do not write `Color32::from_rgb(..)`, a corner
@@ -98,11 +98,12 @@
 //!    (8), between panels and between controls. Do not add your own spacing numbers.
 //! 3. A tab is a stack of `panel(ui, "Title", ..)` cards (two columns with `ui.columns(2, ..)` when
 //!    it is long). Use the widgets in `ui/settings/widgets.rs` (`chip`, `tile`, `choice`, `toggle`,
-//!    `text_field`, `nav_item`, `info_row`) instead of egui's defaults (`radio_value`, `checkbox`,
+//!    `text_field`, `badge`, `info_row`) instead of egui's defaults (`radio_value`, `checkbox`,
 //!    `TextEdit::singleline`): they share one marker style and one height. Rows of plain text and
 //!    links go in `info_row` (22 px), not in a bare `ui.horizontal` (32 px).
-//! 4. Navigation and the Save / Cancel / Quit buttons live in the sidebar (`window.rs`) and
-//!    messages in the status bar below the body. A new tab is one more entry in the sidebar.
+//! 4. Navigation and the Undo / Redo / Cancel / Save buttons live in the top bar (`window.rs`),
+//!    Quit and messages in the footer. A new tab is one more entry in the `tabs` array of the top
+//!    bar (a short label in capitals) and one more arm in the body `match`.
 //! 5. Text is `TEXT` (primary) or `MUTED` (secondary, for labels and hints). An option that is off
 //!    keeps `TEXT`: dim text reads as disabled. Do not rely on `.strong()` for a color, egui takes
 //!    it from `widgets.active.fg_stroke`; set the color explicitly.
@@ -110,6 +111,10 @@
 //!    (`+`, `✖`, `◀`, `▶`); give those a tooltip.
 //! 7. Focus is the accent color: a 2 px border for the selected tile, a 1 px outline for the
 //!    hovered one. Do not add shadows or gradients inside panels.
+//! 8. Chrome labels (tabs, panel titles, badges) are small monospace capitals; text you read or edit
+//!    is the normal proportional font in sentence case. `card_title` and `badge` do this for you.
+//! 9. Anything with an edge that you draw by hand goes through `ui::draw` (`ring_slice`,
+//!    `arc_points`, `snap_rect`); a raw `egui::Mesh` is not anti-aliased.
 //!
 //! The pie itself stays radial: its slices are picked by angle, and that hit-testing is shared
 //! with the event tap (see `geometry.rs`).

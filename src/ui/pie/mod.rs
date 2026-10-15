@@ -10,6 +10,17 @@ use eframe::egui::{self, Align2, Color32, FontId, Shape, Stroke, Vec2};
 use std::f32::consts::{PI, TAU};
 use view::PieView;
 
+/// Seconds the pie takes to bloom open. One easing curve is applied on top of this linear clock
+/// (see [`step_linear`]).
+const OPEN_SECS: f32 = 0.22;
+/// Seconds the pie takes to fade away. Closing is quicker than opening: the action already ran.
+const CLOSE_SECS: f32 = 0.12;
+/// Slice color at rest (dark glass); the hovered slice blends toward the accent.
+const SLICE_REST: [u8; 3] = [22, 24, 30];
+/// Points the ring may grow past [`pie_outer`] while it overshoots, so it is never cut off by the
+/// edge of the window (the window leaves 10 points of margin).
+const OVERSHOOT_ROOM: f32 = 8.0;
+
 impl App {
     /// Draws the pie (one ring) and advances its animations. Hides the window once the close animation ended.
     pub fn pie_ui(&mut self, ui: &mut egui::Ui) {
@@ -27,12 +38,13 @@ impl App {
         };
         let total = view.items.len().max(1);
 
-        let mut moving = smooth_approach(
-            &mut self.anim,
+        let (anim, mut moving) = step_linear(
+            self.anim,
             if self.pie_open { 1.0 } else { 0.0 },
             dt,
-            16.0,
+            if self.pie_open { OPEN_SECS } else { CLOSE_SECS },
         );
+        self.anim = anim;
         for i in 0..MAX_ITEMS {
             moving |= smooth_approach(
                 &mut self.hover_anim[i],
@@ -81,17 +93,26 @@ impl App {
                 let painter = ui.painter_at(rect);
                 let c = rect.center();
 
-                let fade = 1.0 - (1.0 - self.anim).powi(3);
+                let fade = ease_out_cubic(self.anim);
                 let pop = ease_out_back(self.anim);
                 let r = pie_outer(self.win) * (0.80 + 0.20 * pop);
                 let inner = pie_inner(self.win) * (0.75 + 0.25 * pop);
+                let room = pie_outer(self.win) + OVERSHOOT_ROOM;
                 let accent = rgb(view.accent);
                 // false = the side buttons follow the other pie: tint this one with the inactive color
                 let live = !view.side.shown || view.side.owner;
                 let a = |v: f32, f: f32| (v * f).clamp(0.0, 255.0) as u8;
 
-                // soft shadow behind the ring
-                painter.circle_filled(c, r + 4.0, Color32::from_black_alpha(a(60.0, fade)));
+                // soft shadow behind the ring: a few stacked discs fall off smoothly, which
+                // looks like a blur without needing one
+                for k in 0..5 {
+                    let grow = 1.5 + 1.6 * (4 - k) as f32;
+                    painter.circle_filled(
+                        c + Vec2::new(0.0, 2.0),
+                        r + grow,
+                        Color32::from_black_alpha(a(15.0, fade)),
+                    );
+                }
 
                 let sl = TAU / total as f32;
                 let gap = if total > 1 { 0.05 } else { 0.0 };
@@ -103,31 +124,45 @@ impl App {
                     // slices appear one after another (stagger) while rotating slightly
                     let lp = (self.anim * 1.6 - 0.6 * i as f32 / total as f32).clamp(0.0, 1.0);
                     let lpe = ease_out_back(lp).max(0.0);
-                    let lf = 1.0 - (1.0 - lp) * (1.0 - lp);
+                    let lf = ease_out_cubic(lp);
                     let start = slice_start(i, total) - (1.0 - lp) * 0.35;
-                    let rr = inner + (r + 5.0 * h - inner) * lpe;
+                    let rr = (inner + (r + 5.0 * h - inner) * lpe).min(room);
 
                     let t = (h * 0.95 + m * 0.4).min(1.0);
                     let col = if live {
-                        mix([24, 26, 32], view.accent, t)
+                        mix(SLICE_REST, view.accent, t)
                     } else {
                         // the active mode is tinted with the inactive color, hovering still uses the accent
                         mix(
-                            mix([24, 26, 32], view.inactive, (m * 0.4).min(1.0)),
+                            mix(SLICE_REST, view.inactive, (m * 0.4).min(1.0)),
                             view.accent,
                             (h * 0.95).min(1.0),
                         )
                     };
                     let fill =
-                        Color32::from_rgba_unmultiplied(col[0], col[1], col[2], a(228.0, lf));
-                    painter.add(ring_slice(
-                        c,
-                        inner,
-                        rr,
-                        start + gap / 2.0,
-                        start + sl - gap / 2.0,
-                        fill,
-                    ));
+                        Color32::from_rgba_unmultiplied(col[0], col[1], col[2], a(232.0, lf));
+                    let (s0, s1) = (start + gap / 2.0, start + sl - gap / 2.0);
+                    painter.add(ring_slice(&painter, c, inner, rr, s0, s1, fill));
+                    // A hairline around the slice keeps its shape readable on any background. A
+                    // lone slice is a full ring: its outline would draw the seam as a line.
+                    if total > 1 {
+                        painter.add(Shape::closed_line(
+                            ring_slice_outline(c, inner, rr, s0, s1),
+                            Stroke::new(1.0, Color32::from_white_alpha(a(20.0 + 40.0 * h, lf))),
+                        ));
+                    }
+                    // a bright bar grows along the rim of the hovered slice
+                    if h > 0.02 && sl > 0.2 {
+                        painter.add(ring_slice(
+                            &painter,
+                            c,
+                            rr - 3.0,
+                            rr,
+                            s0 + 0.05,
+                            s1 - 0.05,
+                            Color32::from_white_alpha(a(120.0 * h, lf)),
+                        ));
+                    }
 
                     let am = start + sl / 2.0;
                     let dir = Vec2::new(am.cos(), am.sin());
@@ -145,12 +180,12 @@ impl App {
                         Align2::CENTER_CENTER,
                         name,
                         FontId::proportional((r * 0.09).max(9.0)),
-                        Color32::from_white_alpha(a(170.0, lf)),
+                        Color32::from_white_alpha(a(170.0 + 60.0 * h, lf)),
                     );
                     if *is_sub {
                         // dot on the rim: drag outward across it to open the submenu
                         painter.circle_filled(
-                            c + dir * (rr - 6.0),
+                            c + dir * (rr - 7.0),
                             2.5,
                             Color32::from_white_alpha(a(210.0, lf)),
                         );
@@ -182,6 +217,11 @@ impl App {
                     } else {
                         Color32::from_rgba_unmultiplied(36, 14, 14, a(235.0, fade))
                     },
+                );
+                painter.circle_stroke(
+                    c,
+                    core,
+                    Stroke::new(1.0, Color32::from_white_alpha(a(26.0, fade))),
                 );
                 if let Some(t) = app_tex.as_ref() {
                     // the app's icon as a white glyph

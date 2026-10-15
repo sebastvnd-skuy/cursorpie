@@ -75,6 +75,7 @@ pub(super) fn pie_designer(
         };
         let a0 = slice_start(i, total);
         painter.add(ring_slice(
+            &painter,
             c,
             inner,
             outer,

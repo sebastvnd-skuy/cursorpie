@@ -9,7 +9,7 @@
 //! | [`appicon`] | real app icons, reduced to white glyphs |
 //! | [`icons`] | the bounded texture cache for icons, shared by the pie and Settings |
 //! | [`sleep`] | the idle policy that frees caches and Settings state |
-//! | [`draw`] | drawing helpers shared by the pie and Settings |
+//! | [`draw`] | drawing helpers shared by the pie and Settings: anti-aliased slices, icon loading, easing |
 //! | [`screen`] | display lookup for window placement |
 //!
 //! The UI never runs actions or inspects raw input: the event tap does that and sends
