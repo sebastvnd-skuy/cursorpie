@@ -1,6 +1,6 @@
 [package]
 name = "cursorpie"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Hold-to-open pie menu for macOS and Windows: per-app profiles, shortcuts, launchers and submenus."
@@ -22,6 +22,10 @@ check-windows = ["dep:windows-sys"]
 # Kept for every target because the decoder is plain Rust and its tests run everywhere.
 tiff = { version = "0.11", default-features = false, features = ["lzw", "deflate"] }
 
+# The native window handle (HWND), to strip the OS frame of the Windows window (see ui::app).
+# Same major version eframe uses, so there is only one copy.
+raw-window-handle = "0.6"
+
 # Config + icons
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -30,6 +34,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # Windows backend, only enabled by the `check-windows` feature on other targets (see [target.'cfg(windows)']).
 windows-sys = { version = "0.61", optional = true, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_Debug",
@@ -87,6 +92,7 @@ eframe = { version = "0.36", default-features = false, features = [
 ] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_Debug",

@@ -2,6 +2,9 @@
 
 A hold-to-open pie menu for macOS and Windows, inspired by [Kando](https://github.com/kando-menu/kando).
 
+**Version 0.3.0 adds Windows 10/11 support.** It behaves almost identically to macOS; the one gap is extra mouse
+buttons (on Windows the trigger can only be the middle button). Details: [docs/WINDOWS_MIGRATION.md](docs/WINDOWS_MIGRATION.md).
+
 Hold your middle mouse button, flick toward a slice, release. Each slice can fire a keyboard shortcut,
 launch an app, open a URL, run a shell command, open a submenu, or turn your mouse's back/forward buttons
 into something more useful. Profiles let every app have its own pie.
@@ -507,12 +510,20 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
 ## Known limitations
 
 - macOS and Windows only. Other platforms build a do-nothing stub that exists for unit tests.
-- Windows: only the middle button can be the trigger (Windows reports no extra buttons 6 to 8); per-app profiles
-  cannot tell UWP apps apart (they share `applicationframehost.exe`); with monitors at different scales the pie may
-  be placed slightly off when it moves between them; Windows may refuse to bring a window to the front.
+- Windows behaves almost identically to macOS. The one gap is extra mouse buttons: only the middle button can be
+  the trigger (Windows reports only the middle, back and forward buttons, not buttons 6 to 8).
+- Windows: **app detection cannot tell UWP apps apart.** UWP (Microsoft Store / "packaged") apps, such as
+  Calculator, Photos or Settings, are shown by Windows inside one shared host process. CursorPie identifies
+  an app by its executable name, so every one of them reports `applicationframehost.exe`. A profile with
+  that app id applies to all UWP apps at once, and a profile cannot be made for just one of them. Normal
+  desktop programs (Chrome, VS Code, Explorer, Office...) are detected correctly. If you need a different
+  pie for one UWP app, use the desktop version of the program when there is one.
+- Windows: programs running **as administrator** ignore the input CursorPie sends unless CursorPie also runs
+  as administrator (a Windows rule, UIPI). With monitors at different scales the pie may be placed slightly
+  off when it moves between them, and Windows may refuse to bring a window to the front.
 - Shortcut labels and the shifted-symbol display assume a US/ANSI layout. Key codes themselves are physical keys.
-- The back/forward side buttons are fixed to mouse buttons 4 and 5 (macOS button numbers 3 and 4).
-  Only the trigger button is configurable.
+- The back/forward side buttons are fixed to mouse buttons 4 and 5 (macOS button numbers 3 and 4; the same two
+  buttons on Windows). Only the trigger button is configurable.
 - With a per-app profile and the default gesture, a plain middle-click in that app is delivered after the
   double-click window (260 ms by default). Use classic mode, or a shorter window, if that bothers you.
 - The right-click that switches the side-button pie is swallowed only while a pie is open; otherwise right-clicks pass
@@ -523,12 +534,12 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
 - Undo covers one Settings session. After you save and close, use **Settings > General > Backups** (the last
   five saves). Changes that Settings does not make, such as the active side-button mode that CursorPie saves
   when you pick a mode in the pie, are not backed up on their own.
-- Launch at login installs a LaunchAgent that starts CursorPie at your next login. It points at the executable
-  that was running when you enabled it, so toggle it off and on again if you move the app.
+- Launch at login starts CursorPie at your next login: a LaunchAgent on macOS, a `Run` registry value on Windows.
+  It points at the executable that was running when you enabled it, so toggle it off and on again if you move the app.
 - If the app icon does not show up in the center of an app's own pie, start CursorPie from a terminal
   (`cargo run --release`): a line starting with `CursorPie: app icon for <bundle id>` says why it could not be
   read. The icon only appears in the pie of an app that has its own profile (double-click in the default mode).
-- Ad-hoc signed builds may need the Accessibility permission re-granted after each rebuild. Sign with a stable
+- macOS: ad-hoc signed builds may need the Accessibility permission re-granted after each rebuild. Sign with a stable
   identity via `SIGN_ID` to avoid that.
 
 ## Forking and rebranding

@@ -28,6 +28,8 @@ pub fn app_icon(_bundle: &str) -> Option<NativeIcon> {
 }
 /// Nothing to hide.
 pub fn set_accessory_policy() {}
+/// The window has no frame to remove.
+pub fn clear_window_frame(_handle: isize) {}
 /// No pointer.
 pub fn cursor_pos() -> Option<(f64, f64)> {
     None

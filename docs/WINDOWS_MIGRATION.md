@@ -1,8 +1,18 @@
-# Windows support: migration plan
+# Windows support: design and status
 
-CursorPie 0.2.0 builds for macOS only (`compile_error!` in `src/lib.rs`). This document explains
-what is macOS-specific today, the target design that supports macOS **and** Windows 10/11, and the
-order in which the code is migrated so macOS behavior never changes along the way.
+**Status (0.3.0): Windows 10/11 is supported.** CursorPie 0.2.0 was macOS only; since 0.3.0 the same code
+base builds and runs on Windows, and in daily use it behaves almost identically to macOS: the hold-to-open
+pie, per-app profiles, shortcuts, launchers, submenus, Settings and the tray icon are the same features
+as on macOS, and the pie is drawn on a truly transparent window. What Windows does **not**
+have is the extra mouse buttons: the trigger can only be the middle button (Windows reports only the
+middle, back and forward buttons, so macOS buttons 6 to 8 do not exist), and the back/forward side buttons
+are the only other buttons CursorPie uses. See [Status in 0.3.0](#status-in-030) for the details and for
+what has and has not been verified.
+
+This document explains what was macOS-specific, the design that supports macOS **and** Windows 10/11, and
+the order in which the code was migrated so macOS behavior never changed along the way. The text below
+describes the design and the history of the port; where it says "today" it means 0.2.0, the last macOS-only
+release.
 
 Status of each phase is tracked at the end ([Progress](#progress)).
 
@@ -17,13 +27,13 @@ Goals
   DPI math, key tables) is plain Rust that can be unit tested on any OS, including Linux CI.
 - Windows needs no special permission and no installer: a single `cursorpie.exe` in the tray.
 
-Non-goals (for the first Windows release)
+Non-goals (0.3.0)
 
 - Linux support. A *stub* backend exists only so `cargo test` runs on Linux; it does nothing at runtime.
 - Extra mouse buttons 5 to 7 as trigger (Windows only reports middle, back and forward).
 - Perfect behavior on mixed-DPI multi-monitor setups (see [Risks](#risks-and-known-limitations)).
 
-## What is macOS-specific today
+## What was macOS-specific (0.2.0)
 
 | Area | Files | macOS API | Windows counterpart |
 |---|---|---|---|
@@ -87,7 +97,7 @@ Each phase is one commit and leaves macOS working. Tests come first.
 | 2 | **Portable core:** `geometry::Point`; the tap split into portable `dispatch` + `tap/macos.rs` glue; `platform/` split into `macos/` and `stub/`; Cargo target-specific dependencies; `compile_error!` removed | all old and new tests pass; `cargo test` also passes on Linux through the stub |
 | 3 | **Windows backend:** hook, `SendInput`, app lookup, DPI, layout, registry, shell, file chooser, icons, tray | `cargo check --features check-windows` is clean; pure helpers tested |
 | 4 | **Per-OS defaults and text**, config paths, case-insensitive app ids, README / CONTRIBUTING / rustdoc guides, CI for macOS + Windows + Linux, Windows packaging script | tests cover both `Os::Mac` and `Os::Windows` defaults |
-| 5 | **Manual verification on real machines** using the checklist below | checklist signed off |
+| 5 | **Manual verification on real machines** using the checklist below | main flows verified on a real Windows machine by hand; the rest of the checklist is not signed off item by item (see [Status in 0.3.0](#status-in-030)) |
 
 ## Test strategy
 
@@ -116,8 +126,9 @@ Run on macOS 11+ and on Windows 10 and 11:
 8. Non-US keyboard layout (AZERTY or QWERTZ): labels and preset shortcuts match the layout.
 9. Two monitors, same scale, and 125 % / 150 % scaling on Windows: pie size and hit-testing match.
 10. Idle for the sleep time, then open the pie: icons reload, no crash.
-11. Windows: the pie and the margin around the Settings card are see-through (no black or white box),
-    also over a bright window.
+11. Windows: the pie and the margin around the Settings card are see-through (no black or white box, no
+    border, no thin line along the top edge), also over a bright window, and no old-style white window
+    flashes up when the pie opens.
 
 ## Risks and known limitations
 
@@ -127,21 +138,48 @@ Run on macOS 11+ and on Windows 10 and 11:
 - **Elevated windows.** A normal process cannot send input to an administrator window (UIPI);
   shortcuts to such windows are ignored. Run CursorPie as administrator if you need that.
 - **UWP apps share one host process** (`ApplicationFrameHost.exe`), so per-app profiles cannot tell
-  them apart.
+  them apart. UWP (Microsoft Store / packaged) apps such as Calculator, Photos or Settings are drawn by
+  Windows inside frame windows owned by that one host process. The Windows backend identifies an app from
+  the executable of the window's process (`platform/windows/apps.rs`), so all of them report
+  `applicationframehost.exe`: one profile with that id covers all UWP apps, and "focus the app" brings the
+  top-most host window to the front, which is not necessarily the one meant. Telling them apart would need
+  the packaged app's identity (AUMID / package family name) instead of the executable name, which changes
+  what an "app id" is in `config.json`; it is a possible follow-up, not part of 0.3.0.
 - **Foreground rules.** `SetForegroundWindow` can be refused by Windows; the "focus target" option is
   best effort there.
 - **Mixed DPI.** With monitors at different scales the pie window may be placed slightly off when it
   moves between monitors; single-scale setups are exact.
 - **Icons in a copied `config.json`.** Image icons are stored as `~/...` paths, which differ per OS. Profile
   *share files* embed the images and are portable; copying a whole `config.json` between OSes is not.
-- **Trigger button.** Only the middle button is offered on Windows.
-- **Transparent window needs the `glow` renderer.** eframe 0.36 defaults to `wgpu`, which gives an
-  opaque window on Windows (a black box around the pie). The Windows build therefore uses `glow`
-  (OpenGL), selected in `Cargo.toml`; see `docs/UI_DESIGN.md`. It needs OpenGL 2.0 or newer, which
-  every Windows 10/11 GPU driver provides, but a machine with a broken OpenGL driver or a remote
-  desktop session without GPU acceleration may fail to create the window.
-- **Unverified here.** The Windows backend was written and type-checked without a Windows machine.
-  Treat phase 5 as required before a release.
+- **Trigger button / extra mouse buttons.** Only the middle button is offered as the trigger on Windows, and
+  the back/forward side buttons are the only other buttons used. This is the one feature that is not
+  at parity with macOS (buttons 6 to 8 are not reported by Windows).
+- **Transparent window needs the `glow` renderer *and* a frameless window.** eframe 0.36 defaults to `wgpu`,
+  which gives an opaque window on Windows (a black box around the pie). The Windows build therefore uses
+  `glow` (OpenGL), selected in `Cargo.toml`. That alone still left a white box with a border, a white
+  old-style window flashing up when the pie opened and a 1 px white line along the top edge, because winit
+  keeps `WS_CAPTION` on borderless windows and asks for an "undecorated shadow". `platform::clear_window_frame`
+  (`platform/windows/window.rs`) removes all of that; see `docs/UI_DESIGN.md`, "Transparent window on
+  Windows". OpenGL 2.0 or newer is needed, which every Windows 10/11 GPU driver provides, but a machine
+  with a broken OpenGL driver or a remote desktop session without GPU acceleration may fail to create the
+  window.
+
+## Status in 0.3.0
+
+Verified by hand on a real Windows machine: the pie opens under the cursor and runs slices,
+Settings opens and saves, the tray icon and its menu work, and the pie and the Settings card are drawn on
+a transparent window with no white box, border, flash or top line (after the window-frame fix described in
+`docs/UI_DESIGN.md`). Behavior is almost identical to macOS.
+
+Not at parity: extra mouse buttons (see [Risks](#risks-and-known-limitations)).
+
+Not recorded: the checklist above was not signed off item by item. In particular non-US keyboard layouts
+(item 8), 125 % / 150 % and mixed-DPI setups (item 9), elevated windows and UWP apps have not been
+reported as verified here, so treat them as the likely places for remaining bugs, and please report what
+you see (Windows version, GPU, scaling) in an issue.
+
+Automated checks that need no Windows machine: `cargo check --features check-windows` and
+`cargo test --features check-windows` (186 tests, including the Windows pure helpers) pass on Linux.
 
 ## Progress
 
@@ -149,7 +187,8 @@ Run on macOS 11+ and on Windows 10 and 11:
 |---|---|
 | 0 | done |
 | 1 | done: 40+ characterization tests, all green on the refactored code |
-| 2 | done: `cargo test` runs on Linux (121 tests); macOS glue moved, **not compiled here** (no macOS toolchain) |
-| 3 | done: `cargo check --features check-windows` clean; 144 tests incl. Windows pure helpers pass on Linux; **never run on Windows** |
-| 4 | done: per-OS defaults, paths, app ids, docs, CI, packaging script; 155 tests green |
-| 5 | needs real hardware |
+| 2 | done: `cargo test` runs on Linux through the stub; macOS glue moved |
+| 3 | done: `cargo check --features check-windows` clean; Windows pure helpers tested on Linux; runs on Windows |
+| 4 | done: per-OS defaults, paths, app ids, docs, CI, packaging script |
+| 5 | main flows verified on Windows by hand (0.3.0); full checklist not signed off item by item |
+| 6 | done (0.3.0): transparent, frameless window on Windows (`glow` + `clear_window_frame`) |

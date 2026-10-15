@@ -105,6 +105,10 @@ pub fn run() -> eframe::Result<()> {
         Box::new(move |cc| {
             // runs on the main thread inside the running event loop
             platform::set_accessory_policy(); // no Dock icon
+            // no OS frame: on Windows the DWM would draw a white box and a border around the pie
+            if let Some(handle) = ui::app::native_handle(cc) {
+                platform::clear_window_frame(handle);
+            }
             platform::layout::init(); // keyboard-layout snapshot (TIS must run on the main thread)
             let notifier = Notifier {
                 tx: tx.clone(),

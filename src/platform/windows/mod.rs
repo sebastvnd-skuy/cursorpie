@@ -14,6 +14,7 @@
 //! | `layout` | keyboard-layout snapshot (`ToUnicodeEx`) |
 //! | `shell` | `ShellExecuteW`, the file chooser, `explorer`, beep |
 //! | `login_item` | "Launch at login" registry value |
+//! | `window` | makes the one native window truly frameless (no white box, border or shadow) |
 //!
 //! There is no permission to ask for on Windows, and nothing like a Dock icon to hide.
 
@@ -27,11 +28,13 @@ mod dpi;
 mod input;
 mod login_item;
 mod shell;
+mod window;
 
 pub use apps::*;
 pub use input::*;
 pub use login_item::*;
 pub use shell::*;
+pub use window::*;
 
 pub(crate) use dpi::{last_scale, scale_at_physical, set_last_scale};
 pub(crate) use util::px_to_logical;

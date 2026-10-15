@@ -19,6 +19,7 @@
 //! | `frontmost_bundle_id`, `bundle_id_at`, `bundle_id_of` | app id of the app in front, under a point, or of an executable |
 //! | `app_icon` | the real icon of an app, see [`NativeIcon`] |
 //! | `set_accessory_policy` | hide the Dock icon (macOS only, no-op elsewhere) |
+//! | `clear_window_frame` | strip the OS frame of the native window handle (Windows only, no-op elsewhere) |
 //! | `cursor_pos`, `display_rects` | pointer position and display bounds, in logical points |
 //! | `is_trusted_cached`, `open_accessibility_settings`, `open_input_monitoring_settings` | input permission |
 //! | `press_shortcut`, `post_mouse`, `activate_app` | input injection (used by [`actions`](crate::actions)) |

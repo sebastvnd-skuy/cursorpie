@@ -18,10 +18,12 @@ mod windows;
 use crate::config::{Config, MAX_ITEMS, cfg};
 use crate::history::History;
 use crate::msg::Msg;
+use crate::platform;
 use crate::ui::settings::Ed;
 use crate::ui::sleep::Sleeper;
 use crate::ui::tray::TrayHandles;
 use eframe::egui::{self, Pos2, Vec2};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::sync::mpsc;
 use std::time::Instant;
 
@@ -32,6 +34,15 @@ pub const WIN_MARGIN: f32 = 28.0;
 
 /// Most undo steps Settings keeps. A step is a copy of the edited config (a few KiB).
 pub const HISTORY_LIMIT: usize = 50;
+
+/// The `HWND` of the native window, as the integer [`platform::clear_window_frame`] takes.
+/// `None` on every platform that does not have one (macOS), or while the window does not exist yet.
+pub fn native_handle(window: &impl HasWindowHandle) -> Option<isize> {
+    match window.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Win32(h) => Some(h.hwnd.get()),
+        _ => None,
+    }
+}
 
 /// All UI-thread state. Fields are grouped: the message channel, the pie, Settings.
 pub struct App {
@@ -128,7 +139,12 @@ impl eframe::App for App {
 
     /// Runs even while the window is hidden (as long as something calls request_repaint).
     /// Must not draw any UI.
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // winit rewrites the window styles on every show / hide / click-through change; strip the
+        // frame again before anything is painted (cheap, and a no-op on macOS)
+        if let Some(handle) = native_handle(frame) {
+            platform::clear_window_frame(handle);
+        }
         // evicts icons nobody used lately (never one the last frame used)
         self.ed.icons.new_frame();
         while let Ok(msg) = self.rx.try_recv() {

@@ -89,9 +89,9 @@ cargo xwin build --release --target x86_64-pc-windows-msvc
 # result: target/x86_64-pc-windows-msvc/release/cursorpie.exe
 ```
 
-Treat this as a smoke test. The mouse hook, the tray icon and DPI handling only prove themselves on a
-real Windows machine, so run the manual checklist in `docs/WINDOWS_MIGRATION.md` before you call a
-change finished. CI-style checks that need no Windows machine are
+Treat this as a smoke test. The mouse hook, the tray icon, DPI handling and the transparent window only
+prove themselves on a real Windows machine, so run the manual checklist in `docs/WINDOWS_MIGRATION.md`
+before you call a change finished. CI-style checks that need no Windows machine are
 `cargo check --features check-windows` and `cargo clippy --all-targets --features check-windows`.
 
 ### What each OS can check

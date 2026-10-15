@@ -40,7 +40,8 @@
 //! lowered to the normal window level and centered on the display that contains the cursor.
 //! [`ui::app`](crate::ui::app) switches between the two (`show_pie`, `open_settings`,
 //! `close_settings`). The window only looks transparent if the renderer supports it: Windows uses
-//! the `glow` renderer for that reason, macOS keeps `wgpu` (see `docs/UI_DESIGN.md`).
+//! the `glow` renderer for that reason, macOS keeps `wgpu`, and on Windows the OS frame (white box,
+//! border, shadow) is stripped every frame by `platform::clear_window_frame` (see `docs/UI_DESIGN.md`).
 //! Because the window is click-through, the pie never steals mouse events: the
 //! event tap is what sees the mouse, and the UI only draws.
 //!

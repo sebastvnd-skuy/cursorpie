@@ -40,6 +40,28 @@ pub fn logical_to_px(pt: f64, scale: f64) -> f64 {
     if scale <= 0.0 { pt } else { pt * scale }
 }
 
+/// Window styles of a frameless window: the caption (title bar + border + dialog frame) and the
+/// sizing frame are removed, the window becomes a `WS_POPUP`, and the 3D edge styles that make the
+/// DWM draw a frame are cleared. `None` when `style` / `style_ex` are already like that.
+pub fn frameless_styles(style: u32, style_ex: u32) -> Option<(u32, u32)> {
+    let new = (frameless_style(style), frameless_ex_style(style_ex));
+    (new != (style, style_ex)).then_some(new)
+}
+
+/// The `GWL_STYLE` half of [`frameless_styles`].
+pub fn frameless_style(style: u32) -> u32 {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{WS_CAPTION, WS_POPUP, WS_THICKFRAME};
+    (style & !(WS_CAPTION | WS_THICKFRAME)) | WS_POPUP
+}
+
+/// The `GWL_EXSTYLE` half of [`frameless_styles`].
+pub fn frameless_ex_style(style_ex: u32) -> u32 {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME, WS_EX_STATICEDGE, WS_EX_WINDOWEDGE,
+    };
+    style_ex & !(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME | WS_EX_STATICEDGE)
+}
+
 /// The value written to the `Run` registry key: the executable path in quotes.
 pub fn run_value(exe: &str) -> String {
     format!("\"{exe}\"")
@@ -90,6 +112,39 @@ pub fn bgra_to_rgba(px: &mut [u8], mask: Option<&[u8]>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_framed_window_loses_its_frame_styles() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            WS_BORDER, WS_CAPTION, WS_CLIPSIBLINGS, WS_EX_ACCEPTFILES, WS_EX_TOPMOST,
+            WS_EX_WINDOWEDGE, WS_POPUP, WS_SYSMENU, WS_THICKFRAME, WS_VISIBLE,
+        };
+        // what winit creates for `with_decorations(false)`: caption and border are still there
+        let style = WS_CAPTION | WS_BORDER | WS_CLIPSIBLINGS | WS_SYSMENU | WS_VISIBLE;
+        let ex = WS_EX_WINDOWEDGE | WS_EX_ACCEPTFILES | WS_EX_TOPMOST;
+        let (s, e) = frameless_styles(style, ex).expect("has a frame");
+        assert_eq!(s & (WS_CAPTION | WS_BORDER | WS_THICKFRAME), 0);
+        assert_ne!(s & WS_POPUP, 0);
+        assert_eq!(e & WS_EX_WINDOWEDGE, 0);
+        // everything else is kept: visibility, clipping, system menu, always on top, file drop
+        assert_eq!(
+            s & (WS_CLIPSIBLINGS | WS_SYSMENU | WS_VISIBLE),
+            WS_CLIPSIBLINGS | WS_SYSMENU | WS_VISIBLE
+        );
+        assert_eq!(
+            e & (WS_EX_ACCEPTFILES | WS_EX_TOPMOST),
+            WS_EX_ACCEPTFILES | WS_EX_TOPMOST
+        );
+    }
+
+    #[test]
+    fn a_frameless_window_is_left_alone() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{WS_POPUP, WS_VISIBLE};
+        // idempotent: the second call (every frame) must report "nothing to do"
+        let (s, e) =
+            frameless_styles(WS_POPUP | WS_VISIBLE, 0).map_or((WS_POPUP | WS_VISIBLE, 0), |x| x);
+        assert_eq!(frameless_styles(s, e), None);
+    }
 
     #[test]
     fn wide_strings_round_trip() {

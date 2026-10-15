@@ -135,6 +135,9 @@ pub fn set_accessory_policy() {
     }
 }
 
+/// macOS windows have no DWM-style frame to remove: the window is already transparent and borderless.
+pub fn clear_window_frame(_handle: isize) {}
+
 /// Current cursor position in global coordinates.
 pub fn cursor_pos() -> Option<(f64, f64)> {
     let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState).ok()?;

@@ -111,8 +111,8 @@ Whether that really is transparent depends on the renderer and the OS:
 | Platform | Renderer | Result |
 |---|---|---|
 | macOS | `wgpu` (eframe default, Metal) | transparent |
-| Windows | `wgpu` (eframe default since 0.34; DX12, Vulkan or GL surface) | reported and seen as opaque: the pie sits in a **black box** |
-| Windows | `glow` (OpenGL through glutin) | intended fix: the pixel format has an alpha channel and winit turns on per-pixel alpha (verify on real hardware) |
+| Windows | `wgpu` (eframe default since 0.34; DX12, Vulkan or GL surface) | opaque: the pie sits in a **black box** |
+| Windows | `glow` (OpenGL through glutin) | transparent, **once the OS frame is stripped** (rule 4): the pixel format has an alpha channel and winit turns on per-pixel alpha. Verified on Windows in 0.3.0 |
 
 So `Cargo.toml` selects the renderer per target: Windows builds eframe with `default-features = false`
 and `glow`, every other target keeps the defaults. Rules:
@@ -123,6 +123,21 @@ and `glow`, every other target keeps the defaults. Rules:
    `Frame::new()` in pie mode. Settings paints its own opaque card inside the margin (`WIN_MARGIN`).
 3. **Check with a clean build.** After changing eframe features run `cargo tree -i wgpu --target
    x86_64-pc-windows-msvc`: it must report that `wgpu` is not part of the Windows build.
+
+4. **Strip the OS frame (Windows).** `glow` alone is not enough: winit creates every window from
+   `WS_CAPTION | WS_BORDER | WS_EX_WINDOWEDGE` and only *hides* the title bar for
+   `with_decorations(false)` (it answers `WM_NCCALCSIZE` with "client area = whole window"). The DWM
+   still sees a framed window, so around the transparent pie it draws a 1 px border (Windows 11),
+   a shadow, and fills the frame with the inactive-caption color, which is **white**: that is the
+   white box with a border. `platform::clear_window_frame` (`platform/windows/window.rs`) turns the
+   window into a plain `WS_POPUP`, clears the edge styles, and sets `DWMWA_BORDER_COLOR = NONE`,
+   `DWMWCP_DONOTROUND` and the empty blur region. winit rewrites the styles on every
+   show / hide / click-through / window-level change, so `App::logic` calls it **on every frame**
+   (it is a no-op when the styles are already right); `lib.rs` also calls it once at creation.
+   Do not remove either call. A window subclass in the same file also answers `WM_STYLECHANGING`
+   (fixes the styles *before* winit's write lands: no white flash), `WM_NCCALCSIZE` (egui-winit
+   requests winit's "undecorated shadow" for every borderless window, which shifts the client area
+   down 1 px and leaves a white 1 px line at the top) and `WM_NCPAINT`.
 
 If a machine still shows a black box with `glow`, note the Windows version, the GPU and driver (laptops
 with two GPUs behave differently), and whether Settings is affected too, then open an issue.
