@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.1
+
+- Fix dead code warnings on the Windows target
+
 ## 0.4.0
 
 - **Developer tools.** `cargo tools` runs the repository's own tools (the `tools/` package, standard
