@@ -246,10 +246,15 @@
 //! | tray icon | `tray-icon` / `muda` (menu bar) | `tray-icon` / `muda` (notification area) | [`ui::tray`](crate::ui::tray) |
 //! | no Dock / taskbar entry | `NSApplicationActivationPolicyAccessory` | `with_taskbar(false)` | `platform::set_accessory_policy`, [`run`](crate::run) |
 //! | launch at login | a LaunchAgent plist | `HKCU\...\Run` value, pointing at the installed copy | `platform::set_launch_at_login` |
-//! | install, uninstall, one running copy | none (the `.app` is the install) | copy to `%LOCALAPPDATA%\Programs\CursorPie`, `HKCU\...\Uninstall` entry, named mutex | `platform::ensure_installed`, `platform::handle_command_line`, `platform::single_instance` |
+//! | install, uninstall, one running copy | none (the `.app` is the install; `scripts/make-dmg.sh` packs it into a `.dmg`) | the program installs itself (copy to `%LOCALAPPDATA%\Programs\CursorPie`, `HKCU\...\Uninstall` entry, named mutex), or the Setup wizard `installer/cursorpie.iss` does and the program then leaves the install alone (`unins000.exe` next to it) | `platform::ensure_installed`, `platform::handle_command_line`, `platform::single_instance` |
 //! | open apps / URLs, file chooser, app id of a file, hover tick | `open`, `osascript`, `mdls`, `afplay` | `ShellExecuteW`, `GetOpenFileNameW`, file name, `MessageBeep` | [`platform`](crate::platform) |
 //!
 //! The macOS tools ship with the system, so the app needs nothing installed on either OS.
+//!
+//! The welcome window of the first start has no platform-specific code: it is drawn by
+//! `ui/settings/welcome.rs` and only its texts depend on the OS (`Os::needs_permission`,
+//! `Os::tray_name`). Whether it is due is decided by the marker file `welcome_shown` next to
+//! `config.json` (`config/first_run.rs`).
 //!
 //! ### Portable layer
 //!

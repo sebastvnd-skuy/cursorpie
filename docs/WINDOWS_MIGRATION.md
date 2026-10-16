@@ -131,6 +131,16 @@ Run on macOS 11+ and on Windows 10 and 11:
 7b. Uninstall: Settings > Apps > CursorPie > Uninstall. The tray icon disappears, the install folder is gone a
     few seconds later, `config.json` is still there, and the next sign-in does not start it.
 7c. Switch "Launch at login" off in Task Manager > Startup, open Settings: the box is unticked.
+7d. Setup wizard (`CursorPie-<version>-setup.exe`): it runs without a UAC prompt and installs into
+    `%LOCALAPPDATA%\Programs\CursorPie`. The Start Menu has a CursorPie shortcut, and Settings > Apps lists
+    CursorPie once (not twice). With "Start CursorPie when I sign in" ticked the tray icon returns after a
+    sign-out; unticked it does not. Run the wizard again over a running copy: it replaces the program and
+    keeps `config.json`. Uninstall from Settings > Apps: the folder and the startup entry are gone, `config.json` stays.
+    Start the program from the install folder: no second install happens and no second Apps entry appears.
+7e. Welcome window: with `welcome_shown` and `config.json` deleted from `%APPDATA%\CursorPie`, the first start
+    shows three pages (the gesture, the system tray, launch at login). Skip or Esc closes it, and the next
+    start does not show it again. "Welcome guide..." in the tray menu shows it again. On macOS the second
+    page shows the Accessibility status and changes to "Granted" by itself.
 8. Non-US keyboard layout (AZERTY or QWERTZ): labels and preset shortcuts match the layout.
 9. Two monitors, same scale, and 125 % / 150 % scaling on Windows: pie size and hit-testing match.
 10. Idle for the sleep time, then open the pie: icons reload, no crash.

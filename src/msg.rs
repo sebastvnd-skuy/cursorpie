@@ -19,6 +19,9 @@ pub enum Msg {
     },
     /// Open the Settings window centered on the screen containing (x, y); `about` selects the About tab.
     OpenSettings { x: f64, y: f64, about: bool },
+    /// Open the welcome window centered on the screen containing (x, y) (first launch, or the
+    /// tray item "Welcome guide...").
+    OpenWelcome { x: f64, y: f64 },
     /// The hovered slice of the open pie changed.
     Hover(Option<usize>),
     /// Close the pie (also used to reset the UI after the tap was disabled or paused).

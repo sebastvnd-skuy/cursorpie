@@ -15,6 +15,7 @@ The technical documentation lives in the Rust docs (see [Documentation](#documen
 ```sh
 cargo run --release     # quick try; on macOS grant Accessibility to your terminal app
 scripts/bundle.sh       # macOS: builds target/bundle/CursorPie.app (see README.md)
+scripts/make-dmg.sh     # macOS: builds the .dmg to hand out (see README.md)
 scripts/package-windows.ps1   # Windows: builds target/bundle/CursorPie-windows.zip
 ```
 
@@ -30,7 +31,8 @@ you a working app; the other builds exist to check that your change still compil
 | You are on | You want | Run | Result |
 |---|---|---|---|
 | macOS | the macOS app | `scripts/bundle.sh` | `target/bundle/CursorPie.app` |
-| Windows | the Windows app | `scripts\package-windows.ps1` | `target/bundle/CursorPie-windows.zip` |
+| macOS | a disk image to distribute | `scripts/make-dmg.sh` | `target/bundle/CursorPie-<version>-<arch>.dmg` |
+| Windows | the Windows app | `scripts\package-windows.ps1` | `target/bundle/CursorPie-windows.zip`, and `CursorPie-<version>-setup.exe` if Inno Setup 6 is installed |
 | Linux | to run the tests | `cargo test` | no app: Linux builds the do-nothing stub |
 | any OS | to type-check the Windows backend | `cargo check --features check-windows` | no binary |
 | macOS or Linux | a Windows `.exe` (best effort) | see [Cross-compiling to Windows](#cross-compiling-to-windows) | `cursorpie.exe` |
@@ -42,6 +44,9 @@ xcode-select --install          # once: linker and codesign
 scripts/bundle.sh               # ad-hoc signature, for your own machine
 SIGN_ID="Developer ID Application: Name (TEAMID)" scripts/bundle.sh   # signed with your identity
 ```
+
+`scripts/make-dmg.sh` wraps the result in a `.dmg` (see `README.md` for signing and notarizing). It
+accepts the same `SIGN_ID`, and `UNIVERSAL=1` replaces the manual steps below.
 
 `scripts/bundle.sh` builds for the architecture of the machine it runs on. To ship one app for both
 Intel and Apple silicon, build both targets, join them with `lipo`, put the result into the bundle
@@ -75,6 +80,13 @@ The first start of a packaged `cursorpie.exe` installs it for the current user (
 installed, so `cargo run --release` cannot replace the copy that starts at login; set
 `CURSORPIE_NO_INSTALL=1` to get the same for any other copy. To test the install, run the packaged exe
 from the unzipped folder and follow checks 7a to 7c of `docs/WINDOWS_MIGRATION.md`.
+
+If [Inno Setup 6](https://jrsoftware.org/isinfo.php) is installed (`winget install JRSoftware.InnoSetup`),
+`scripts\package-windows.ps1` also builds the Setup wizard `target\bundle\CursorPie-<version>-setup.exe` from
+`installer/cursorpie.iss` (`-NoInstaller` skips it). It installs per user, needs no administrator rights and
+keeps `config.json`. A program installed by the wizard does not install itself again. Test it with check 7d of
+`docs/WINDOWS_MIGRATION.md`. Set `SIGN_CERT_THUMBPRINT` (and have `signtool` on `PATH`) to sign the
+executable and the wizard.
 
 ### Linux
 
@@ -358,8 +370,8 @@ something is probably wrong right now:
    needs nothing.
 4. **Update `README.md`** for a `minor` or `major` release when behavior or settings changed.
 5. **Build, test and publish.** Build on each OS, run the manual checklists, push with
-   `git push --follow-tags` (CI then checks that the tag matches the files), and attach the `.app` (zipped) and `CursorPie-windows.zip` to a GitHub
-   release. Keep `BUNDLE_ID` equal in `src/about.rs` and `scripts/bundle.sh`.
+   `git push --follow-tags` (CI then checks that the tag matches the files), and attach `CursorPie-<version>-<arch>.dmg` (from `scripts/make-dmg.sh`, with its `.sha256`), `CursorPie-<version>-setup.exe` and
+   `CursorPie-windows.zip` to a GitHub release. Keep `BUNDLE_ID` equal in `src/about.rs` and `scripts/bundle.sh`.
 
 If `check` reports a mismatch, someone changed the version by hand: undo that change and run the
 tool instead.

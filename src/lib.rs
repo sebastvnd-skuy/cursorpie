@@ -33,7 +33,7 @@
 //! | [`keys`] | any thread | shortcut model (key code + modifiers) and its labels |
 //! | [`msg`] | any thread | messages sent *to* the UI thread |
 //! | [`platform`] | any thread (some main only) | OS glue: permissions, apps, login item, keyboard layout (macOS, Windows, stub) |
-//! | [`ui`] | main thread | eframe app, pie renderer, Settings window, menu bar icon |
+//! | [`ui`] | main thread | eframe app, pie renderer, Settings window, first-launch welcome window, menu bar icon |
 //! | [`about`] | - | name, version, links shown in the About tab |
 //!
 //! ## Platform
@@ -132,6 +132,11 @@ pub fn run() -> eframe::Result<()> {
             };
             tap::spawn(notifier.clone());
             let tray = ui::tray::build(&notifier);
+            // the very first start: say hello (decided before anything can write config.json)
+            if config::welcome_due() {
+                let (x, y) = platform::cursor_pos().unwrap_or((400.0, 300.0));
+                notifier.send(msg::Msg::OpenWelcome { x, y });
+            }
             Ok(Box::new(App::new(rx, tx, win, tray)))
         }),
     )

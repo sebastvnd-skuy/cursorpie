@@ -1,5 +1,5 @@
-//! Tray icon (the menu bar on macOS, the notification area on Windows): Settings, About, Pause,
-//! Launch at login, Quit.
+//! Tray icon (the menu bar on macOS, the notification area on Windows): Settings, About, Welcome
+//! guide, Pause, Launch at login, Quit.
 //!
 //! tray-icon must be created on the main thread once the event loop is running; eframe calls the
 //! app creator from `resumed`, which satisfies that on both platforms. On other targets (the Linux
@@ -84,6 +84,7 @@ mod real {
         let menu = Menu::new();
         let settings = MenuItem::with_id("settings", "Settings...", true, None);
         let about = MenuItem::with_id("about", format!("About {APP_NAME}"), true, None);
+        let welcome = MenuItem::with_id("welcome", "Welcome guide...", true, None);
         let swap = MenuItem::with_id("swap_side", "Switch side-button pie", true, None);
         let pause = CheckMenuItem::with_id("pause", format!("Pause {APP_NAME}"), true, false, None);
         let login = CheckMenuItem::with_id(
@@ -97,6 +98,7 @@ mod real {
 
         let _ = menu.append(&settings);
         let _ = menu.append(&about);
+        let _ = menu.append(&welcome);
         let _ = menu.append(&PredefinedMenuItem::separator());
         let _ = menu.append(&swap);
         let _ = menu.append(&pause);

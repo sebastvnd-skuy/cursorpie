@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Welcome window.** The first start on macOS and on Windows opens a three-page welcome window in the
+  Settings style: how the gesture works, the step that is needed next (macOS: allow Accessibility, with a live
+  status; Windows: where the tray icon is) and a "Launch at login" box. It is shown once (the empty file
+  `welcome_shown` next to `config.json` remembers it), never to someone who already has a `config.json`, and
+  **Welcome guide...** in the menu bar / tray menu opens it again.
+- **Windows: Setup wizard.** `scripts\package-windows.ps1` also builds `CursorPie-<version>-setup.exe` when
+  Inno Setup 6 is installed (`installer/cursorpie.iss`): a per-user installer (no administrator rights) with
+  license page, Start Menu shortcut, "start at sign-in" option, update-in-place and an uninstaller that keeps
+  your settings. A copy installed by the wizard no longer installs itself again or adds a second "Apps &
+  features" entry; an older self-install entry is removed. `SIGN_CERT_THUMBPRINT` signs the files.
+- **macOS: disk image.** `scripts/make-dmg.sh` builds `CursorPie-<version>-<arch>.dmg` with an Applications
+  shortcut, optionally signed and notarized (`SIGN_ID`, `NOTARY_PROFILE`), plus a `.sha256` file.
+  `UNIVERSAL=1` (also understood by `scripts/bundle.sh`) builds one app for Apple silicon and Intel. A
+  Developer ID signature now uses the hardened runtime, which notarization requires.
 - Tests that assumed macOS defaults are pinned to them, so the test suite passes on Windows.
 
 ## 0.4.1

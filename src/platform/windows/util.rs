@@ -70,6 +70,18 @@ pub fn run_value(exe: &str) -> String {
 /// File name of the installed executable.
 pub const EXE_NAME: &str = "cursorpie.exe";
 
+/// File name of the uninstaller that the Setup wizard (`installer/cursorpie.iss`, built with Inno
+/// Setup) writes next to the program.
+pub const SETUP_UNINSTALLER: &str = "unins000.exe";
+
+/// Whether the program at `exe` was installed by the Setup wizard: its folder holds the wizard's
+/// uninstaller. Such an install is managed by Windows' own uninstall entry, so the program must not
+/// install itself a second time or add a second "Apps & features" entry.
+pub fn installed_by_setup(exe: &std::path::Path) -> bool {
+    exe.parent()
+        .is_some_and(|dir| dir.join(SETUP_UNINSTALLER).is_file())
+}
+
 /// Command-line switch that removes the installed copy (what "Apps & features" runs).
 pub const UNINSTALL_ARG: &str = "--uninstall";
 
@@ -184,6 +196,18 @@ pub fn bgra_to_rgba(px: &mut [u8], mask: Option<&[u8]>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_with_the_setup_uninstaller_is_a_setup_install() {
+        let dir = std::env::temp_dir().join(format!("cursorpie-setup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join(EXE_NAME);
+        assert!(!installed_by_setup(&exe), "a loose exe is not");
+        std::fs::write(dir.join(SETUP_UNINSTALLER), b"").unwrap();
+        assert!(installed_by_setup(&exe));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_framed_window_loses_its_frame_styles() {

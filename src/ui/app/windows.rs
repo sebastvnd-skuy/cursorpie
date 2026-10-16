@@ -1,12 +1,12 @@
 //! Window management: showing the pie, opening/closing Settings, and the tray menu actions.
 
-use super::{App, WIN_MARGIN, card_size_for};
+use super::{App, WIN_MARGIN, card_size_for, welcome_size_for};
 use crate::config::{self, MAX_ITEMS, cfg};
 use crate::platform;
 use crate::side;
 use crate::tap::PAUSED;
 use crate::ui::screen::screen_rect_at;
-use crate::ui::settings::Tab;
+use crate::ui::settings::{Tab, Welcome};
 use eframe::egui::{self, Pos2, Vec2};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -33,6 +33,7 @@ impl App {
         self.release_editor(); // the next open copies the config again
         self.win = cfg().pie_size;
         self.settings_open = false;
+        self.welcome = None;
         self.closing = None;
         self.settings_anim = 0.0;
         self.pie_open = false;
@@ -72,11 +73,36 @@ impl App {
         self.edit.launch_at_login = platform::launch_at_login_enabled();
         self.history.reset(&self.edit); // undo starts from what Settings opened with
 
+        let size = self.place_card_window(ctx, at, card_size_for);
+        self.card_size = size;
+    }
+
+    /// Turns the window into the welcome window, centered on the display that contains `at`.
+    /// Does nothing to a window that is already showing Settings or the welcome window except
+    /// bring it to the front.
+    pub(super) fn open_welcome(&mut self, ctx: &egui::Context, at: Pos2) {
+        if self.settings_open {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            return;
+        }
+        self.pie_open = false;
+        self.settings_open = true;
+        self.visible = true;
+        self.closing = None;
+        self.settings_anim = 0.0;
+        self.ed.stop_recording();
+        self.welcome = Some(Welcome::new(platform::launch_at_login_enabled()));
+        self.card_size = self.place_card_window(ctx, at, welcome_size_for);
+    }
+
+    /// Shows the window as a normal, centered card on the display that contains `at`, `fit`
+    /// deciding the card size from the size of that display. Returns the card size.
+    fn place_card_window(&mut self, ctx: &egui::Context, at: Pos2, fit: fn(Vec2) -> Vec2) -> Vec2 {
         // centered on the display that contains the cursor
         let area = screen_rect_at(at)
             .unwrap_or_else(|| egui::Rect::from_center_size(at, egui::vec2(1600.0, 1000.0)));
-        self.card_size = card_size_for(area.size());
-        let win_sz = self.card_size + Vec2::splat(2.0 * WIN_MARGIN);
+        let card = fit(area.size());
+        let win_sz = card + Vec2::splat(2.0 * WIN_MARGIN);
         let top_left = area.center() - win_sz / 2.0;
 
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(win_sz));
@@ -88,6 +114,44 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(top_left));
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        card
+    }
+
+    /// Ends the welcome window once its close animation has finished: remembers that it was
+    /// shown, applies the "Launch at login" box if the user went through to the end, and either
+    /// hides the window or turns it into Settings (the "Open Settings" button).
+    pub fn finish_welcome(&mut self, ctx: &egui::Context) {
+        crate::config::mark_welcomed();
+        let (apply, login, open_settings) = match &self.welcome {
+            Some(w) => (w.apply, w.launch_at_login, w.open_settings_after),
+            None => (false, false, false),
+        };
+        if apply && login != platform::launch_at_login_enabled() {
+            match platform::set_launch_at_login(login) {
+                Ok(()) => {
+                    let snapshot = {
+                        let mut c = cfg();
+                        c.launch_at_login = login;
+                        c.clone()
+                    };
+                    config::save_config(&snapshot);
+                    if let Some(t) = &self.tray {
+                        t.set_login_checked(login);
+                    }
+                }
+                Err(e) => eprintln!("CursorPie: could not update launch-at-login: {e}"),
+            }
+        }
+        if open_settings {
+            // straight into Settings, without hiding the window in between
+            self.welcome = None;
+            self.settings_open = false;
+            self.closing = None;
+            let at = self.cursor_or_default();
+            self.open_settings(ctx, at, false);
+        } else {
+            self.close_settings(ctx, false);
+        }
     }
 
     /// Opens the pie window for `profile` at (x, y). Submenus call this again to re-center.
@@ -184,6 +248,10 @@ impl App {
             "about" => {
                 let at = self.cursor_or_default();
                 self.open_settings(ctx, at, true);
+            }
+            "welcome" => {
+                let at = self.cursor_or_default();
+                self.open_welcome(ctx, at);
             }
             "swap_side" => self.swap_side(ctx),
             "pause" => {

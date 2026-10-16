@@ -8,6 +8,7 @@ change to either. The code is in `src/ui/`; the rules for contributors are summa
 
 - [Design goals](#design-goals)
 - [The Settings window](#the-settings-window)
+- [The welcome window](#the-welcome-window)
 - [The pie](#the-pie)
 - [Why it used to look jagged and choppy](#why-it-used-to-look-jagged-and-choppy)
 - [Rendering rules](#rendering-rules)
@@ -74,6 +75,22 @@ rarely. The design follows from that:
 
 The tests in `theme.rs` enforce 7:1 for `TEXT` and 4.5:1 for `MUTED`, `GOOD` and `BAD`, and check that
 `on_accent` stays readable on any accent the user can choose.
+
+## The welcome window
+
+The first start (and "Welcome guide..." in the tray menu) shows a 760 x 520 pt card (`WELCOME_SIZE`,
+shrunk by `welcome_size_for` on small displays, never below 600 x 440 pt) in the same window as Settings,
+with the same shadow, outline, colors, open/close animation and widgets. It has a 52 pt top bar (logo,
+name, Skip), a page in the middle and a 60 pt footer (page dots, Back, Next or Get started).
+
+- Three pages: how the gesture works, what to do next (macOS: Accessibility, with a status that
+  refreshes every second; Windows: the system tray) and tips with the launch-at-login box.
+- It is a mode of the Settings window, not a second window: `App::welcome` is `Some` and
+  `settings_open` is true, so the pie stays hidden while it is open.
+- The only text that depends on the OS lives in pure functions of `Os` (`setup_title`, `setup_lead`,
+  `tips`), so a test covers both systems.
+- Esc and Skip close it without applying anything; Get started and Open Settings also apply the
+  launch-at-login box. Either way it is remembered as shown.
 
 ## The pie
 
@@ -194,5 +211,7 @@ at the very least change the display scaling once:
 - [ ] Undo and Redo are dimmed when unavailable and show a tooltip.
 - [ ] Shrink the screen height (or use a short laptop display): the Menu tab still fits.
 - [ ] Use an image icon with a transparent background: no dark halo around it.
+- [ ] Welcome window (delete `welcome_shown`, or use the tray item): the three pages fit without scrolling at
+      the smallest card size, the page dots follow Back and Next, and Skip, Esc and Enter behave as the buttons say.
 - [ ] Windows: hold the trigger over a bright window (a white page): the pie floats over it with no
       black or white box around the ring, and the same for the margin around the Settings card.

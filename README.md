@@ -154,6 +154,21 @@ SIGN_ID="Developer ID Application: Your Name (TEAMID)" scripts/bundle.sh
 
 Then move `CursorPie.app` to `/Applications` and open it.
 
+To get a **disk image (`.dmg`)** to hand out, run `scripts/make-dmg.sh`. It builds the app (through
+`scripts/bundle.sh`) and packs it with an *Applications* shortcut, so installing is a drag:
+
+```sh
+scripts/make-dmg.sh                  # target/bundle/CursorPie-<version>-<arch>.dmg, ad-hoc signature
+UNIVERSAL=1 scripts/make-dmg.sh      # one image for Apple silicon and Intel
+SIGN_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=my-profile scripts/make-dmg.sh
+```
+
+With `SIGN_ID` and `NOTARY_PROFILE` (a profile saved with `xcrun notarytool store-credentials`) the image is
+signed, notarized and stapled, so Gatekeeper opens it without a warning. Without them, the first start on another
+Mac needs a right-click > **Open**. A `.sha256` file is written next to the image. If
+[`create-dmg`](https://github.com/create-dmg/create-dmg) is installed, the window gets a fixed size and icon
+positions; otherwise a plain image is made with `hdiutil`.
+
 On **Windows** (PowerShell, with the MSVC build tools installed):
 
 ```powershell
@@ -161,7 +176,14 @@ cargo run --release              # quick try
 scripts\package-windows.ps1      # builds target\bundle\CursorPie-windows.zip with cursorpie.exe
 ```
 
-Run `cursorpie.exe` from the unzipped folder; a pie icon appears in the system tray. The first start **installs**
+For a **Setup wizard** (`CursorPie-<version>-setup.exe`) install [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+(`winget install JRSoftware.InnoSetup`); `scripts\package-windows.ps1` then builds it too (`-NoInstaller` skips it).
+It installs for your user only, without administrator rights, into the same folder as below, adds a Start Menu
+shortcut and an *Apps & features* entry, and asks whether to start CursorPie at sign-in. Installing over an older
+version updates it, and your settings are never touched. Set `SIGN_CERT_THUMBPRINT` to sign the `.exe` files with a
+code signing certificate (unsigned installers make SmartScreen show a warning).
+
+Without the wizard, run `cursorpie.exe` from the unzipped folder; a pie icon appears in the system tray. The first start **installs**
 CursorPie for your user: it copies itself to `%LOCALAPPDATA%\Programs\CursorPie`, turns on **Launch at login**
 (so it is back after every sign-in), adds an entry to **Settings > Apps** and then continues from the installed
 copy. You can delete the unzipped folder afterwards. Running a newer `cursorpie.exe` updates the installed copy and
@@ -176,6 +198,13 @@ Windows needs no permission. To control windows of programs that run as administ
 administrator too (Windows blocks input to them otherwise).
 
 ## First launch and permissions
+
+**Welcome window.** The first time CursorPie starts, a short welcome window opens on both macOS and Windows. It
+shows the gesture (hold, flick, release), then the one thing you must do next (on macOS, allow Accessibility,
+with a live status; on Windows, where to find the tray icon), and ends with a "Launch at login" box. Skip it with
+**Skip** or `Esc`. It appears only once, and **Welcome guide...** in the menu bar / tray menu shows it again.
+Someone who used an earlier version is not welcomed again. The "already shown" flag is the empty file
+`welcome_shown` next to `config.json`; delete it to see the window at the next start.
 
 *Windows needs no permission; skip this section.* On macOS, CursorPie needs the **Accessibility** permission to watch the mouse and to send shortcuts. macOS may also ask
 for **Input Monitoring**.
@@ -467,6 +496,8 @@ Export writes `~/Downloads/cursorpie-config.json`.
 ```text
 Cargo.toml              dependencies, release profile, docs.rs metadata
 scripts/bundle.sh       builds and signs target/bundle/CursorPie.app (macOS)
+installer/cursorpie.iss   Inno Setup script of the Windows Setup wizard
+scripts/make-dmg.sh     packs that app into target/bundle/CursorPie-<version>-<arch>.dmg (macOS)
 scripts/package-windows.ps1  builds target\bundle\CursorPie-windows.zip (Windows)
 icon/                   sample images for icons (brackets, clipboard); not loaded automatically
 CONTRIBUTING.md         how to build, test and contribute

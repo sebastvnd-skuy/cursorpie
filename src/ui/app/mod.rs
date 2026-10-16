@@ -19,7 +19,7 @@ use crate::config::{Config, MAX_ITEMS, cfg};
 use crate::history::History;
 use crate::msg::Msg;
 use crate::platform;
-use crate::ui::settings::Ed;
+use crate::ui::settings::{Ed, Welcome};
 use crate::ui::sleep::Sleeper;
 use crate::ui::tray::TrayHandles;
 use eframe::egui::{self, Pos2, Vec2};
@@ -43,6 +43,19 @@ pub fn card_size_for(area: Vec2) -> Vec2 {
     let max_w = (area.x - 2.0 * WIN_MARGIN - 40.0).max(CARD_MIN_W);
     let max_h = (area.y - 2.0 * WIN_MARGIN - 60.0).max(CARD_MIN_H);
     egui::vec2(CARD_SIZE[0].min(max_w), CARD_SIZE[1].min(max_h))
+}
+
+/// Welcome window card size (the window adds [`WIN_MARGIN`] on each side for the shadow).
+pub const WELCOME_SIZE: [f32; 2] = [760.0, 520.0];
+/// Smallest the welcome card gets on a small display.
+pub const WELCOME_MIN: [f32; 2] = [600.0, 440.0];
+
+/// The welcome card size for a display `area` points large: [`WELCOME_SIZE`], shrunk to fit with
+/// room for the shadow and the taskbar or menu bar, but never below [`WELCOME_MIN`].
+pub fn welcome_size_for(area: Vec2) -> Vec2 {
+    let max_w = (area.x - 2.0 * WIN_MARGIN - 40.0).max(WELCOME_MIN[0]);
+    let max_h = (area.y - 2.0 * WIN_MARGIN - 60.0).max(WELCOME_MIN[1]);
+    egui::vec2(WELCOME_SIZE[0].min(max_w), WELCOME_SIZE[1].min(max_h))
 }
 
 /// Most undo steps Settings keeps. A step is a copy of the edited config (a few KiB).
@@ -91,6 +104,9 @@ pub struct App {
     pub closing: Option<bool>,
     pub card_size: Vec2,
     pub toast: Option<(String, Instant)>,
+    /// Some while the welcome window is open (it uses the Settings window, so `settings_open` is
+    /// true too). See [`crate::ui::settings::Welcome`].
+    pub welcome: Option<Welcome>,
 
     /// Idle clock that decides when caches and the Settings copy are freed
     pub sleeper: Sleeper,
@@ -133,6 +149,7 @@ impl App {
             closing: None,
             card_size: egui::vec2(CARD_SIZE[0], CARD_SIZE[1]),
             toast: None,
+            welcome: None,
             sleeper: Sleeper::new(Instant::now()),
             tray,
         }
@@ -191,7 +208,9 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if self.settings_open {
+        if self.settings_open && self.welcome.is_some() {
+            self.welcome_ui(ui);
+        } else if self.settings_open {
             self.settings_ui(ui);
         } else {
             self.pie_ui(ui);
@@ -210,6 +229,20 @@ mod tests {
         assert_eq!(
             card_size_for(egui::vec2(2560.0, 1440.0)),
             egui::vec2(CARD_SIZE[0], CARD_SIZE[1])
+        );
+    }
+
+    #[test]
+    fn the_welcome_card_fits_small_displays_but_not_below_its_minimum() {
+        assert_eq!(
+            welcome_size_for(egui::vec2(2560.0, 1440.0)),
+            egui::vec2(WELCOME_SIZE[0], WELCOME_SIZE[1])
+        );
+        let s = welcome_size_for(egui::vec2(1024.0, 600.0));
+        assert!(s.x <= 1024.0 - 2.0 * WIN_MARGIN && s.y <= 600.0 - 2.0 * WIN_MARGIN);
+        assert_eq!(
+            welcome_size_for(egui::vec2(300.0, 200.0)),
+            egui::vec2(WELCOME_MIN[0], WELCOME_MIN[1])
         );
     }
 

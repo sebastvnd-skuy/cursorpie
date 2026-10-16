@@ -8,14 +8,15 @@
 //! Starting from a download folder or an unzipped archive therefore stops mattering: the copy in
 //! the install folder is what starts at every login, and starting a newer download updates it.
 //! Builds made by `cargo` are left alone, so development never touches the installed app (set
-//! `CURSORPIE_NO_INSTALL=1` to get the same for any other copy).
+//! `CURSORPIE_NO_INSTALL=1` to get the same for any other copy). A copy that the Setup wizard
+//! (`installer/cursorpie.iss`) put in place is left alone too: the wizard registered it.
 
 use super::login_item::{launch_at_login_enabled, set_launch_at_login};
 use super::registry;
 use super::shell::run_shell;
 use super::util::{
-    cleanup_command, install_dir, installed_exe, is_build_output, same_path, uninstall_command,
-    wants_uninstall,
+    cleanup_command, install_dir, installed_by_setup, installed_exe, is_build_output, same_path,
+    uninstall_command, wants_uninstall,
 };
 use crate::about::{APP_NAME, AUTHOR_NAME, REPO_URL, VERSION};
 use std::path::{Path, PathBuf};
@@ -129,6 +130,10 @@ fn register_uninstall(exe: &Path) -> io::Result<()> {
 pub fn ensure_installed() -> Option<PathBuf> {
     let current = std::env::current_exe().ok()?;
     if std::env::var_os(OPT_OUT).is_some() || is_build_output(&current.to_string_lossy()) {
+        return None;
+    }
+    // The Setup wizard installed this copy and owns its uninstall entry and startup entry.
+    if installed_by_setup(&current) {
         return None;
     }
     let target = installed_exe_path()?;

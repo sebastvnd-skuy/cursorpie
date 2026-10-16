@@ -78,6 +78,30 @@
 //! you instead of `available_width()` inside nested layouts, otherwise content can spill out of
 //! the card.
 //!
+//! ## Add a page to the welcome window
+//!
+//! 1. `ui/settings/welcome.rs`: raise `PAGES` and add a `match` arm in `App::welcome_ui` that calls a
+//!    new `fn <name>_page(ui: &mut egui::Ui, ..)`. Pages draw inside the body rectangle; the
+//!    footer (dots, Back, Next, Get started) and the top bar (Skip) come from `welcome_ui`.
+//! 2. A text that differs between macOS and Windows is a pure function of
+//!    [`Os`](crate::platform::Os) next to the others, with a test for both values.
+//! 3. State that must survive between pages goes into `Welcome`; anything that must happen when the
+//!    window closes belongs in `App::finish_welcome` (`ui/app/windows.rs`), which runs once the
+//!    close animation is over for every way of leaving (Skip, Esc, the window's close button).
+//! 4. The window shows once per user. To show it again while testing, delete `welcome_shown` from
+//!    the app support directory (next to `config.json`), or use "Welcome guide..." in the tray menu.
+//!
+//! ## Change the installers
+//!
+//! * macOS: `scripts/bundle.sh` makes the `.app`, `scripts/make-dmg.sh` packs it. The bundle
+//!   identifier must stay equal to `about::BUNDLE_ID`.
+//! * Windows: `installer/cursorpie.iss` (Inno Setup 6.3 or later) is built by
+//!   `scripts/package-windows.ps1`. It installs into the folder the program uses when it installs
+//!   itself and writes the same `Run` value, so keep both in step with
+//!   `platform/windows/install.rs` and `login_item.rs`. Never change its `AppId`: Windows uses it to
+//!   update an existing install. The program recognizes a Setup install by `unins000.exe` in its
+//!   folder (`platform::windows::util::installed_by_setup`) and then does not install itself.
+//!
 //! ## Add icons to the picker
 //!
 //! Append `ic("glyph", "Name", "search keywords")` to a category in
@@ -134,7 +158,8 @@
 //! ## Add a menu bar item
 //!
 //! `ui/tray.rs` builds the menu (`MenuItem::with_id("my_id", ..)`); `ui/app/windows.rs`
-//! `handle_tray` receives the id as `Msg::Tray(id)`.
+//! `handle_tray` receives the id as `Msg::Tray(id)`. "Welcome guide..." is an example: its id
+//! `welcome` calls `open_welcome`.
 //!
 //! ## Cache something in the UI
 //!

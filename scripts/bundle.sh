@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Builds target/bundle/CursorPie.app (menu-bar only app, no Dock icon).
-# Usage:  scripts/bundle.sh                 (ad-hoc signature)
+# Usage:  scripts/bundle.sh                 (ad-hoc signature, this machine's architecture)
 #         SIGN_ID="Developer ID Application: Name (TEAMID)" scripts/bundle.sh
+#         UNIVERSAL=1 scripts/bundle.sh     (one app for Apple silicon and Intel)
+# To get a .dmg to hand out, run scripts/make-dmg.sh (it calls this script first).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -9,11 +11,23 @@ APP="CursorPie"
 BUNDLE_ID="io.github.cursorpie"   # keep in sync with src/about.rs
 VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
 
-cargo build --release
+if [ "${UNIVERSAL:-0}" = "1" ]; then
+    # one binary that runs natively on Apple silicon and on Intel
+    rustup target add aarch64-apple-darwin x86_64-apple-darwin
+    cargo build --release --target aarch64-apple-darwin
+    cargo build --release --target x86_64-apple-darwin
+    BIN="target/CursorPie-universal"
+    lipo -create -output "$BIN" \
+        target/aarch64-apple-darwin/release/cursorpie \
+        target/x86_64-apple-darwin/release/cursorpie
+else
+    cargo build --release
+    BIN="target/release/cursorpie"
+fi
 OUT="target/bundle/$APP.app"
 rm -rf "$OUT"
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
-cp target/release/cursorpie "$OUT/Contents/MacOS/$APP"
+cp "$BIN" "$OUT/Contents/MacOS/$APP"
 
 cat > "$OUT/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -32,6 +46,11 @@ cat > "$OUT/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-codesign --force --deep --sign "${SIGN_ID:--}" "$OUT"
-echo "Built $OUT"
+SIGN_ARGS=(--force --deep --sign "${SIGN_ID:--}")
+if [ -n "${SIGN_ID:-}" ]; then
+    # a Developer ID signature needs the hardened runtime and a timestamp to be notarized
+    SIGN_ARGS+=(--options runtime --timestamp)
+fi
+codesign "${SIGN_ARGS[@]}" "$OUT"
+echo "Built $OUT ($(lipo -archs "$OUT/Contents/MacOS/$APP"))"
 echo "Note: with the ad-hoc signature macOS may ask you to re-grant Accessibility after every rebuild."

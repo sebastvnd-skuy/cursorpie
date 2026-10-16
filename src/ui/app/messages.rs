@@ -29,6 +29,7 @@ impl App {
             Msg::OpenSettings { x, y, about } => {
                 self.open_settings(ctx, egui::pos2(x as f32, y as f32), about);
             }
+            Msg::OpenWelcome { x, y } => self.open_welcome(ctx, egui::pos2(x as f32, y as f32)),
             Msg::Hover(h) => {
                 if h.is_some()
                     && h != self.hover

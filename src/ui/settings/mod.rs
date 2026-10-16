@@ -10,6 +10,7 @@
 //! | `action_editor` | editor for one [`Action`](crate::config::Action) |
 //! | `icon_picker`, `icon_catalog` | icon chooser and its catalog |
 //! | `picker` | native file choosers run off the UI thread |
+//! | `welcome` | the first-launch welcome window (`App::welcome_ui`), drawn in the same window and style |
 //! | `undo` | undo / redo shortcuts and backup restore, on top of [`History`](crate::history::History) |
 //! | `theme`, `widgets` | palette, geometry, egui style and small reusable widgets |
 //!
@@ -32,7 +33,9 @@ mod state;
 mod tabs;
 mod theme;
 mod undo;
+mod welcome;
 mod widgets;
 mod window;
 
 pub use state::{Ed, Slot, Tab};
+pub use welcome::Welcome;

@@ -15,12 +15,14 @@
 //! | `store` | `config.json` on disk, import/export and the live global copy ([`cfg()`]) |
 //! | [`share`] | exporting and importing one profile as a file, icons included |
 //! | [`backup`] | rolling backups of `config.json`, written by every Save in Settings |
+//! | `first_run` | whether the welcome window is due (a marker file next to `config.json`) |
 //!
 //! All public items are re-exported here, so use `crate::config::X`. The file format is described in
 //! [`guides::config_format`](crate::guides::config_format).
 
 pub mod backup;
 mod defaults;
+mod first_run;
 mod model;
 mod sanitize;
 pub mod share;
@@ -28,6 +30,7 @@ mod store;
 mod tree;
 
 pub use defaults::{blank_items, presets, quick_actions};
+pub use first_run::{FirstRun, mark_welcomed, welcome_due};
 pub use model::*;
 pub use share::image_path;
 pub use store::*;
