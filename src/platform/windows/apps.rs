@@ -388,8 +388,13 @@ pub fn app_icon(exe: &str) -> Option<NativeIcon> {
             .then(|| {
                 let (w, h) = (bm.bmWidth, bm.bmHeight);
                 let mut color = bitmap_bgra(ii.hbmColor, w, h)?;
-                let mask = bitmap_bgra(ii.hbmMask, w, h)
-                    .map(|m| m.chunks_exact(4).map(|p| p[0]).collect::<Vec<u8>>());
+                let mask = bitmap_bgra(ii.hbmMask, w, h).map(|m| {
+                    m.as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|p| p[0])
+                        .collect::<Vec<u8>>()
+                });
                 super::util::bgra_to_rgba(&mut color, mask.as_deref());
                 Some(NativeIcon::Rgba {
                     width: w as u32,

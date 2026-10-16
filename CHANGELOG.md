@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0
+
 - **Developer tools.** `cargo tools` runs the repository's own tools (the `tools/` package, standard
   library only, not part of the app). `cargo tools bump patch|minor|major` raises the version in
   `Cargo.toml` and `Cargo.lock`, turns the notes under `## Unreleased` (or, without notes, the commit

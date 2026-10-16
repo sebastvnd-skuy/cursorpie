@@ -114,7 +114,13 @@ fn parse_check(args: &[String]) -> Result<Task, String> {
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--tag" => tag = Some(args.next().ok_or("--tag needs a tag, such as v0.4.0")?.clone()),
+            "--tag" => {
+                tag = Some(
+                    args.next()
+                        .ok_or("--tag needs a tag, such as v0.4.0")?
+                        .clone(),
+                )
+            }
             other => return Err(format!("unknown option '{other}' for check")),
         }
     }
@@ -127,7 +133,9 @@ fn parse_check(args: &[String]) -> Result<Task, String> {
 /// the compiled file by hand. The root is the folder above the manifest folder.
 fn repo_root(at_run_time: Option<OsString>, built_in: &str) -> PathBuf {
     let manifest: PathBuf = at_run_time.map_or_else(|| built_in.into(), Into::into);
-    manifest.parent().map_or_else(|| manifest.clone(), Path::to_path_buf)
+    manifest
+        .parent()
+        .map_or_else(|| manifest.clone(), Path::to_path_buf)
 }
 
 fn main() -> ExitCode {
@@ -188,7 +196,11 @@ mod tests {
     fn commands_are_told_apart() {
         assert_eq!(parse(&[]), Ok(Task::Help));
         assert_eq!(parse(&["help"]), Ok(Task::Help));
-        assert_eq!(parse(&["bump", "--help"]), Ok(Task::Help), "help works anywhere");
+        assert_eq!(
+            parse(&["bump", "--help"]),
+            Ok(Task::Help),
+            "help works anywhere"
+        );
         assert_eq!(parse(&["ci"]), Ok(Task::Ci { quick: false }));
         assert_eq!(parse(&["ci", "--quick"]), Ok(Task::Ci { quick: true }));
         assert_eq!(parse(&["check"]), Ok(Task::Check { tag: None }));

@@ -59,7 +59,14 @@ fn steps() -> Vec<Step> {
         cargo_step(
             "clippy",
             false,
-            &["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+            ],
         ),
         cargo_step("tests", false, &["test", "--workspace", "--all-targets"]),
         cargo_step("doc tests", false, &["test", "--doc"]),
@@ -70,7 +77,12 @@ fn steps() -> Vec<Step> {
             name: "docs",
             quick: false,
             action: Action::Cargo {
-                args: &["doc", "--workspace", "--no-deps", "--document-private-items"],
+                args: &[
+                    "doc",
+                    "--workspace",
+                    "--no-deps",
+                    "--document-private-items",
+                ],
                 env: &[("RUSTDOCFLAGS", "-D warnings")],
             },
         });
@@ -80,7 +92,15 @@ fn steps() -> Vec<Step> {
         steps.push(cargo_step(
             "Windows backend: clippy",
             false,
-            &["clippy", "--all-targets", "--features", "check-windows", "--", "-D", "warnings"],
+            &[
+                "clippy",
+                "--all-targets",
+                "--features",
+                "check-windows",
+                "--",
+                "-D",
+                "warnings",
+            ],
         ));
         steps.push(cargo_step(
             "Windows backend: tests",
@@ -197,11 +217,16 @@ mod tests {
                 let lints = args.contains(&"clippy");
                 let docs = args.contains(&"doc");
                 if lints {
-                    assert!(args.contains(&"warnings"), "{} must pass -D warnings", step.name);
+                    assert!(
+                        args.contains(&"warnings"),
+                        "{} must pass -D warnings",
+                        step.name
+                    );
                 }
                 if docs {
                     assert!(
-                        env.iter().any(|(k, v)| *k == "RUSTDOCFLAGS" && v.contains("-D warnings")),
+                        env.iter()
+                            .any(|(k, v)| *k == "RUSTDOCFLAGS" && v.contains("-D warnings")),
                         "{} must deny rustdoc warnings",
                         step.name
                     );

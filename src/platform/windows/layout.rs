@@ -121,8 +121,8 @@ fn build(hkl: isize) -> Table {
         let Some(scan) = keymap::scancode_for(code) else {
             continue;
         };
-        for variant in 0..4usize {
-            chars[code as usize][variant] = translate(hkl, scan, variant);
+        for (variant, slot) in chars[code as usize].iter_mut().enumerate() {
+            *slot = translate(hkl, scan, variant);
         }
     }
     Table::from_chars(chars)

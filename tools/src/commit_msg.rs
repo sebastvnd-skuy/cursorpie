@@ -89,8 +89,7 @@ fn check_message(message: &str) -> Vec<String> {
 /// # Errors
 /// When the file cannot be read.
 pub fn run(file: &Path) -> Result<ExitCode, String> {
-    let message =
-        std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let message = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let problems = check_message(&message);
     if problems.is_empty() {
         return Ok(ExitCode::SUCCESS);
@@ -117,8 +116,15 @@ mod tests {
     #[test]
     fn a_clear_imperative_subject_passes() {
         assert_eq!(problems("Fix double-click replay on slow clicks"), 0);
-        assert_eq!(problems("Add a sidebar to Settings\n\nWhy: the tabs ran out of room.\n"), 0);
-        assert_eq!(problems("Embed the logo as SVG"), 0, "only exact log words are refused");
+        assert_eq!(
+            problems("Add a sidebar to Settings\n\nWhy: the tabs ran out of room.\n"),
+            0
+        );
+        assert_eq!(
+            problems("Embed the logo as SVG"),
+            0,
+            "only exact log words are refused"
+        );
     }
 
     #[test]
@@ -143,8 +149,14 @@ mod tests {
 
     #[test]
     fn the_body_starts_after_a_blank_line() {
-        assert_eq!(problems("Fix the double-click replay\nthe body sticks to it"), 1);
-        assert_eq!(problems("Fix the double-click replay\n\nthe body is apart"), 0);
+        assert_eq!(
+            problems("Fix the double-click replay\nthe body sticks to it"),
+            1
+        );
+        assert_eq!(
+            problems("Fix the double-click replay\n\nthe body is apart"),
+            0
+        );
     }
 
     #[test]

@@ -607,21 +607,35 @@ pub fn check(root: &Path, tag: Option<&str>) -> Result<Vec<String>, String> {
     Ok(problems)
 }
 
-/// Writes every `(file name, text)` pair under `root`. When one write fails, the files written
-/// before it are put back as they were, so a failed release never leaves a half-done one.
+/// Writes every `(file name, text)` pair under `root`. The old contents are read first, so a file
+/// that cannot be read stops the run before anything changed; when a write fails, the files
+/// written before it are put back as they were. A failed release never leaves a half-done one.
 fn write_all(root: &Path, files: &[(&str, &str)]) -> Result<(), String> {
-    let mut done: Vec<(&str, String)> = Vec::new();
-    for &(name, text) in files {
-        let path = root.join(name);
-        let before = std::fs::read_to_string(&path).map_err(|e| format!("{name}: {e}"))?;
-        if let Err(e) = std::fs::write(&path, text) {
-            for (earlier, old) in &done {
+    let mut before = Vec::new();
+    for &(name, _) in files {
+        let old = std::fs::read_to_string(root.join(name)).map_err(|e| format!("{name}: {e}"))?;
+        before.push(old);
+    }
+    apply(files, &before, |name, text| {
+        std::fs::write(root.join(name), text)
+    })
+}
+
+/// Calls `write` for each file in order. When one call fails, the files before it are written
+/// again with their old contents (`before`, in the same order) and the error is returned.
+fn apply(
+    files: &[(&str, &str)],
+    before: &[String],
+    mut write: impl FnMut(&str, &str) -> std::io::Result<()>,
+) -> Result<(), String> {
+    for (i, &(name, text)) in files.iter().enumerate() {
+        if let Err(e) = write(name, text) {
+            for (k, &(earlier, _)) in files[..i].iter().enumerate() {
                 // best effort: there is nothing more to do when even the restore fails
-                let _ = std::fs::write(root.join(earlier), old);
+                let _ = write(earlier, &before[k]);
             }
             return Err(format!("{name}: {e}"));
         }
-        done.push((name, before));
     }
     Ok(())
 }
@@ -724,8 +738,8 @@ pub fn run(root: &Path, level: Level, options: Options) -> Result<ExitCode, Stri
             return Err(problem);
         }
     }
-    let cargo_toml = std::fs::read_to_string(root.join(CARGO_TOML))
-        .map_err(|e| format!("{CARGO_TOML}: {e}"))?;
+    let cargo_toml =
+        std::fs::read_to_string(root.join(CARGO_TOML)).map_err(|e| format!("{CARGO_TOML}: {e}"))?;
     let current = package_version(&cargo_toml)?;
     if committing {
         let tag = format!("v{}", current.bump(level));
@@ -1054,7 +1068,11 @@ mod tests {
             Some(v("0.4.0"))
         );
         assert_eq!(released_heading(&s.read(CHANGELOG)), Some("0.4.0"));
-        assert_eq!(check(&s.0, None), Ok(Vec::new()), "the files agree afterwards");
+        assert_eq!(
+            check(&s.0, None),
+            Ok(Vec::new()),
+            "the files agree afterwards"
+        );
     }
 
     #[test]
@@ -1146,7 +1164,10 @@ mod tests {
     fn releases_are_cut_from_main_unless_told_otherwise() {
         assert_eq!(branch_problem("main", false), None);
         assert!(branch_problem("feature/x", false).is_some());
-        assert!(branch_problem("HEAD", false).is_some(), "a detached head is not main");
+        assert!(
+            branch_problem("HEAD", false).is_some(),
+            "a detached head is not main"
+        );
         assert_eq!(branch_problem("feature/x", true), None);
     }
 
@@ -1163,12 +1184,41 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_write_puts_the_earlier_files_back() {
-        let s = Scratch::new("rollback", TOML, None, LOG);
-        // reading a folder fails, so the second write cannot start
+    fn a_file_that_cannot_be_read_stops_the_run_before_any_write() {
+        let s = Scratch::new("unreadable", TOML, None, LOG);
+        // reading a folder fails
         std::fs::create_dir(s.0.join("blocked")).unwrap();
         let r = write_all(&s.0, &[(CARGO_TOML, "changed"), ("blocked", "x")]);
         assert!(r.is_err());
         assert_eq!(s.read(CARGO_TOML), TOML);
+    }
+
+    #[test]
+    fn a_failed_write_puts_the_earlier_files_back() {
+        let before = strings(&["old-a", "old-b", "old-c"]);
+        let mut log: Vec<(String, String)> = Vec::new();
+        let r = apply(
+            &[("a", "new-a"), ("b", "new-b"), ("c", "new-c")],
+            &before,
+            |name, text| {
+                if name == "c" {
+                    return Err(std::io::Error::other("disk full"));
+                }
+                log.push((name.to_string(), text.to_string()));
+                Ok(())
+            },
+        );
+        assert!(r.is_err());
+        let pair = |a: &str, b: &str| (a.to_string(), b.to_string());
+        assert_eq!(
+            log,
+            [
+                pair("a", "new-a"),
+                pair("b", "new-b"),
+                pair("a", "old-a"),
+                pair("b", "old-b")
+            ],
+            "a and b were written, then restored; c never was"
+        );
     }
 }

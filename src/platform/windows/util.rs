@@ -171,8 +171,8 @@ pub fn filter_for(kind: FileKind) -> Vec<u16> {
 /// alpha (an old icon without an alpha channel) every pixel becomes opaque, except those the
 /// 1-bit `mask` (one byte per pixel, nonzero = transparent) says are background.
 pub fn bgra_to_rgba(px: &mut [u8], mask: Option<&[u8]>) {
-    let has_alpha = px.chunks_exact(4).any(|p| p[3] != 0);
-    for (i, p) in px.chunks_exact_mut(4).enumerate() {
+    let has_alpha = px.as_chunks::<4>().0.iter().any(|p| p[3] != 0);
+    for (i, p) in px.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         p.swap(0, 2);
         if !has_alpha {
             let transparent = mask.and_then(|m| m.get(i)).is_some_and(|m| *m != 0);
@@ -214,7 +214,7 @@ mod tests {
         use windows_sys::Win32::UI::WindowsAndMessaging::{WS_POPUP, WS_VISIBLE};
         // idempotent: the second call (every frame) must report "nothing to do"
         let (s, e) =
-            frameless_styles(WS_POPUP | WS_VISIBLE, 0).map_or((WS_POPUP | WS_VISIBLE, 0), |x| x);
+            frameless_styles(WS_POPUP | WS_VISIBLE, 0).unwrap_or((WS_POPUP | WS_VISIBLE, 0));
         assert_eq!(frameless_styles(s, e), None);
     }
 
