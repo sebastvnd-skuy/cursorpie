@@ -501,7 +501,8 @@ scripts/make-dmg.sh     packs that app into target/bundle/CursorPie-<version>-<a
 scripts/package-windows.ps1  builds target\bundle\CursorPie-windows.zip (Windows)
 icon/                   sample images for icons (brackets, clipboard); not loaded automatically
 CONTRIBUTING.md         how to build, test and contribute
-docs/                   WINDOWS_MIGRATION.md (Windows port), UI_DESIGN.md (look and rendering rules)
+docs/                   WINDOWS_MIGRATION.md (Windows port), LINUX_MIGRATION.md (Linux design proposal),
+                        UI_DESIGN.md (look and rendering rules)
 src/
   main.rs               thin binary: calls cursorpie::run()
   lib.rs                crate root: module list, run()
@@ -551,7 +552,9 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
 
 ## Known limitations
 
-- macOS and Windows only. Other platforms build a do-nothing stub that exists for unit tests.
+- macOS and Windows only. Other platforms build a do-nothing stub that exists for unit tests. A design for
+  Linux (X11 first, then Wayland) is in [docs/LINUX_MIGRATION.md](docs/LINUX_MIGRATION.md); it is a proposal,
+  not an implementation.
 - Windows behaves almost identically to macOS. The one gap is extra mouse buttons: only the middle button can be
   the trigger (Windows reports only the middle, back and forward buttons, not buttons 6 to 8).
 - Windows: **app detection cannot tell UWP apps apart.** UWP (Microsoft Store / "packaged") apps, such as

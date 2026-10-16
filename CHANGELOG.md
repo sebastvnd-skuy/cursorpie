@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Linux migration** New plane for support linux distribution 
+
 ## 0.4.2
 
 - **Welcome window.** The first start on macOS and on Windows opens a three-page welcome window in the

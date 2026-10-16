@@ -30,6 +30,7 @@ Goals
 Non-goals (0.3.0)
 
 - Linux support. A *stub* backend exists only so `cargo test` runs on Linux; it does nothing at runtime.
+  A design for a real Linux backend is in [LINUX_MIGRATION.md](LINUX_MIGRATION.md).
 - Extra mouse buttons 5 to 7 as trigger (Windows only reports middle, back and forward).
 - Perfect behavior on mixed-DPI multi-monitor setups (see [Risks](#risks-and-known-limitations)).
 

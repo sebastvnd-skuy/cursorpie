@@ -90,8 +90,9 @@ executable and the wizard.
 
 ### Linux
 
-Linux has no real backend. `cargo build` and `cargo test` work (the stub does nothing), which is
-enough to run the whole unit test suite and to write platform-independent code. If linking fails,
+Linux has no real backend yet. `cargo build` and `cargo test` work (the stub does nothing), which is
+enough to run the whole unit test suite and to write platform-independent code. How a real Linux backend
+would be built, and in which order, is described in `docs/LINUX_MIGRATION.md` (a proposal). If linking fails,
 install your distribution's X11, Wayland and xkbcommon development packages.
 
 ### Cross-compiling to Windows
