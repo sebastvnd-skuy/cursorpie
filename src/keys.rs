@@ -302,18 +302,26 @@ mod tests {
 
     #[test]
     fn labels_list_modifiers_in_a_fixed_order() {
-        assert_eq!(Shortcut::new(6, MOD_CMD).label(), "Cmd + Z");
+        use crate::platform::Os;
+        // the macOS names, pinned: the labels of the other OS are tested below
+        assert_eq!(Shortcut::new(6, MOD_CMD).label_for(Os::Mac), "Cmd + Z");
         assert_eq!(
-            Shortcut::new(6, MOD_CMD | MOD_SHIFT).label(),
+            Shortcut::new(6, MOD_CMD | MOD_SHIFT).label_for(Os::Mac),
             "Shift + Cmd + Z"
         );
         assert_eq!(
-            Shortcut::new(6, MOD_CTRL | MOD_ALT | MOD_SHIFT | MOD_CMD).label(),
+            Shortcut::new(6, MOD_CTRL | MOD_ALT | MOD_SHIFT | MOD_CMD).label_for(Os::Mac),
             "Ctrl + Opt + Shift + Cmd + Z"
         );
-        assert_eq!(Shortcut::new(key::SPACE, MOD_CMD).label(), "Cmd + Space");
-        assert_eq!(Shortcut::new(key::F13, 0).label(), "F13");
-        assert_eq!(Shortcut::new(key::UP, MOD_CTRL).label(), "Ctrl + Up");
+        assert_eq!(
+            Shortcut::new(key::SPACE, MOD_CMD).label_for(Os::Mac),
+            "Cmd + Space"
+        );
+        assert_eq!(Shortcut::new(key::F13, 0).label_for(Os::Mac), "F13");
+        assert_eq!(
+            Shortcut::new(key::UP, MOD_CTRL).label_for(Os::Mac),
+            "Ctrl + Up"
+        );
     }
 
     #[test]
@@ -336,7 +344,8 @@ mod tests {
         assert_eq!(key_name(36), "Return");
         assert_eq!(key_name(117), "Delete");
         assert_eq!(key_name(51), "Backspace");
-        assert_eq!(key_name(10), "Key 10", "no name for an unmapped code");
+        // far beyond every layout table, so no OS and no keyboard layout names it
+        assert_eq!(key_name(1000), "Key 1000", "no name for an unmapped code");
     }
 
     #[test]

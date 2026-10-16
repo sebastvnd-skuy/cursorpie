@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tests that assumed macOS defaults are pinned to them, so the test suite passes on Windows.
+
 ## 0.4.1
 
 - Fix dead code warnings on the Windows target

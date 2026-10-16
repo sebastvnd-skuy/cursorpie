@@ -242,7 +242,8 @@ mod tests {
 
     #[test]
     fn the_eight_mode_presets() {
-        let p = presets();
+        // the macOS form, pinned: the Windows form has its own test below
+        let p = presets_for(Os::Mac);
         let names: Vec<_> = p.iter().map(|i| i.name.as_str()).collect();
         assert_eq!(
             names,
@@ -274,7 +275,7 @@ mod tests {
 
     #[test]
     fn the_quick_actions() {
-        let q = quick_actions();
+        let q = quick_actions_for(Os::Mac);
         let names: Vec<_> = q.iter().map(|i| i.name.as_str()).collect();
         assert_eq!(
             names,
@@ -299,7 +300,7 @@ mod tests {
 
     #[test]
     fn the_default_config() {
-        let c = Config::default();
+        let c = Config::default_for(Os::Mac);
         assert_eq!(c.version, CONFIG_VERSION);
         let names: Vec<_> = c.profiles.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(names, ["Default", "Browsers", "Code"]);
@@ -331,7 +332,7 @@ mod tests {
 
     #[test]
     fn the_default_launch_submenu() {
-        let c = Config::default();
+        let c = Config::default_for(Os::Mac);
         let ItemKind::Submenu(launch) = &c.profiles[0].items[3].kind else {
             panic!("slice 3 of the general pie is the launcher");
         };

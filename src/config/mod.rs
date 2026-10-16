@@ -86,7 +86,9 @@ mod tests {
             ["General", "Safari"],
             "the app-less duplicate is dropped"
         );
-        assert_eq!(c.profiles[1].apps, ["com.apple.Safari"]);
+        // app ids are normalized per OS (lower case on Windows)
+        let safari = crate::platform::OS.normalize_app_id("com.apple.Safari");
+        assert_eq!(c.profiles[1].apps, [safari]);
         assert_eq!(c.profiles.iter().filter(|p| p.is_general()).count(), 1);
     }
 
