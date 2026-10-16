@@ -1,0 +1,189 @@
+//! Per-user install: makes CursorPie a real installed program instead of a loose `.exe`.
+//!
+//! The first time a packaged build starts, [`ensure_installed`] copies the executable to
+//! `%LOCALAPPDATA%\Programs\CursorPie`, turns on "Launch at login" pointing at that copy, and adds
+//! an "Apps & features" entry whose uninstall command is `cursorpie.exe --uninstall`
+//! ([`handle_command_line`]). Nothing needs administrator rights.
+//!
+//! Starting from a download folder or an unzipped archive therefore stops mattering: the copy in
+//! the install folder is what starts at every login, and starting a newer download updates it.
+//! Builds made by `cargo` are left alone, so development never touches the installed app (set
+//! `CURSORPIE_NO_INSTALL=1` to get the same for any other copy).
+
+use super::login_item::{launch_at_login_enabled, set_launch_at_login};
+use super::registry;
+use super::shell::run_shell;
+use super::util::{
+    cleanup_command, install_dir, installed_exe, is_build_output, same_path, uninstall_command,
+    wants_uninstall,
+};
+use crate::about::{APP_NAME, AUTHOR_NAME, REPO_URL, VERSION};
+use std::path::{Path, PathBuf};
+use std::{fs, io};
+use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
+
+/// Environment variable that switches the install step off.
+const OPT_OUT: &str = "CURSORPIE_NO_INSTALL";
+
+/// The "Apps & features" entry of this app.
+fn uninstall_key() -> String {
+    format!(r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}")
+}
+
+/// `%LOCALAPPDATA%`, if the user session has one.
+fn local_app_data() -> Option<String> {
+    std::env::var("LOCALAPPDATA")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+}
+
+/// The install folder.
+fn install_dir_path() -> Option<PathBuf> {
+    local_app_data().map(|l| PathBuf::from(install_dir(&l, APP_NAME)))
+}
+
+/// Where the installed executable lives.
+fn installed_exe_path() -> Option<PathBuf> {
+    local_app_data().map(|l| PathBuf::from(installed_exe(&l, APP_NAME)))
+}
+
+/// The executable the startup entry should start: the installed copy when there is one, otherwise
+/// `current` (a build that is not installed, such as one made by `cargo`).
+pub(super) fn startup_exe(current: &Path) -> PathBuf {
+    installed_exe_path()
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| current.to_path_buf())
+}
+
+/// Whether an earlier run completed the install (the entry exists and the file is still there).
+fn is_installed() -> bool {
+    registry::has_value(&uninstall_key(), "UninstallString")
+        && installed_exe_path().is_some_and(|p| p.is_file())
+}
+
+/// Whether both files hold the same bytes.
+fn same_contents(a: &Path, b: &Path) -> bool {
+    matches!((fs::read(a), fs::read(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+/// Puts `src` at `dst`. A running program cannot be overwritten, but it can be renamed, so the old
+/// copy is moved aside first; that is what lets a newer download update an app that is running.
+fn copy_over(src: &Path, dst: &Path) -> io::Result<()> {
+    if let Some(dir) = dst.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    if same_contents(src, dst) {
+        return Ok(());
+    }
+    let old = leftover(dst);
+    let _ = fs::remove_file(&old);
+    let moved = dst.exists();
+    if moved {
+        fs::rename(dst, &old)?;
+    }
+    if let Err(e) = fs::copy(src, dst) {
+        if moved {
+            let _ = fs::rename(&old, dst); // keep the working copy
+        }
+        return Err(e);
+    }
+    let _ = fs::remove_file(&old); // fails while the old copy still runs; the next start retries
+    Ok(())
+}
+
+/// The name an outdated copy is parked under while it is replaced.
+fn leftover(exe: &Path) -> PathBuf {
+    exe.with_extension("exe.old")
+}
+
+/// Writes the "Apps & features" entry.
+fn register_uninstall(exe: &Path) -> io::Result<()> {
+    let key = uninstall_key();
+    let dir = exe.parent().unwrap_or(exe).to_string_lossy().into_owned();
+    let exe_str = exe.to_string_lossy();
+    for (name, value) in [
+        ("DisplayName", APP_NAME),
+        ("DisplayVersion", VERSION),
+        ("Publisher", AUTHOR_NAME),
+        ("URLInfoAbout", REPO_URL),
+        ("InstallLocation", dir.as_str()),
+        ("DisplayIcon", &exe_str),
+        ("UninstallString", &uninstall_command(&exe_str)),
+    ] {
+        registry::set_string(&key, name, value)?;
+    }
+    // no Modify or Repair buttons: there is nothing to modify or repair
+    registry::set_dword(&key, "NoModify", 1)?;
+    registry::set_dword(&key, "NoRepair", 1)
+}
+
+/// Installs this program for the current user and keeps the installation current.
+///
+/// Returns the path of the installed copy when the caller is a *different* copy that should hand
+/// over: it starts the returned program and exits. `None` means "carry on as you are": already
+/// running from the install folder, a `cargo` build, an opt-out, or an install that failed (the
+/// app still works, it just will not come back after a restart; the reason is printed).
+///
+/// The first install also turns "Launch at login" on. Later runs only repair the startup entry
+/// when it is on, so a user who switched it off keeps it off.
+pub fn ensure_installed() -> Option<PathBuf> {
+    let current = std::env::current_exe().ok()?;
+    if std::env::var_os(OPT_OUT).is_some() || is_build_output(&current.to_string_lossy()) {
+        return None;
+    }
+    let target = installed_exe_path()?;
+    let running_installed = same_path(&current.to_string_lossy(), &target.to_string_lossy());
+    let first_time = !is_installed();
+
+    if running_installed {
+        let _ = fs::remove_file(leftover(&target)); // an update parked the old copy here
+    } else if let Err(e) = copy_over(&current, &target) {
+        eprintln!("CursorPie: could not install to {}: {e}", target.display());
+        return None;
+    }
+    if let Err(e) = register_uninstall(&target) {
+        eprintln!("CursorPie: could not write the uninstall entry: {e}");
+    }
+    if (first_time || launch_at_login_enabled())
+        && let Err(e) = set_launch_at_login(true)
+    {
+        eprintln!("CursorPie: could not set up launch at login: {e}");
+    }
+    (!running_installed).then_some(target)
+}
+
+/// Handles a command-line switch. Returns `true` when the program should exit now instead of
+/// starting the app (today only `--uninstall`).
+pub fn handle_command_line() -> bool {
+    if !wants_uninstall(std::env::args().skip(1)) {
+        return false;
+    }
+    uninstall();
+    true
+}
+
+/// Removes the startup entry, the "Apps & features" entry and the install folder. The settings in
+/// `config.json` stay, so a later install picks them up again.
+fn uninstall() {
+    let _ = set_launch_at_login(false);
+    let _ = registry::delete_key(&uninstall_key());
+    // Asked first: the cleanup below runs a few seconds after it is started, and by then this
+    // process (which may be the installed copy) must be gone so the file can be deleted.
+    let text = format!(
+        "{APP_NAME} was removed. Your settings were kept in {}.",
+        crate::config::config_path().display()
+    );
+    let (text, caption) = (super::util::wide(&text), super::util::wide(APP_NAME));
+    // SAFETY: both strings are zero terminated and outlive the call; a null owner is allowed.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OK | MB_ICONINFORMATION,
+        );
+    }
+    if let Some(dir) = install_dir_path() {
+        run_shell(&cleanup_command(&dir.to_string_lossy(), std::process::id()));
+    }
+}

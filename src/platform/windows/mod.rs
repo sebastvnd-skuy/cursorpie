@@ -13,7 +13,10 @@
 //! | `input` | `SendInput` for shortcuts and replayed mouse buttons |
 //! | `layout` | keyboard-layout snapshot (`ToUnicodeEx`) |
 //! | `shell` | `ShellExecuteW`, the file chooser, `explorer`, beep |
+//! | `registry` | `HKCU` helpers shared by the two modules below |
 //! | `login_item` | "Launch at login" registry value |
+//! | `install` | per-user install, "Apps & features" entry, `--uninstall` |
+//! | `instance` | one running copy at a time |
 //! | `window` | makes the one native window truly frameless (no white box, border or shadow) |
 //!
 //! There is no permission to ask for on Windows, and nothing like a Dock icon to hide.
@@ -26,12 +29,17 @@ pub mod util;
 mod apps;
 mod dpi;
 mod input;
+mod install;
+mod instance;
 mod login_item;
+mod registry;
 mod shell;
 mod window;
 
 pub use apps::*;
 pub use input::*;
+pub use install::*;
+pub use instance::*;
 pub use login_item::*;
 pub use shell::*;
 pub use window::*;

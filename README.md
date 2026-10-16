@@ -97,8 +97,9 @@ Actions run on one worker thread so they always execute in the order you trigger
 - Slice icons can be text, emoji, or an image (`.png`, `.jpg`, `.jpeg`, `.webp`). A path may start with `~/`.
 - Adjustable pie size (140 to 360 px), accent color, and timings.
 - The Settings window has a modern, dense "pro tool" look: a graphite window with rounded corners, a top bar
-  with the tabs and the Undo / Redo / Cancel / Save buttons (always in the same place), hairline borders,
-  small monospace labels and a status footer. The accent color is the only saturated color. See
+  with the Undo / Redo / Cancel / Save buttons (always in the same place), a sidebar that names the sections
+  (Menu, Behavior, General, About) with the selected page on its right, hairline borders, small monospace
+  labels and a status footer. The accent color is the only saturated color. See
   [Look and rendering](#look-and-rendering).
 - The pie and Settings are drawn with anti-aliased edges and a fixed-duration open animation, so they stay
   sharp and smooth on standard and Retina screens.
@@ -160,9 +161,19 @@ cargo run --release              # quick try
 scripts\package-windows.ps1      # builds target\bundle\CursorPie-windows.zip with cursorpie.exe
 ```
 
-Run `cursorpie.exe`; a pie icon appears in the system tray. Windows needs no permission. To control windows of
-programs that run as administrator, start CursorPie as administrator too (Windows blocks input to them
-otherwise). Tick **Launch at login** in the tray menu to start it with Windows.
+Run `cursorpie.exe` from the unzipped folder; a pie icon appears in the system tray. The first start **installs**
+CursorPie for your user: it copies itself to `%LOCALAPPDATA%\Programs\CursorPie`, turns on **Launch at login**
+(so it is back after every sign-in), adds an entry to **Settings > Apps** and then continues from the installed
+copy. You can delete the unzipped folder afterwards. Running a newer `cursorpie.exe` updates the installed copy and
+keeps your settings. Builds made with `cargo` are never installed, and `CURSORPIE_NO_INSTALL=1` turns the install
+step off for any copy.
+
+To remove it, use **Settings > Apps > CursorPie > Uninstall** (or run `cursorpie.exe --uninstall`). Your
+`config.json` is kept. To stop it starting at login without removing it, untick **Launch at login** in Settings >
+Behavior or in the tray menu.
+
+Windows needs no permission. To control windows of programs that run as administrator, start CursorPie as
+administrator too (Windows blocks input to them otherwise).
 
 ## First launch and permissions
 
@@ -535,7 +546,9 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
   five saves). Changes that Settings does not make, such as the active side-button mode that CursorPie saves
   when you pick a mode in the pie, are not backed up on their own.
 - Launch at login starts CursorPie at your next login: a LaunchAgent on macOS, a `Run` registry value on Windows.
-  It points at the executable that was running when you enabled it, so toggle it off and on again if you move the app.
+  On macOS it points at the executable that was running when you enabled it, so toggle it off and on again if you
+  move the app. On Windows it always points at the installed copy, so moving or deleting the download does not
+  matter. If you switched the entry off in Task Manager, ticking **Launch at login** switches it back on.
 - If the app icon does not show up in the center of an app's own pie, start CursorPie from a terminal
   (`cargo run --release`): a line starting with `CursorPie: app icon for <bundle id>` says why it could not be
   read. The icon only appears in the pie of an app that has its own profile (double-click in the default mode).

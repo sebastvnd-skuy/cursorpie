@@ -14,7 +14,6 @@ pub const TAGLINE: &str = "A hold-to-open pie menu for macOS and Windows";
 /// after [`APP_NAME`]) (keep it unique, reverse-DNS style).
 pub const BUNDLE_ID: &str = "io.github.cursorpie";
 
-// TODO: replace these with your own details.
 /// Author name shown in About.
 pub const AUTHOR_NAME: &str = "Sebastvnd";
 /// GitHub user name of the author (without `@`).

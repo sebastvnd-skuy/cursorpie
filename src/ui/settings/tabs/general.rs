@@ -15,6 +15,11 @@ use std::time::SystemTime;
 impl App {
     /// Draws the General tab: permission status, config location, import / export / reset.
     pub(in crate::ui::settings) fn general_tab(&mut self, ui: &mut egui::Ui) {
+        page_header(
+            ui,
+            "General",
+            "Input status, your configuration file and its backups.",
+        );
         let title = if platform::OS.needs_permission() {
             "Permissions"
         } else {

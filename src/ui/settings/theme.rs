@@ -4,10 +4,11 @@
 //!
 //! - a graphite window with a rounded outline ([`CARD_RADIUS`]); inside it panels and controls
 //!   are almost square ([`RADIUS`]) and separated by hairlines ([`BORDER`]), not by shadows;
-//! - the window is cut into three bands: a top bar (brand, tabs and the buttons you confirm
-//!   with), the body, and a footer (status). See `window.rs`;
-//! - small monospace labels for chrome (tabs, panel titles, badges) and the normal proportional
-//!   font for everything you read or edit;
+//! - the window is cut into a top bar (brand and the buttons you confirm with), a sidebar that
+//!   names the sections, the page of the selected section, and a footer (status). See
+//!   `window.rs`;
+//! - small monospace labels for chrome (panel titles, badges) and the normal proportional
+//!   font for everything you read or edit, sidebar entries included;
 //! - one accent color, chosen by the user, for the focus outline, the primary button and
 //!   whatever is selected; everything else is neutral;
 //! - one spacing unit ([`GAP`]) between panels and between controls, and one control height

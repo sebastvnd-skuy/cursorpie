@@ -575,6 +575,87 @@
               }
             },
             {
+              "id": 28,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.0,
+                        "g": 0.0,
+                        "b": 0.0
+                      }
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "none"
+                    },
+                    "width": 1.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            1110.1666641220434,
+                            -56.951534531337416
+                          ]
+                        },
+                        {
+                          "p": [
+                            4064.7397801826414,
+                            -56.951534531337416
+                          ]
+                        },
+                        {
+                          "p": [
+                            4064.7397801826414,
+                            1396.0558706421496
+                          ]
+                        },
+                        {
+                          "p": [
+                            1110.1666641220434,
+                            1396.0558706421496
+                          ]
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
+                },
+                "live": {
+                  "shape": "rectangle",
+                  "w": 2954.5731160605983,
+                  "h": 1453.0074051734869,
+                  "radii": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "xf": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    1110.1666641220434,
+                    -56.951534531337416
+                  ]
+                }
+              }
+            },
+            {
               "id": 20,
               "kind": {
                 "type": "group",
@@ -589,9 +670,9 @@
                             "type": "solid",
                             "color": {
                               "model": "rgb",
-                              "r": 0.0,
-                              "g": 0.0,
-                              "b": 0.0
+                              "r": 1.0,
+                              "g": 1.0,
+                              "b": 1.0
                             }
                           }
                         },
@@ -967,9 +1048,9 @@
                             "type": "solid",
                             "color": {
                               "model": "rgb",
-                              "r": 0.0,
-                              "g": 0.0,
-                              "b": 0.0
+                              "r": 1.0,
+                              "g": 1.0,
+                              "b": 1.0
                             }
                           }
                         },
@@ -1074,9 +1155,9 @@
                         "type": "solid",
                         "color": {
                           "model": "rgb",
-                          "r": 0.0,
-                          "g": 0.0,
-                          "b": 0.0
+                          "r": 1.0,
+                          "g": 1.0,
+                          "b": 1.0
                         }
                       },
                       "stroke": {
@@ -1100,6 +1181,89 @@
                   "hyphenate": false,
                   "mojikumi": "lineEndHalf",
                   "burasagari": "standard"
+                }
+              }
+            },
+            {
+              "id": 31,
+              "appearance": {
+                "items": [
+                  {
+                    "kind": "fill",
+                    "paint": {
+                      "type": "none"
+                    }
+                  },
+                  {
+                    "kind": "stroke",
+                    "paint": {
+                      "type": "solid",
+                      "color": {
+                        "model": "rgb",
+                        "r": 0.0,
+                        "g": 0.0,
+                        "b": 0.0
+                      }
+                    },
+                    "width": 1.0
+                  }
+                ]
+              },
+              "kind": {
+                "type": "path",
+                "path": {
+                  "subpaths": [
+                    {
+                      "anchors": [
+                        {
+                          "p": [
+                            472.7650418375693,
+                            -881.875967648092
+                          ],
+                          "in": [
+                            472.6384471567143,
+                            -884.4043406094709
+                          ],
+                          "out": [
+                            472.8916365184243,
+                            -879.3475946867131
+                          ],
+                          "kind": "Smooth"
+                        },
+                        {
+                          "p": [
+                            473.5246099226995,
+                            -886.311907709797
+                          ],
+                          "in": [
+                            473.5246099226995,
+                            -883.0442114048006
+                          ],
+                          "out": [
+                            473.5246099226995,
+                            -889.5796040147933
+                          ],
+                          "kind": "Smooth"
+                        },
+                        {
+                          "p": [
+                            472.7650418375693,
+                            -901.4821454780702
+                          ],
+                          "in": [
+                            472.8916365184243,
+                            -902.2214688216876
+                          ],
+                          "out": [
+                            472.6384471567143,
+                            -900.7428221344527
+                          ],
+                          "kind": "Smooth"
+                        }
+                      ],
+                      "closed": true
+                    }
+                  ]
                 }
               }
             }
@@ -2039,7 +2203,7 @@
     },
     "raster_effects_ppi": 72.0,
     "images": {},
-    "next_id": 28,
+    "next_id": 39,
     "metadata": {
       "author": "",
       "authorTitle": "",
@@ -2050,17 +2214,117 @@
       "copyrightNotice": "",
       "copyrightUrl": "",
       "created": 1792045196,
-      "modified": 1792057323
+      "modified": 1792080312
     },
     "last_view": {
       "name": "",
       "center": {
-        "x": 2214.9172765588737,
-        "y": 355.59713735613315
+        "x": 2201.069297922694,
+        "y": 417.5306550833658
       },
-      "zoom": 0.2602241130604728,
+      "zoom": 0.23071490727191027,
       "rotation": 0.0
-    }
+    },
+    "layers_open": [
+      1,
+      20
+    ],
+    "export_settings": {
+      "folder": "/Users/saferoom/Desktop",
+      "formats": [
+        {
+          "format": "png",
+          "scale": "2x",
+          "suffix": "@2x"
+        }
+      ],
+      "includeBleed": false,
+      "openLocation": true,
+      "prefix": "",
+      "settings": {
+        "gif": {
+          "antiAlias": "art",
+          "background": "transparent",
+          "colors": 256,
+          "dither": "diffusion",
+          "ditherAmount": 100,
+          "interlaced": false,
+          "matte": "white",
+          "reduction": "selective",
+          "transparency": true
+        },
+        "jpg": {
+          "antiAlias": "art",
+          "background": "white",
+          "colorModel": "rgb",
+          "embedIcc": true,
+          "method": "baseline",
+          "scans": 3
+        },
+        "pdf": {
+          "preset": "VectorCraft Default"
+        },
+        "png": {
+          "antiAlias": "art",
+          "background": "transparent",
+          "interlaced": false
+        },
+        "png8": {
+          "antiAlias": "art",
+          "background": "transparent",
+          "colors": 256,
+          "dither": "diffusion",
+          "ditherAmount": 100,
+          "interlaced": false,
+          "matte": "white",
+          "reduction": "selective",
+          "transparency": true
+        },
+        "svg": {
+          "decimals": 3,
+          "embedFonts": false,
+          "encoding": "utf8",
+          "fewerTspans": false,
+          "metadata": false,
+          "minify": false,
+          "objectIds": "layerNames",
+          "outlineText": false,
+          "preserveEditing": false,
+          "profile": "svg11",
+          "responsive": true,
+          "styling": "css"
+        },
+        "tiff": {
+          "antiAlias": "art",
+          "background": "transparent",
+          "byteOrder": "little",
+          "colorModel": "rgb",
+          "embedIcc": true,
+          "lzw": true
+        },
+        "webp": {
+          "antiAlias": "art",
+          "background": "transparent"
+        }
+      },
+      "subfolders": false
+    },
+    "assets": [
+      {
+        "id": 29,
+        "name": "Asset 1",
+        "nodes": [
+          20
+        ]
+      },
+      {
+        "id": 30,
+        "name": "Asset 2",
+        "nodes": [
+          27
+        ]
+      }
+    ]
   },
   "images": {}
 }

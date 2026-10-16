@@ -1,8 +1,17 @@
 name: CI
 
+# Pull requests and `main` are checked. A branch without a pull request is not: open a draft pull
+# request to get CI on it. A `v*` tag also checks that the tag matches the release in the files.
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
+
+# A new push to a pull request replaces the run that is still going; runs on main and tags finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -18,16 +27,18 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Test
-        run: cargo test --all-targets
-      - name: Test doc examples
-        run: cargo test --doc
+      # One command for everything, so what passes on your machine passes here (tools/src/ci.rs
+      # holds the list: format, version files, clippy, tests, doc tests, docs on macOS, and the
+      # Windows backend checks on macOS and Linux).
+      - name: Checks
+        run: cargo tools ci
       - name: Build release
         if: matrix.os != 'ubuntu-latest'
         run: cargo build --release
-      # type-checks the Windows backend and runs its pure helpers on macOS and Linux too
-      - name: Windows backend checks
-        if: matrix.os != 'windows-latest'
-        run: cargo test --features check-windows
+      # The tag of a release must be the version in Cargo.toml, with the notes moved out of
+      # "Unreleased" (see CONTRIBUTING.md, "Releasing").
+      - name: Tag matches the release
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.os == 'ubuntu-latest'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: cargo tools check --tag "$TAG"

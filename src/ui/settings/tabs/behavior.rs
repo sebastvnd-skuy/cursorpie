@@ -1,7 +1,8 @@
 //! Behavior tab: trigger and timings, look, and how the app / side-button pies are chosen.
 //!
-//! Two columns of titled panels (`widgets::panel`). Left: what you press and how the pie looks.
-//! Right: which pie opens for which app.
+//! One column of titled panels (`widgets::panel`), the way the pages of a large application's
+//! settings are laid out: what you press, how the pie looks, which pie opens for which app, then
+//! startup and memory.
 
 use crate::config::{AppGesture, SideTarget, TargetApp};
 use crate::ui::app::App;
@@ -38,9 +39,12 @@ impl App {
     pub(in crate::ui::settings) fn behavior_tab(&mut self, ui: &mut egui::Ui) {
         let accent = rgb(self.edit.accent);
         let cfg = &mut self.edit;
-        ui.columns(2, |cols| {
-            // ------------------------------------------------------------ left column
-            let ui = &mut cols[0];
+        page_header(
+            ui,
+            "Behavior",
+            "How the pie opens, how it looks and which pie each app gets.",
+        );
+        {
             panel(ui, "Trigger", |ui| {
                 muted(ui, "Trigger button");
                 let name = |b: i64| match b {
@@ -57,7 +61,13 @@ impl App {
                             ui.selectable_value(&mut cfg.trigger_button, b, name(b));
                         }
                     });
-                slider_row(ui, "Hold to open pie", &mut cfg.pie_hold_ms, 150..=1500, " ms");
+                slider_row(
+                    ui,
+                    "Hold to open pie",
+                    &mut cfg.pie_hold_ms,
+                    150..=1500,
+                    " ms",
+                );
                 slider_row(
                     ui,
                     "Hold to open settings",
@@ -75,7 +85,12 @@ impl App {
             panel(ui, "Look & feel", |ui| {
                 slider_row(ui, "Pie size", &mut cfg.pie_size, 140.0..=360.0, " px");
                 color_row(ui, "Accent color", &mut cfg.accent);
-                toggle(ui, &mut cfg.sound, "Play a soft tick when the selection changes", accent);
+                toggle(
+                    ui,
+                    &mut cfg.sound,
+                    "Play a soft tick when the selection changes",
+                    accent,
+                );
                 toggle(
                     ui,
                     &mut cfg.center_app_icon,
@@ -83,25 +98,6 @@ impl App {
                     accent,
                 );
             });
-            panel(ui, "Startup", |ui| {
-                toggle(ui, &mut cfg.launch_at_login, "Launch at login", accent);
-            });
-            panel(ui, "Memory", |ui| {
-                let mut on = cfg.sleep_after_s != 0;
-                if toggle(ui, &mut on, "Free memory while CursorPie is idle", accent).changed() {
-                    cfg.sleep_after_s = if on { 60 } else { 0 };
-                }
-                if cfg.sleep_after_s != 0 {
-                    slider_row(ui, "Idle time before freeing", &mut cfg.sleep_after_s, 10..=600, " s");
-                }
-                muted(
-                    ui,
-                    "After this long without a pie or Settings, cached icons and the editor's working copy are dropped. They are loaded again when you press the trigger.",
-                );
-            });
-
-            // ------------------------------------------------------------ right column
-            let ui = &mut cols[1];
             panel(ui, "Pie of the app in front", |ui| {
                 choice(
                     ui,
@@ -118,7 +114,13 @@ impl App {
                     accent,
                 );
                 if cfg.app_gesture == AppGesture::DoubleClick {
-                    slider_row(ui, "Double-click speed", &mut cfg.double_click_ms, 150..=500, " ms");
+                    slider_row(
+                        ui,
+                        "Double-click speed",
+                        &mut cfg.double_click_ms,
+                        150..=500,
+                        " ms",
+                    );
                 }
             });
             panel(ui, "App detection", |ui| {
@@ -147,8 +149,17 @@ impl App {
                 });
             });
             panel(ui, "Side buttons", |ui| {
-                muted(ui, "In an app that has its own pie, the side buttons follow");
-                choice(ui, &mut cfg.side_default, SideTarget::App, "The app's pie", accent);
+                muted(
+                    ui,
+                    "In an app that has its own pie, the side buttons follow",
+                );
+                choice(
+                    ui,
+                    &mut cfg.side_default,
+                    SideTarget::App,
+                    "The app's pie",
+                    accent,
+                );
                 choice(
                     ui,
                     &mut cfg.side_default,
@@ -192,6 +203,29 @@ impl App {
                     " ms",
                 );
             });
-        });
+            panel(ui, "Startup", |ui| {
+                toggle(ui, &mut cfg.launch_at_login, "Launch at login", accent);
+                muted(ui, crate::platform::OS.startup_hint());
+            });
+            panel(ui, "Memory", |ui| {
+                let mut on = cfg.sleep_after_s != 0;
+                if toggle(ui, &mut on, "Free memory while CursorPie is idle", accent).changed() {
+                    cfg.sleep_after_s = if on { 60 } else { 0 };
+                }
+                if cfg.sleep_after_s != 0 {
+                    slider_row(
+                        ui,
+                        "Idle time before freeing",
+                        &mut cfg.sleep_after_s,
+                        10..=600,
+                        " s",
+                    );
+                }
+                muted(
+                    ui,
+                    "After this long without a pie or Settings, cached icons and the editor's working copy are dropped. They are loaded again when you press the trigger.",
+                );
+            });
+        }
     }
 }

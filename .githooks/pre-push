@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs every check CI runs before a push, so a red CI is the exception. It takes a few minutes.
+# `git push --no-verify` skips this once; CI runs the same checks and has the last word.
+exec cargo tools ci

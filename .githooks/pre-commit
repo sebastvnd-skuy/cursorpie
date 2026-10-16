@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs before every commit: formatting and the version files, a few seconds.
+# Turn the hooks on once per clone with `cargo tools hooks install`.
+# `git commit --no-verify` skips this once; CI runs the same checks and has the last word.
+exec cargo tools ci --quick

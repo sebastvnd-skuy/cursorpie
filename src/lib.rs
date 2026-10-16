@@ -70,13 +70,29 @@ use ui::app::App;
 /// Starts CursorPie and blocks until the app quits.
 ///
 /// Order matters here:
-/// 1. the action worker thread is started ([`actions::init`]);
-/// 2. the eframe window is created hidden, transparent and click-through (it renders with `glow`
+/// 1. a command-line switch (`--uninstall`) is handled and ends the run, then a copy started from
+///    outside the install folder installs itself and hands over to the installed copy, then a
+///    second copy of an app that already runs exits (all three are no-ops on macOS);
+/// 2. the action worker thread is started ([`actions::init`]);
+/// 3. the eframe window is created hidden, transparent and click-through (it renders with `glow`
 ///    on Windows and `wgpu` on macOS, chosen in `Cargo.toml`: see `docs/UI_DESIGN.md`);
-/// 3. inside eframe's creator (which runs on the **main thread**, inside the event loop) the
+/// 4. inside eframe's creator (which runs on the **main thread**, inside the event loop) the
 ///    Dock icon is hidden, the keyboard-layout snapshot is taken (TIS needs the main thread),
 ///    the event-tap thread is spawned and the menu bar icon is created.
 pub fn run() -> eframe::Result<()> {
+    if platform::handle_command_line() {
+        return Ok(());
+    }
+    // Hand over before claiming the single-instance lock, so the installed copy can take it.
+    if let Some(installed) = platform::ensure_installed() {
+        match std::process::Command::new(&installed).spawn() {
+            Ok(_) => return Ok(()),
+            Err(e) => eprintln!("CursorPie: could not start {}: {e}", installed.display()),
+        }
+    }
+    if !platform::single_instance() {
+        return Ok(());
+    }
     actions::init();
     let (tx, rx) = mpsc::channel();
     let win = config::cfg().pie_size;

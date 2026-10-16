@@ -67,6 +67,78 @@ pub fn run_value(exe: &str) -> String {
     format!("\"{exe}\"")
 }
 
+/// File name of the installed executable.
+pub const EXE_NAME: &str = "cursorpie.exe";
+
+/// Command-line switch that removes the installed copy (what "Apps & features" runs).
+pub const UNINSTALL_ARG: &str = "--uninstall";
+
+/// Folder of the per-user install under `local_app_data` (`%LOCALAPPDATA%`). It needs no
+/// administrator rights, and Windows keeps other users out of it.
+pub fn install_dir(local_app_data: &str, app_name: &str) -> String {
+    format!(
+        r"{}\Programs\{app_name}",
+        local_app_data.trim_end_matches(['\\', '/'])
+    )
+}
+
+/// Full path of the installed executable.
+pub fn installed_exe(local_app_data: &str, app_name: &str) -> String {
+    format!("{}\\{EXE_NAME}", install_dir(local_app_data, app_name))
+}
+
+/// Whether two Windows paths name the same file: the comparison ignores case, the kind of slash
+/// and a trailing separator, because the file system does too.
+pub fn same_path(a: &str, b: &str) -> bool {
+    let norm = |s: &str| {
+        s.trim()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_ascii_lowercase()
+    };
+    !a.trim().is_empty() && norm(a) == norm(b)
+}
+
+/// The `UninstallString` of the "Apps & features" entry.
+pub fn uninstall_command(exe: &str) -> String {
+    format!("\"{exe}\" {UNINSTALL_ARG}")
+}
+
+/// Whether the command line asks for an uninstall. `args` is `std::env::args()` without the
+/// program name.
+pub fn wants_uninstall<I: IntoIterator<Item = String>>(args: I) -> bool {
+    args.into_iter()
+        .any(|a| a.eq_ignore_ascii_case(UNINSTALL_ARG))
+}
+
+/// The `cmd.exe` command that finishes an uninstall after the process has exited: it ends any
+/// other copy, waits a moment for this one to leave, then deletes the install folder (a program
+/// cannot delete its own file while it runs, so a second process must do it).
+pub fn cleanup_command(dir: &str, own_pid: u32) -> String {
+    format!(
+        "taskkill /F /FI \"IMAGENAME eq {EXE_NAME}\" /FI \"PID ne {own_pid}\" >nul 2>&1 & \
+         ping -n 4 127.0.0.1 >nul & rmdir /S /Q \"{dir}\""
+    )
+}
+
+/// Whether `exe` was built by `cargo` (it sits in `target\debug` or `target\release`, also below
+/// a target-triple folder). Such builds are never installed, so `cargo run` cannot replace the
+/// app that starts at login.
+pub fn is_build_output(exe: &str) -> bool {
+    let p = exe.replace('/', "\\").to_ascii_lowercase();
+    p.contains("\\target\\") && (p.contains("\\release\\") || p.contains("\\debug\\"))
+}
+
+/// Whether a `StartupApproved\Run` value says the user switched the entry off (in Task Manager or
+/// in Settings > Apps > Startup). Windows stores 12 bytes there; an even first byte means
+/// enabled, an odd one disabled. An entry without that value is enabled.
+pub fn startup_entry_disabled(data: &[u8]) -> bool {
+    data.first().is_some_and(|b| b & 1 == 1)
+}
+
+/// The 12 bytes Windows stores for an enabled startup entry (`02 00 00 00` and a zero time stamp).
+pub const STARTUP_ENABLED: [u8; 12] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
 /// Parameters for `cmd.exe` that run `cmd` exactly as typed. `/S` makes cmd strip only the outer
 /// pair of quotes, so a command that itself starts with a quote still works.
 pub fn shell_params(cmd: &str) -> String {
@@ -205,6 +277,84 @@ mod tests {
             r#"/S /C ""C:\a b\x.exe" /q""#
         );
         assert_eq!(select_params(r"C:\a\b.json"), r#"/select,"C:\a\b.json""#);
+    }
+
+    #[test]
+    fn the_install_lives_under_local_app_data() {
+        let local = r"C:\Users\Ana\AppData\Local";
+        assert_eq!(
+            install_dir(local, "CursorPie"),
+            r"C:\Users\Ana\AppData\Local\Programs\CursorPie"
+        );
+        assert_eq!(
+            installed_exe(r"C:\Users\Ana\AppData\Local\", "CursorPie"),
+            r"C:\Users\Ana\AppData\Local\Programs\CursorPie\cursorpie.exe",
+            "a trailing separator is not doubled"
+        );
+    }
+
+    #[test]
+    fn paths_are_compared_the_way_windows_does() {
+        assert!(same_path(r"C:\A\B\x.exe", "c:/a/b/X.EXE"));
+        assert!(same_path(r"C:\A\B\", r"c:\a\b"));
+        assert!(!same_path(r"C:\A\x.exe", r"C:\B\x.exe"));
+        assert!(!same_path("", ""), "an unknown path matches nothing");
+    }
+
+    #[test]
+    fn the_uninstall_entry_and_switch_agree() {
+        let cmd = uninstall_command(r"C:\Apps\cursorpie.exe");
+        assert_eq!(cmd, r#""C:\Apps\cursorpie.exe" --uninstall"#);
+        assert!(wants_uninstall(["--uninstall".to_string()]));
+        assert!(wants_uninstall(["--UNINSTALL".to_string()]));
+        assert!(!wants_uninstall(["--help".to_string()]));
+        assert!(!wants_uninstall(Vec::<String>::new()));
+    }
+
+    #[test]
+    fn the_cleanup_spares_this_process_and_removes_the_folder() {
+        let c = cleanup_command(r"C:\L\Programs\CursorPie", 4242);
+        assert!(c.contains(r#""PID ne 4242""#), "{c}");
+        assert!(
+            c.contains(r#"rmdir /S /Q "C:\L\Programs\CursorPie""#),
+            "{c}"
+        );
+        let kill = c.find("taskkill").unwrap();
+        let wait = c.find("ping").unwrap();
+        let remove = c.find("rmdir").unwrap();
+        assert!(kill < wait && wait < remove, "order matters: {c}");
+    }
+
+    #[test]
+    fn cargo_builds_are_never_installed() {
+        assert!(is_build_output(
+            r"C:\src\cursorpie\target\release\cursorpie.exe"
+        ));
+        assert!(is_build_output(
+            r"C:\src\cursorpie\target\debug\cursorpie.exe"
+        ));
+        assert!(is_build_output(
+            r"D:\x\target\x86_64-pc-windows-msvc\release\cursorpie.exe"
+        ));
+        assert!(is_build_output(
+            "C:/src/cursorpie/target/release/cursorpie.exe"
+        ));
+        assert!(!is_build_output(
+            r"C:\Users\Ana\Downloads\CursorPie\cursorpie.exe"
+        ));
+        assert!(!is_build_output(
+            r"C:\Users\Ana\AppData\Local\Programs\CursorPie\cursorpie.exe"
+        ));
+    }
+
+    #[test]
+    fn a_startup_entry_switched_off_by_the_user_is_recognized() {
+        assert!(!startup_entry_disabled(&STARTUP_ENABLED));
+        assert!(!startup_entry_disabled(&[6, 0, 0, 0]), "06 is enabled too");
+        assert!(startup_entry_disabled(&[
+            3, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8
+        ]));
+        assert!(!startup_entry_disabled(&[]), "no data means enabled");
     }
 
     #[test]

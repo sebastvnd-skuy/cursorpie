@@ -28,9 +28,22 @@ use std::sync::mpsc;
 use std::time::Instant;
 
 /// Settings card size. The window is larger by WIN_MARGIN on each side for the drop shadow.
-pub const CARD_SIZE: [f32; 2] = [1000.0, 680.0];
+/// The width leaves room for the sidebar and a Menu editor of the same width it had before.
+pub const CARD_SIZE: [f32; 2] = [1120.0, 680.0];
 /// Space around the card for its drop shadow (window size = card size + 2 x margin).
 pub const WIN_MARGIN: f32 = 28.0;
+/// Narrowest the card gets on a small display: the Menu tab still has room for the pie and an editor.
+pub const CARD_MIN_W: f32 = 940.0;
+/// Shortest the card gets on a small display.
+pub const CARD_MIN_H: f32 = 420.0;
+
+/// The card size for a display `area` points large: [`CARD_SIZE`], shrunk to fit with room for the
+/// shadow and the taskbar or menu bar, but never below [`CARD_MIN_W`] x [`CARD_MIN_H`].
+pub fn card_size_for(area: Vec2) -> Vec2 {
+    let max_w = (area.x - 2.0 * WIN_MARGIN - 40.0).max(CARD_MIN_W);
+    let max_h = (area.y - 2.0 * WIN_MARGIN - 60.0).max(CARD_MIN_H);
+    egui::vec2(CARD_SIZE[0].min(max_w), CARD_SIZE[1].min(max_h))
+}
 
 /// Most undo steps Settings keeps. A step is a copy of the edited config (a few KiB).
 pub const HISTORY_LIMIT: usize = 50;
@@ -185,5 +198,27 @@ impl eframe::App for App {
         }
         // the pie may just have hidden the window: start the idle clock
         self.sleep_step(&ui.ctx().clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_large_display_gets_the_full_card() {
+        assert_eq!(
+            card_size_for(egui::vec2(2560.0, 1440.0)),
+            egui::vec2(CARD_SIZE[0], CARD_SIZE[1])
+        );
+    }
+
+    #[test]
+    fn a_small_display_shrinks_the_card_but_not_below_the_minimum() {
+        let s = card_size_for(egui::vec2(1280.0, 720.0));
+        assert!(s.x <= 1280.0 - 2.0 * WIN_MARGIN, "fits the width: {}", s.x);
+        assert!(s.y <= 720.0 - 2.0 * WIN_MARGIN, "fits the height: {}", s.y);
+        let tiny = card_size_for(egui::vec2(600.0, 300.0));
+        assert_eq!(tiny, egui::vec2(CARD_MIN_W, CARD_MIN_H));
     }
 }

@@ -31,23 +31,31 @@ rarely. The design follows from that:
 
 ```text
 +----------------------------------------------------------------------+
-| logo CURSORPIE ⓘ | MENU BEHAVIOR GENERAL ABOUT |  UNDO REDO CANCEL SAVE |   top bar, 52 pt
-+----------------------------------------------------------------------+
-|                                                                      |
-|   body of the selected tab (padding 16 pt)                           |
-|                                                                      |
-+----------------------------------------------------------------------+
+| logo CURSORPIE ⓘ                            |  UNDO REDO CANCEL SAVE |   top bar, 52 pt
++--------------+-------------------------------------------------------+
+| Menu         |                                                       |
+| Behavior     |   page of the selected section (padding 16 pt)        |
+| General      |                                                       |
+| About        |                                                       |
+|        v0.3  |                                                       |
++--------------+-------------------------------------------------------+
 | status or hint                                            QUIT APP   |   footer, 34 pt
 +----------------------------------------------------------------------+
 ```
 
-- The window is 1000 x 680 pt (`CARD_SIZE`) with a 12 pt corner radius. It is never taller than the
-  screen allows and never shorter than 420 pt, where the body is still 302 pt high.
-- `regions()` in `window.rs` cuts the window into the three bands. It is a pure function with tests.
-- The selected tab is a solid light block with dark text, the other tabs are plain muted text. Of
-  everything in the bar, "where am I" is the loudest.
-- Panel titles, tabs and badges are small monospace capitals (`card_title`, `tab_item`, `badge`).
-  Everything you read or edit is the normal font in sentence case.
+- The window is 1120 x 680 pt (`CARD_SIZE`) with a 12 pt corner radius. `card_size_for` shrinks it to
+  fit a small display, but never below 940 x 420 pt, where the Menu tab still has room for its pie tile
+  and an editor, and the body is still 302 pt high.
+- `regions()` in `window.rs` cuts the window into the top bar, the sidebar (200 pt wide), the body and
+  the footer. It is a pure function with tests.
+- **The sidebar names the section, the page is on its right.** Each entry has a title and a one-line hint.
+  The selected entry is lifted (`HOT`) and has an accent marker on its left edge; the others are muted
+  and light up under the pointer. The sidebar is `CARD`-colored and the page is `BG`, so panels read as
+  cards on the page.
+- Behavior, General and About are one scrolling column of panels, at most 680 pt wide and aligned to the
+  left of the page, so a slider is never longer than the eye can follow. Menu fills the whole page.
+- Panel titles and badges are small monospace capitals (`card_title`, `badge`). Everything you read or
+  edit, including the sidebar entries and the page titles, is the normal font in sentence case.
 - Controls are almost square (2 pt radius), 32 pt high, and 8 pt apart. Only the window itself is
   rounded. All colors, radii and spacing are constants in `theme.rs`.
 
@@ -178,7 +186,10 @@ at the very least change the display scaling once:
 - [ ] Open and close the pie ten times quickly: no leftover frame, no flash at the old position.
 - [ ] Open Settings: the window outline is a clean one-pixel line, corners are round, no gradient
       mesh edge.
-- [ ] Switch through all four tabs: nothing moves in the top bar; the selected tab is the light block.
+- [ ] Switch through all four sections: nothing moves in the top bar or the sidebar; the selected entry is
+      lifted and has the accent marker.
+- [ ] Shrink the display width (or use a 1366 x 768 display): the card fits, and the Menu editor still shows
+      its fields without a horizontal scroll.
 - [ ] Pick a very light accent (yellow) and a very dark one: Save and the selected slice stay readable.
 - [ ] Undo and Redo are dimmed when unavailable and show a tooltip.
 - [ ] Shrink the screen height (or use a short laptop display): the Menu tab still fits.

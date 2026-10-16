@@ -26,6 +26,7 @@
 //! | `open_app`, `open_url`, `run_shell`, `open_path`, `reveal_in_file_manager` | launching things |
 //! | `choose_file`, `tick` | file chooser and hover sound |
 //! | `launch_at_login_enabled`, `set_launch_at_login` | start with the user session |
+//! | `ensure_installed`, `handle_command_line`, `single_instance` | Windows install step, `--uninstall`, one running copy (no-ops elsewhere) |
 //! | `release_unused_memory` | give freed pages back to the OS |
 //! | [`layout`] | keyboard-layout snapshot |
 //!
@@ -139,6 +140,16 @@ impl Os {
         match self {
             Os::Mac => "menu bar",
             Os::Windows => "system tray",
+        }
+    }
+
+    /// What "Launch at login" does on this OS, shown under the checkbox.
+    pub const fn startup_hint(self) -> &'static str {
+        match self {
+            Os::Mac => "Adds a LaunchAgent for your user. It takes effect at your next login.",
+            Os::Windows => {
+                "CursorPie is installed for your user in %LOCALAPPDATA%\\Programs\\CursorPie and starts when you sign in to Windows. Remove it from Settings > Apps."
+            }
         }
     }
 
@@ -277,6 +288,13 @@ mod tests {
         );
         assert_eq!(Os::Windows.normalize_app_id("  Chrome.EXE "), "chrome.exe");
         assert_eq!(Os::Windows.normalize_app_id("   "), "");
+    }
+
+    #[test]
+    fn the_startup_hint_names_what_each_os_does() {
+        assert!(Os::Mac.startup_hint().contains("LaunchAgent"));
+        assert!(Os::Windows.startup_hint().contains("Programs"));
+        assert!(Os::Windows.startup_hint().contains("sign in"));
     }
 
     #[test]

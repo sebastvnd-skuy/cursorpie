@@ -245,7 +245,8 @@
 //! | key labels on any layout | TIS + `UCKeyTranslate`, snapshot taken on the main thread | `MapVirtualKeyExW` + `ToUnicodeEx` | [`platform::layout`](crate::platform::layout) |
 //! | tray icon | `tray-icon` / `muda` (menu bar) | `tray-icon` / `muda` (notification area) | [`ui::tray`](crate::ui::tray) |
 //! | no Dock / taskbar entry | `NSApplicationActivationPolicyAccessory` | `with_taskbar(false)` | `platform::set_accessory_policy`, [`run`](crate::run) |
-//! | launch at login | a LaunchAgent plist | `HKCU\...\Run` value | `platform::set_launch_at_login` |
+//! | launch at login | a LaunchAgent plist | `HKCU\...\Run` value, pointing at the installed copy | `platform::set_launch_at_login` |
+//! | install, uninstall, one running copy | none (the `.app` is the install) | copy to `%LOCALAPPDATA%\Programs\CursorPie`, `HKCU\...\Uninstall` entry, named mutex | `platform::ensure_installed`, `platform::handle_command_line`, `platform::single_instance` |
 //! | open apps / URLs, file chooser, app id of a file, hover tick | `open`, `osascript`, `mdls`, `afplay` | `ShellExecuteW`, `GetOpenFileNameW`, file name, `MessageBeep` | [`platform`](crate::platform) |
 //!
 //! The macOS tools ship with the system, so the app needs nothing installed on either OS.

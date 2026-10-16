@@ -1,6 +1,6 @@
 //! Window management: showing the pie, opening/closing Settings, and the tray menu actions.
 
-use super::{App, CARD_SIZE, WIN_MARGIN};
+use super::{App, WIN_MARGIN, card_size_for};
 use crate::config::{self, MAX_ITEMS, cfg};
 use crate::platform;
 use crate::side;
@@ -75,8 +75,7 @@ impl App {
         // centered on the display that contains the cursor
         let area = screen_rect_at(at)
             .unwrap_or_else(|| egui::Rect::from_center_size(at, egui::vec2(1600.0, 1000.0)));
-        let max_h = (area.height() - 2.0 * WIN_MARGIN - 60.0).max(420.0);
-        self.card_size = egui::vec2(CARD_SIZE[0], CARD_SIZE[1].min(max_h));
+        self.card_size = card_size_for(area.size());
         let win_sz = self.card_size + Vec2::splat(2.0 * WIN_MARGIN);
         let top_left = area.center() - win_sz / 2.0;
 

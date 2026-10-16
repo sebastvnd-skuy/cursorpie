@@ -57,3 +57,18 @@ pub fn set_launch_at_login(on: bool) -> std::io::Result<()> {
     }
     fs::write(path, plist)
 }
+
+/// Nothing to install: the `.app` bundle is the installation.
+pub fn ensure_installed() -> Option<PathBuf> {
+    None
+}
+
+/// No command-line switches.
+pub fn handle_command_line() -> bool {
+    false
+}
+
+/// Always the only one: macOS already refuses a second launch of the same `.app`.
+pub fn single_instance() -> bool {
+    true
+}

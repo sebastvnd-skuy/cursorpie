@@ -1,76 +1,40 @@
 //! "Launch at login" through the per-user `Run` registry key.
+//!
+//! The entry always points at the installed copy (see [`install`](super::install)), never at
+//! wherever the program happened to be started from: a download folder or an unzipped archive can
+//! be moved or emptied, and then nothing would start at the next login.
 
-use super::util::{run_value, wide};
+use super::install::startup_exe;
+use super::registry;
+use super::util::{STARTUP_ENABLED, run_value, startup_entry_disabled};
 use crate::about::APP_NAME;
-use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
-use windows_sys::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_SZ, RegCloseKey, RegDeleteValueW,
-    RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
-};
 
 /// The key every per-user startup entry lives in.
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 
-/// Opens the `Run` key with `access`.
-fn open(access: u32) -> Option<HKEY> {
-    let mut key: HKEY = std::ptr::null_mut();
-    let path = wide(RUN_KEY);
-    // SAFETY: `key` is a valid out-pointer and `path` is zero terminated.
-    let r = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, path.as_ptr(), 0, access, &mut key) };
-    (r == ERROR_SUCCESS).then_some(key)
-}
+/// Where Windows keeps the "switched off in Task Manager" flag of each startup entry.
+const APPROVED_KEY: &str =
+    r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
-/// Whether CursorPie starts with Windows.
+/// Whether CursorPie starts with Windows: the entry exists and the user has not switched it off
+/// in Task Manager (Windows then keeps the entry but never runs it).
 pub fn launch_at_login_enabled() -> bool {
-    let Some(key) = open(KEY_QUERY_VALUE) else {
+    if !registry::has_value(RUN_KEY, APP_NAME) {
         return false;
-    };
-    let name = wide(APP_NAME);
-    // SAFETY: only the existence of the value is queried (no data buffer).
-    let r = unsafe {
-        RegQueryValueExW(
-            key,
-            name.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        )
-    };
-    unsafe { RegCloseKey(key) };
-    r == ERROR_SUCCESS
+    }
+    !registry::get_bytes(APPROVED_KEY, APP_NAME).is_some_and(|d| startup_entry_disabled(&d))
 }
 
 /// Adds or removes the startup entry. It takes effect at the next login (no second copy is started now).
+///
+/// Turning it on also clears a "disabled" flag left by Task Manager, otherwise the checkbox would
+/// say yes while Windows still skipped the entry.
 pub fn set_launch_at_login(on: bool) -> std::io::Result<()> {
-    let exe = std::env::current_exe()?;
-    let Some(key) = open(KEY_SET_VALUE) else {
-        return Err(std::io::Error::last_os_error());
-    };
-    let name = wide(APP_NAME);
-    // SAFETY: the data pointer and its byte length describe the `value` buffer, which outlives the call.
-    let code = unsafe {
-        if on {
-            let value = wide(&run_value(&exe.to_string_lossy()));
-            RegSetValueExW(
-                key,
-                name.as_ptr(),
-                0,
-                REG_SZ,
-                value.as_ptr().cast(),
-                (value.len() * 2) as u32,
-            )
-        } else {
-            match RegDeleteValueW(key, name.as_ptr()) {
-                ERROR_FILE_NOT_FOUND => ERROR_SUCCESS, // already off
-                other => other,
-            }
-        }
-    };
-    unsafe { RegCloseKey(key) };
-    if code == ERROR_SUCCESS {
-        Ok(())
-    } else {
-        Err(std::io::Error::from_raw_os_error(code as i32))
+    if !on {
+        return registry::delete_value(RUN_KEY, APP_NAME);
     }
+    let exe = startup_exe(&std::env::current_exe()?);
+    registry::set_string(RUN_KEY, APP_NAME, &run_value(&exe.to_string_lossy()))?;
+    // An explicit "enabled" flag, so that an old "disabled" flag left by Task Manager is overridden.
+    registry::set_binary(APPROVED_KEY, APP_NAME, &STARTUP_ENABLED)
 }

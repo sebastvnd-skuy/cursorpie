@@ -1,0 +1,4 @@
+#!/bin/sh
+# Checks the commit subject (see CONTRIBUTING.md, "Commit messages").
+# `git commit --no-verify` skips this once.
+exec cargo tools commit-msg "$1"

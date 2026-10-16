@@ -9,6 +9,12 @@ license = "MIT"
 authors = ["sebastvnd@gmail.com"]
 repository = "https://github.com/sebastvnd/cursorpie"
 
+# The developer tools (`cargo tools ...`, see CONTRIBUTING.md) are a second package of this workspace.
+# It is not part of the app: `cargo build` and `cargo test` of the root package never touch it, so
+# test it with `cargo test --workspace` (what `cargo tools ci` does).
+[workspace]
+members = ["tools"]
+
 [features]
 # Compiles the Windows backend on any OS so `cargo check --features check-windows` can type-check
 # it (and its pure helpers can be unit tested) without a Windows machine. Not needed on Windows.
@@ -36,6 +42,7 @@ windows-sys = { version = "0.61", optional = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
@@ -94,6 +101,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",

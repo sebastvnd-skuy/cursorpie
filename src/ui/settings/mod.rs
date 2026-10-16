@@ -1,10 +1,10 @@
-//! The settings card: Menu (profiles + slices), Behavior, General and About tabs.
+//! The settings card: a sidebar of sections (Menu, Behavior, General, About) and the page of the selected one.
 //!
 //! | Module | Contents |
 //! |---|---|
 //! | `state` | editor-only state ([`Ed`], [`Tab`], [`Slot`]) |
-//! | `window` | the window, animation, top bar, body and footer (`App::settings_ui`, `regions`) |
-//! | `tabs/*` | one file per tab (`menu` also has `profile_toolbar`) |
+//! | `window` | the window, animation, top bar, sidebar, body and footer (`App::settings_ui`, `regions`) |
+//! | `tabs/*` | one file per section (the [`Tab`] enum) (`menu` also has `profile_toolbar`) |
 //! | `pie_designer` | the interactive pie used to pick and arrange slices |
 //! | `inspector` | editor for one slice, `add_panel` for the "Add a slice" panel |
 //! | `action_editor` | editor for one [`Action`](crate::config::Action) |

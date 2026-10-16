@@ -84,6 +84,18 @@ pub fn launch_at_login_enabled() -> bool {
 pub fn set_launch_at_login(_on: bool) -> std::io::Result<()> {
     Ok(())
 }
+/// Nothing to install.
+pub fn ensure_installed() -> Option<std::path::PathBuf> {
+    None
+}
+/// No command-line switches.
+pub fn handle_command_line() -> bool {
+    false
+}
+/// Always the only one.
+pub fn single_instance() -> bool {
+    true
+}
 /// Nothing to release.
 pub fn release_unused_memory() -> usize {
     0

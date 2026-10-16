@@ -1,0 +1,12 @@
+[package]
+name = "cursorpie-tools"
+# Not the version of the app: the release tool only ever changes the version of the root package.
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Developer tools of the CursorPie repository, run as `cargo tools <command>`. Not shipped with the app."
+license = "MIT"
+publish = false
+
+# No dependencies, on purpose: the tools build in seconds and run on every OS the project supports.
+[dependencies]

@@ -1,5 +1,5 @@
-//! Small widgets reused by the editors: chips, icon buttons, tiles, top bar cells, badges, panels,
-//! choices.
+//! Small widgets reused by the editors: chips, icon buttons, tiles, top bar cells, sidebar entries,
+//! badges, panels, choices.
 //!
 //! All of them are almost square and take their colors from [`theme`](super::theme).
 
@@ -126,19 +126,64 @@ pub(in crate::ui::settings) fn bar_button(
     }
 }
 
-/// One tab of the top bar. The selected tab is a solid light block with dark text, the others
-/// are quiet text: which tab you are on is the loudest thing in the bar.
-pub(in crate::ui::settings) fn tab_item(
+/// Height of one sidebar entry.
+pub(in crate::ui::settings) const NAV_H: f32 = 50.0;
+
+/// One entry of the sidebar: a title with a one-line hint under it, as wide as the sidebar.
+///
+/// The selected entry is lifted (`HOT`), gets the accent marker on its left edge and the primary
+/// text color; the others are quiet and light up under the pointer. The title is the normal
+/// font: it is something you read, not chrome.
+pub(in crate::ui::settings) fn nav_item(
     ui: &mut egui::Ui,
-    label: &str,
+    title: &str,
+    hint: &str,
     on: bool,
-    height: f32,
+    accent: Color32,
 ) -> egui::Response {
-    if on {
-        bar_button(ui, label, true, Some(TEXT), BG, height)
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), NAV_H), egui::Sense::click());
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, title)
+    });
+    let bg = if on {
+        HOT
+    } else if resp.hovered() {
+        IDLE
     } else {
-        bar_button(ui, label, true, None, MUTED, height)
+        Color32::TRANSPARENT
+    };
+    let title_color = if on || resp.hovered() { TEXT } else { MUTED };
+    let painter = ui.painter();
+    painter.rect_filled(rect, RADIUS, bg);
+    if on {
+        let bar = egui::Rect::from_min_size(
+            rect.min + Vec2::new(0.0, GAP),
+            Vec2::new(3.0, rect.height() - 2.0 * GAP),
+        );
+        painter.rect_filled(bar, RADIUS, accent);
     }
+    let left = rect.min.x + GAP + 6.0;
+    let title_g = painter.layout_no_wrap(
+        title.to_string(),
+        egui::FontId::proportional(14.5),
+        title_color,
+    );
+    let hint_g = painter.layout_no_wrap(hint.to_string(), egui::FontId::proportional(11.5), MUTED);
+    let block = title_g.size().y + 2.0 + hint_g.size().y;
+    let top = (rect.center().y - block / 2.0).round();
+    let hint_y = top + title_g.size().y + 2.0;
+    painter.galley(egui::pos2(left, top), title_g, title_color);
+    painter.galley(egui::pos2(left, hint_y.round()), hint_g, MUTED);
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// The heading of a page in the content area: a large title and a line of secondary text, then
+/// room before the first panel.
+pub(in crate::ui::settings) fn page_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
+    ui.label(RichText::new(title).size(22.0).strong().color(TEXT));
+    muted(ui, subtitle);
+    ui.add_space(GAP * 2.0);
 }
 
 /// A small outlined status label such as the version or "OK": monospace caps in `color`, with a

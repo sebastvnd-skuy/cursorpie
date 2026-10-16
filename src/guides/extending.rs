@@ -72,7 +72,7 @@
 //! 1. `ui/settings/state.rs`: add a variant to `Tab`.
 //! 2. `ui/settings/tabs/<name>.rs`: `impl App { pub(in crate::ui::settings) fn <name>_tab(&mut self, ui: &mut egui::Ui) }`
 //!    and register the file in `tabs/mod.rs`.
-//! 3. `ui/settings/window.rs`: add it to the `tabs` array and to the `match` that draws it.
+//! 3. `ui/settings/window.rs`: add it to the `sections` array of the sidebar and to the `match` that draws it.
 //!
 //! Layout rule used throughout the Settings UI: compute widths from the width the caller gives
 //! you instead of `available_width()` inside nested layouts, otherwise content can spill out of
@@ -101,9 +101,11 @@
 //!    `text_field`, `badge`, `info_row`) instead of egui's defaults (`radio_value`, `checkbox`,
 //!    `TextEdit::singleline`): they share one marker style and one height. Rows of plain text and
 //!    links go in `info_row` (22 px), not in a bare `ui.horizontal` (32 px).
-//! 4. Navigation and the Undo / Redo / Cancel / Save buttons live in the top bar (`window.rs`),
-//!    Quit and messages in the footer. A new tab is one more entry in the `tabs` array of the top
-//!    bar (a short label in capitals) and one more arm in the body `match`.
+//! 4. Navigation lives in the sidebar and the Undo / Redo / Cancel / Save buttons in the top bar
+//!    (`window.rs`), Quit and messages in the footer. A new tab is one more entry in the `sections`
+//!    array of the sidebar (a title and a one-line hint) and one more arm in the body `match`.
+//!    Start a page with `page_header`, and keep it to one column of `panel`s: the body is capped at
+//!    680 pt wide.
 //! 5. Text is `TEXT` (primary) or `MUTED` (secondary, for labels and hints). An option that is off
 //!    keeps `TEXT`: dim text reads as disabled. Do not rely on `.strong()` for a color, egui takes
 //!    it from `widgets.active.fg_stroke`; set the color explicitly.
@@ -111,7 +113,7 @@
 //!    (`+`, `✖`, `◀`, `▶`); give those a tooltip.
 //! 7. Focus is the accent color: a 2 px border for the selected tile, a 1 px outline for the
 //!    hovered one. Do not add shadows or gradients inside panels.
-//! 8. Chrome labels (tabs, panel titles, badges) are small monospace capitals; text you read or edit
+//! 8. Chrome labels (panel titles, badges) are small monospace capitals; text you read or edit, sidebar entries included,
 //!    is the normal proportional font in sentence case. `card_title` and `badge` do this for you.
 //! 9. Anything with an edge that you draw by hand goes through `ui::draw` (`ring_slice`,
 //!    `arc_points`, `snap_rect`); a raw `egui::Mesh` is not anti-aliased.

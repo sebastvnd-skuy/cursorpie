@@ -44,7 +44,9 @@ Non-goals (0.3.0)
 | App icons | `platform/apps.rs`, `ui/appicon.rs` | `NSWorkspace` icon as TIFF | `SHGetFileInfoW` + `GetDIBits` (RGBA) |
 | Permission | `platform/permissions.rs` | `AXIsProcessTrusted`, System Settings URLs | none needed |
 | Keyboard layout | `platform/layout.rs` | TIS + `UCKeyTranslate` | `GetKeyboardLayout`, `MapVirtualKeyExW`, `ToUnicodeEx` |
-| Launch at login | `platform/login_item.rs` | LaunchAgent plist | `HKCU\...\Run` registry value |
+| Launch at login | `platform/login_item.rs` | LaunchAgent plist | `HKCU\...\Run` value pointing at the installed copy |
+| Install, uninstall | `platform/windows/install.rs` | none (the `.app` is the install) | copy to `%LOCALAPPDATA%\Programs\CursorPie`, `HKCU\...\Uninstall` entry, `--uninstall` |
+| One running copy | `platform/windows/instance.rs` | none | named mutex `Local\CursorPie-single-instance` |
 | Return memory to the OS | `platform/memory.rs` | `malloc_zone_pressure_relief` | `SetProcessWorkingSetSize(-1, -1)` |
 | File chooser, reveal, open, tick | `platform/shell.rs`, `ui/settings/icon_catalog.rs` | `osascript`, `open`, `mdls`, `afplay` | `GetOpenFileNameW`, `explorer`, `ShellExecuteW`, `MessageBeep` |
 | Run actions | `actions.rs` | `open -a`, `open`, `/bin/sh -c` | `ShellExecuteW`, `cmd /C` |
@@ -123,6 +125,12 @@ Run on macOS 11+ and on Windows 10 and 11:
 5. Settings: record a shortcut (including Esc to cancel), undo/redo, save, backup restore, import/export.
 6. A shortcut slice reaches the app under the pointer (focus is moved first).
 7. Tray menu: Settings, About, Pause, Launch at login (reboot or re-login), Quit.
+7a. Install: run `cursorpie.exe` from an unzipped folder. The pie icon appears, the file exists in
+    `%LOCALAPPDATA%\Programs\CursorPie`, and CursorPie is listed in Settings > Apps. Delete the unzipped folder,
+    sign out and in: the tray icon comes back. Start the downloaded exe again: nothing new appears (one copy only).
+7b. Uninstall: Settings > Apps > CursorPie > Uninstall. The tray icon disappears, the install folder is gone a
+    few seconds later, `config.json` is still there, and the next sign-in does not start it.
+7c. Switch "Launch at login" off in Task Manager > Startup, open Settings: the box is unticked.
 8. Non-US keyboard layout (AZERTY or QWERTZ): labels and preset shortcuts match the layout.
 9. Two monitors, same scale, and 125 % / 150 % scaling on Windows: pie size and hit-testing match.
 10. Idle for the sleep time, then open the pie: icons reload, no crash.
