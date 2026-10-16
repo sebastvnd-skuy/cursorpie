@@ -1,7 +1,7 @@
 //! Monitor scale: converts between the physical pixels Win32 reports and the logical points the
 //! rest of CursorPie (and egui) uses.
 
-use super::util::{px_to_logical, scale_from_dpi};
+use super::util::scale_from_dpi;
 use std::sync::atomic::{AtomicU64, Ordering};
 use windows_sys::Win32::Foundation::POINT;
 use windows_sys::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromPoint};
@@ -34,12 +34,6 @@ pub(crate) fn set_last_scale(scale: f64) {
 /// The scale stored by [`set_last_scale`].
 pub(crate) fn last_scale() -> f64 {
     f64::from_bits(LAST_SCALE.load(Ordering::Relaxed))
-}
-
-/// A physical pixel position as logical points, using the scale of the monitor it is on.
-pub(crate) fn to_logical(x: i32, y: i32) -> (f64, f64) {
-    let s = scale_at_physical(x, y);
-    (px_to_logical(x as f64, s), px_to_logical(y as f64, s))
 }
 
 #[cfg(test)]

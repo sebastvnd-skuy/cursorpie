@@ -44,7 +44,7 @@ pub use login_item::*;
 pub use shell::*;
 pub use window::*;
 
-pub(crate) use dpi::{last_scale, scale_at_physical, set_last_scale};
+pub(crate) use dpi::{scale_at_physical, set_last_scale};
 pub(crate) use util::px_to_logical;
 
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};

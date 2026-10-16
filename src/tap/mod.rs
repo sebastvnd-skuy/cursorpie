@@ -154,6 +154,8 @@ pub(crate) fn dispatch(
 
 /// Resets everything after the OS disabled the hook (a timeout, or the user): no gesture is in
 /// progress any more and the pie is closed.
+// Only the macOS tap calls this (the OS can disable its hook); the tests call it everywhere.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) fn reset(state: &Arc<Mutex<Gesture>>, notifier: &Notifier) {
     *lock(state) = Gesture::Idle;
     SWALLOW_KEY.store(-1, Ordering::SeqCst);
