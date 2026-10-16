@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.2
+
 - **Welcome window.** The first start on macOS and on Windows opens a three-page welcome window in the
   Settings style: how the gesture works, the step that is needed next (macOS: allow Accessibility, with a live
   status; Windows: where the tray icon is) and a "Launch at login" box. It is shown once (the empty file
