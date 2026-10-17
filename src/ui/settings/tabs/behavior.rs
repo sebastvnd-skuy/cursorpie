@@ -4,7 +4,7 @@
 //! settings are laid out: what you press, how the pie looks, which pie opens for which app, then
 //! startup and memory.
 
-use crate::config::{AppGesture, SideTarget, TargetApp};
+use crate::config::{AppGesture, DesktopMode, SideTarget, TargetApp};
 use crate::ui::app::App;
 use crate::ui::draw::rgb;
 use crate::ui::settings::widgets::*;
@@ -32,6 +32,34 @@ fn color_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
         muted(ui, label);
         ui.color_edit_button_srgb(color);
     });
+}
+
+/// What the OS calls a desktop: a Space on macOS, a virtual desktop on Windows.
+fn desktop_noun() -> &'static str {
+    match crate::platform::OS {
+        crate::platform::Os::Mac => "Space",
+        crate::platform::Os::Windows => "virtual desktop",
+    }
+}
+
+/// Title of the panel that holds the [`DesktopMode`] choices.
+fn desktops_title() -> &'static str {
+    match crate::platform::OS {
+        crate::platform::Os::Mac => "Other Spaces",
+        crate::platform::Os::Windows => "Other desktops",
+    }
+}
+
+/// The text of one [`DesktopMode`] choice.
+fn desktop_mode_label(mode: DesktopMode) -> String {
+    let noun = desktop_noun();
+    match mode {
+        DesktopMode::SwitchToApp => format!("Switch to the {noun} where the app is"),
+        DesktopMode::BringToCurrent => {
+            format!("Bring the app's window to this {noun} (experimental)")
+        }
+        DesktopMode::DoNothing => format!("Do nothing: open the app on this {noun}, as before"),
+    }
 }
 
 impl App {
@@ -148,6 +176,24 @@ impl App {
                     );
                 });
             });
+            panel(ui, desktops_title(), |ui| {
+                muted(
+                    ui,
+                    &format!(
+                        "An 'Open app' slice may open an app whose window is on another {}",
+                        desktop_noun()
+                    ),
+                );
+                for &mode in crate::platform::OS.desktop_modes() {
+                    choice(
+                        ui,
+                        &mut cfg.desktop_mode,
+                        mode,
+                        &desktop_mode_label(mode),
+                        accent,
+                    );
+                }
+            });
             panel(ui, "Side buttons", |ui| {
                 muted(
                     ui,
@@ -227,5 +273,24 @@ impl App {
                 );
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_desktop_choice_has_its_own_label() {
+        let labels: Vec<String> = crate::platform::OS
+            .desktop_modes()
+            .iter()
+            .map(|&m| desktop_mode_label(m))
+            .collect();
+        for (i, a) in labels.iter().enumerate() {
+            assert!(!a.is_empty());
+            assert!(!labels[..i].contains(a), "{a} is listed twice");
+        }
+        assert!(desktop_mode_label(DesktopMode::BringToCurrent).contains("experimental"));
     }
 }

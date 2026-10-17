@@ -32,7 +32,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 /// Process id of the window `hwnd`.
-fn pid_of(hwnd: HWND) -> u32 {
+pub(super) fn pid_of(hwnd: HWND) -> u32 {
     let mut pid = 0u32;
     // SAFETY: `pid` is a valid out-pointer.
     unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
@@ -182,11 +182,12 @@ pub fn display_rects() -> Vec<ScreenRect> {
 
 struct Find {
     pid_matches: Vec<u32>,
-    found: HWND,
+    /// Matching windows, top-most first.
+    found: Vec<HWND>,
 }
 
 unsafe extern "system" fn pick_window(hwnd: HWND, data: LPARAM) -> i32 {
-    // SAFETY: `data` is the `Find` passed by `activate_app`, alive during the enumeration.
+    // SAFETY: `data` is the `Find` passed by `windows_of`, alive during the enumeration.
     let find = unsafe { &mut *(data as *mut Find) };
     unsafe {
         if IsWindowVisible(hwnd) == 0 || GetWindowTextLengthW(hwnd) == 0 {
@@ -196,8 +197,7 @@ unsafe extern "system" fn pick_window(hwnd: HWND, data: LPARAM) -> i32 {
             return 1;
         }
         if find.pid_matches.contains(&pid_of(hwnd)) {
-            find.found = hwnd;
-            return 0; // top-most match in z-order: stop
+            find.found.push(hwnd);
         }
     }
     1
@@ -226,6 +226,21 @@ fn pids_of_exe(exe: &str) -> Vec<u32> {
     out
 }
 
+/// The windows of the app `exe` (a lower-case file name) that can be brought to the front, top-most
+/// first: visible, with a title, and not a tool window. Windows on other virtual desktops are
+/// included.
+pub(super) fn windows_of(exe: &str) -> Vec<HWND> {
+    let mut find = Find {
+        pid_matches: pids_of_exe(exe),
+        found: Vec::new(),
+    };
+    if !find.pid_matches.is_empty() {
+        // SAFETY: the callback only runs during `EnumWindows`; `find` outlives it.
+        unsafe { EnumWindows(Some(pick_window), &mut find as *mut Find as LPARAM) };
+    }
+    find.found
+}
+
 /// Brings the top-most window of the app `exe` to the front and waits (briefly) until Windows
 /// really has it there: keys sent too early would reach the previous app. Windows may refuse
 /// to change the foreground window, in which case this gives up after the wait.
@@ -233,21 +248,16 @@ pub fn activate_app(exe: &str) {
     if frontmost_bundle_id().as_deref() == Some(exe) {
         return;
     }
-    let mut find = Find {
-        pid_matches: pids_of_exe(exe),
-        found: std::ptr::null_mut(),
-    };
-    if find.pid_matches.is_empty() {
-        return;
+    if let Some(&hwnd) = windows_of(exe).first() {
+        bring_to_front(exe, hwnd);
     }
-    // SAFETY: the callback only runs during `EnumWindows`; `find` outlives it. Thread attachment
-    // is undone right after the call.
+}
+
+/// Puts `hwnd`, a window of the app `exe`, in front and waits (briefly) until Windows reports the
+/// app as the one in front, like [`activate_app`].
+pub(super) fn bring_to_front(exe: &str, hwnd: HWND) {
+    // SAFETY: thread attachment is undone right after the calls.
     unsafe {
-        EnumWindows(Some(pick_window), &mut find as *mut Find as LPARAM);
-        let hwnd = find.found;
-        if hwnd.is_null() {
-            return;
-        }
         if IsIconic(hwnd) != 0 {
             ShowWindow(hwnd, SW_RESTORE);
         }

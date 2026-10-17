@@ -4,7 +4,9 @@
 //! Ctrl/Alt/Win shortcuts, executable names and Explorer/Edge. Every function takes the OS as a
 //! parameter in its `_for` form (so tests cover both); the plain form uses the OS the build runs on.
 
-use super::{Action, AppGesture, CONFIG_VERSION, Config, Item, Profile, SideTarget, TargetApp};
+use super::{
+    Action, AppGesture, CONFIG_VERSION, Config, DesktopMode, Item, Profile, SideTarget, TargetApp,
+};
 use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT, Shortcut, key};
 use crate::platform::Os;
 
@@ -201,6 +203,7 @@ impl Config {
             double_click_ms: 260,
             target_app: TargetApp::UnderCursor,
             focus_target: true,
+            desktop_mode: DesktopMode::SwitchToApp,
             side_default: SideTarget::App,
             side_adopt: true,
             side_forget: false,

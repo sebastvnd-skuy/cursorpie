@@ -74,6 +74,42 @@ pub enum TargetApp {
     UnderCursor,
 }
 
+/// What an "Open app" slice does when the app's window is on another virtual desktop (Windows) or
+/// Space (macOS).
+///
+/// The OSes offer different choices, see [`Os::desktop_modes`](crate::platform::Os::desktop_modes).
+/// Every value is kept on every OS so a `config.json` copied between them stays whole;
+/// [`DesktopMode::effective`] is what an OS makes of a value it does not offer.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum DesktopMode {
+    /// Go to the desktop the app's window is on, like clicking its Dock icon or taskbar button.
+    #[default]
+    SwitchToApp,
+    /// Pull the app's window onto the current desktop and show it here. macOS only, and
+    /// experimental: it needs private system calls, which fail silently on some macOS versions.
+    /// When it fails CursorPie switches to the app's desktop instead.
+    BringToCurrent,
+    /// Never change desktops: open the app the way it was opened before this setting existed.
+    DoNothing,
+}
+
+impl DesktopMode {
+    /// Whether "Open app" should look for the app's window on the other desktops.
+    pub fn follows_app(self) -> bool {
+        self != DesktopMode::DoNothing
+    }
+
+    /// The mode that is carried out on `os`: the mode itself when `os` offers it, otherwise
+    /// [`SwitchToApp`](DesktopMode::SwitchToApp), the closest thing it can do.
+    pub fn effective(self, os: crate::platform::Os) -> DesktopMode {
+        if os.desktop_modes().contains(&self) {
+            self
+        } else {
+            DesktopMode::SwitchToApp
+        }
+    }
+}
+
 impl Item {
     /// Creates a side-button mode slice that sends the `back` / `forward` shortcuts.
     pub fn mode(name: &str, icon: &str, back: Shortcut, forward: Shortcut) -> Self {
@@ -167,6 +203,8 @@ pub struct Config {
     pub target_app: TargetApp,
     /// With `UnderCursor`: bring that app to the front before sending it a shortcut.
     pub focus_target: bool,
+    /// What an "Open app" slice does when the app's window is on another virtual desktop or Space.
+    pub desktop_mode: DesktopMode,
     /// Which pie the side buttons follow in an app that has its own pie, until you choose another.
     pub side_default: SideTarget,
     /// Choosing a side-button mode in a pie makes the side buttons follow that pie.

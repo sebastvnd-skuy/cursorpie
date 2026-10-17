@@ -45,6 +45,22 @@ pub fn press_shortcut(sc: Shortcut) {
     }
 }
 
+/// Control+Left or Control+Right: the Mission Control shortcuts that move to the Space on the
+/// left or on the right. A real arrow key also carries the `SecondaryFn` and `NumericPad` flags,
+/// which the system shortcut is matched against, so they are set here too.
+pub fn press_space_arrow(forward: bool) {
+    let Ok(src) = CGEventSource::new(CGEventSourceStateID::HIDSystemState) else {
+        return;
+    };
+    let ctrl = CGEventFlags::CGEventFlagControl;
+    let arrow = ctrl | CGEventFlags::CGEventFlagSecondaryFn | CGEventFlags::CGEventFlagNumericPad;
+    let code = if forward { key::RIGHT } else { key::LEFT };
+    post_key(&src, 59, true, ctrl);
+    post_key(&src, code, true, arrow);
+    post_key(&src, code, false, arrow);
+    post_key(&src, 59, false, CGEventFlags::CGEventFlagNull);
+}
+
 /// Posts one key event with the given modifier flags, tagged with [`SYNTH_TAG`].
 fn post_key(src: &CGEventSource, code: CGKeyCode, down: bool, flags: CGEventFlags) {
     if let Ok(ev) = CGEvent::new_keyboard_event(src.clone(), code, down) {

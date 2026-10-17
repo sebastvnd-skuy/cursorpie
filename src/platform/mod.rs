@@ -23,7 +23,7 @@
 //! | `cursor_pos`, `display_rects` | pointer position and display bounds, in logical points |
 //! | `is_trusted_cached`, `open_accessibility_settings`, `open_input_monitoring_settings` | input permission |
 //! | `press_shortcut`, `post_mouse`, `activate_app` | input injection (used by [`actions`](crate::actions)) |
-//! | `open_app`, `open_url`, `run_shell`, `open_path`, `reveal_in_file_manager` | launching things |
+//! | `open_app`, `reveal_app`, `open_url`, `run_shell`, `open_path`, `reveal_in_file_manager` | launching things; `reveal_app` is `open_app` that also goes to, or fetches, the app's desktop (see [`desktops`]) |
 //! | `choose_file`, `tick` | file chooser and hover sound |
 //! | `launch_at_login_enabled`, `set_launch_at_login` | start with the user session |
 //! | `ensure_installed`, `handle_command_line`, `single_instance` | Windows install step, `--uninstall`, one running copy (no-ops elsewhere) |
@@ -33,6 +33,7 @@
 //! The **app id** is the key of per-app profiles: the bundle identifier on macOS
 //! (`com.apple.Safari`) and the lower-case executable name on Windows (`chrome.exe`).
 
+pub mod desktops;
 pub mod keymap;
 
 #[cfg(target_os = "macos")]
@@ -53,6 +54,7 @@ mod stub;
 #[cfg(not(any(target_os = "macos", windows)))]
 pub use stub::*;
 
+use crate::config::DesktopMode;
 use crate::keys::{MOD_CMD, MOD_CTRL};
 use std::process::Command;
 
@@ -111,6 +113,23 @@ impl Os {
         match self {
             Os::Mac => "Cmd",
             Os::Windows => "Ctrl",
+        }
+    }
+
+    /// What an "Open app" slice can do when the app's window is on another desktop, in the order
+    /// Settings lists them (see [`DesktopMode`]).
+    ///
+    /// Both OSes can switch to the app's desktop. Only macOS can try to pull the window onto the
+    /// current Space, through private system calls: the public API of Windows cannot move the
+    /// window of another process.
+    pub const fn desktop_modes(self) -> &'static [DesktopMode] {
+        match self {
+            Os::Mac => &[
+                DesktopMode::SwitchToApp,
+                DesktopMode::BringToCurrent,
+                DesktopMode::DoNothing,
+            ],
+            Os::Windows => &[DesktopMode::SwitchToApp, DesktopMode::DoNothing],
         }
     }
 
@@ -288,6 +307,26 @@ mod tests {
         );
         assert_eq!(Os::Windows.normalize_app_id("  Chrome.EXE "), "chrome.exe");
         assert_eq!(Os::Windows.normalize_app_id("   "), "");
+    }
+
+    #[test]
+    fn the_desktop_choices_differ_per_os() {
+        assert_eq!(
+            Os::Mac.desktop_modes(),
+            [
+                DesktopMode::SwitchToApp,
+                DesktopMode::BringToCurrent,
+                DesktopMode::DoNothing
+            ]
+        );
+        assert_eq!(
+            Os::Windows.desktop_modes(),
+            [DesktopMode::SwitchToApp, DesktopMode::DoNothing]
+        );
+        // the default must be offered everywhere
+        for os in [Os::Mac, Os::Windows] {
+            assert!(os.desktop_modes().contains(&DesktopMode::default()));
+        }
     }
 
     #[test]

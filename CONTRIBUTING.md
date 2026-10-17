@@ -231,7 +231,8 @@ src/history.rs     undo / redo snapshots (Settings editor)
 src/side.rs        which pie the back/forward buttons follow
 src/platform/      OS glue behind one facade: macos/, windows/, stub.rs, plus keymap.rs (key tables)
 docs/              WINDOWS_MIGRATION.md: design, phases and the manual test checklist;
-                   UI_DESIGN.md: look, rendering rules and the manual visual checklist
+                   UI_DESIGN.md: look, rendering rules and the manual visual checklist;
+                   OTHER_DESKTOPS.md: Open app across Spaces / desktops, logic and manual check
 src/ui/            everything on the UI thread: app, pie renderer, Settings, menu bar icon,
                    icon cache (`icons.rs`) and idle policy (`sleep.rs`)
 src/guides/        long-form developer docs (rendered by rustdoc)

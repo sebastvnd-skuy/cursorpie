@@ -59,6 +59,45 @@ mod tests {
         assert!(c.focus_target && c.side_adopt && c.right_click_switch && c.side_indicator);
         assert!(c.center_app_icon);
         assert!(!c.side_forget);
+        assert_eq!(c.desktop_mode, DesktopMode::SwitchToApp);
+    }
+
+    #[test]
+    fn the_desktop_mode_is_stored_by_variant_name() {
+        let c = parse_config(r#"{"version": 2, "desktop_mode": "DoNothing"}"#).unwrap();
+        assert_eq!(c.desktop_mode, DesktopMode::DoNothing);
+        let json = serde_json::to_string(&c).unwrap();
+        assert!(json.contains(r#""desktop_mode":"DoNothing""#));
+        assert_eq!(
+            serde_json::to_string(&DesktopMode::SwitchToApp).unwrap(),
+            "\"SwitchToApp\""
+        );
+    }
+
+    #[test]
+    fn only_doing_nothing_stays_on_the_current_desktop() {
+        assert_eq!(DesktopMode::default(), DesktopMode::SwitchToApp);
+        assert!(DesktopMode::SwitchToApp.follows_app());
+        assert!(DesktopMode::BringToCurrent.follows_app());
+        assert!(!DesktopMode::DoNothing.follows_app());
+        assert_eq!(Config::default().desktop_mode, DesktopMode::SwitchToApp);
+    }
+
+    #[test]
+    fn a_mode_an_os_does_not_offer_becomes_switching() {
+        use crate::platform::Os;
+        for mode in [DesktopMode::SwitchToApp, DesktopMode::DoNothing] {
+            assert_eq!(mode.effective(Os::Mac), mode);
+            assert_eq!(mode.effective(Os::Windows), mode);
+        }
+        assert_eq!(
+            DesktopMode::BringToCurrent.effective(Os::Mac),
+            DesktopMode::BringToCurrent
+        );
+        assert_eq!(
+            DesktopMode::BringToCurrent.effective(Os::Windows),
+            DesktopMode::SwitchToApp
+        );
     }
 
     #[test]

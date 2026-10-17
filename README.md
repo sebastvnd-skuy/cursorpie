@@ -73,7 +73,7 @@ The timings above are the defaults and can be changed in **Settings > Behavior**
 |---|---|
 | None | Nothing. For side buttons, the click passes through to the app |
 | Shortcut | Sends a key combination. Record it by clicking the button and pressing the keys (Esc cancels) |
-| Open app | macOS: `open -a <name or path>`, e.g. `Safari` or `/Applications/Safari.app`. Windows: a program name or the path of an `.exe`, e.g. `chrome` or `C:\Tools\App.exe` |
+| Open app | macOS: `open -a <name or path>`, e.g. `Safari` or `/Applications/Safari.app`. Windows: a program name or the path of an `.exe`, e.g. `chrome` or `C:\Tools\App.exe`; if the app is already running on another virtual desktop or Space, CursorPie goes to it, or brings the window to you (see **Other desktops / Other Spaces** in Behavior) |
 | Open URL / file | `open <target>`, e.g. `https://example.com` or a file path |
 | Shell command | macOS: runs `/bin/sh -c "<command>"`. Windows: runs `cmd /C "<command>"` without a console window |
 | Sequence | Several actions in order, 40 ms apart. Edit these in `config.json` (see below) |
@@ -276,6 +276,7 @@ edits while Settings is open; see [Undo, redo and backups](#undo-redo-and-backup
 - Trigger button, hold time for the pie, hold time for Settings, pie size, accent color
 - Pie of the app in front: general + double-click, or classic merged mode, plus the double-click speed
 - App detection: app under the pointer or app in front, and whether to bring it to the front before sending shortcuts
+- Other desktops / Other Spaces: what an Open app slice does when the app's window is on another virtual desktop or Space: switch to it (default), bring the window to the current Space (macOS, experimental), or open the app here as before
 - Side buttons: which pie they follow by default, pick-to-follow, forget on app switch, right-click switching, ring colors, preview time
 - Instant flick, hover sound, app icon in the pie center, launch at login
 - Memory: free cached icons and the Settings working copy after an idle time (on by default, 60 s)
@@ -406,6 +407,7 @@ Actions are `Nothing`, `Key`, `OpenApp`, `OpenUrl`, `Command` or `Sequence`.
   "double_click_ms": 260,
   "target_app": "UnderCursor",
   "focus_target": true,
+  "desktop_mode": "SwitchToApp",
   "side_default": "App",
   "side_adopt": true,
   "side_forget": false,
@@ -468,6 +470,7 @@ Reference:
 | `double_click_ms` | Window for the second click (150 to 500) |
 | `target_app` | `"UnderCursor"` (app whose window is under the pointer) or `"Focused"` (app in front) |
 | `focus_target` | With `UnderCursor`: bring that app to the front before sending it a shortcut |
+| `desktop_mode` | `"SwitchToApp"` (default), `"BringToCurrent"` or `"DoNothing"`: what an Open app slice does when the app's window is on another virtual desktop or Space. `BringToCurrent` is macOS only (experimental); on Windows it acts as `SwitchToApp` |
 | `side_default` | `"App"` or `"General"`: pie the side buttons follow in an app that has its own pie, until you choose |
 | `side_adopt` | Picking a side-button mode in a pie makes the side buttons follow that pie |
 | `side_forget` | Forget that choice when another app becomes the target |
@@ -502,7 +505,7 @@ scripts/package-windows.ps1  builds target\bundle\CursorPie-windows.zip (Windows
 icon/                   sample images for icons (brackets, clipboard); not loaded automatically
 CONTRIBUTING.md         how to build, test and contribute
 docs/                   WINDOWS_MIGRATION.md (Windows port), LINUX_MIGRATION.md (Linux design proposal),
-                        UI_DESIGN.md (look and rendering rules)
+                        UI_DESIGN.md (look and rendering rules), OTHER_DESKTOPS.md (Open app across Spaces)
 src/
   main.rs               thin binary: calls cursorpie::run()
   lib.rs                crate root: module list, run()
@@ -563,6 +566,31 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
   that app id applies to all UWP apps at once, and a profile cannot be made for just one of them. Normal
   desktop programs (Chrome, VS Code, Explorer, Office...) are detected correctly. If you need a different
   pie for one UWP app, use the desktop version of the program when there is one.
+- Windows: **Other desktops** follows an app to its virtual desktop the way you would: CursorPie presses
+  Win+Ctrl+Right or Win+Ctrl+Left, one desktop at a time, until a window of the app is on the desktop that is
+  shown (at most ten each way), then brings that window to the front. Windows has no public call that switches to
+  a given desktop, so the desktops flick past on the way, and if the app cannot be found, or the desktop you start
+  from has no window at all, you stay where you are and the app is opened as before. It looks for the app by its
+  executable name, so `chrome` and `C:\Program Files\Google\Chrome\Application\chrome.exe` both find Chrome.
+  Windows has no way to move the window of another program to the current desktop, so there is no such choice there.
+- macOS: **Other Spaces** tries three ways, each only when the one before did not bring a window of the app onto
+  the screen: `open -a`, which is what a Dock click does and takes you to the app's Space when the system setting
+  *When switching to an application, switch to a Space with open windows for the application* is on (System
+  Settings > Desktop & Dock > Mission Control); then Control+Right / Control+Left, pressed directly and then
+  through System Events (which asks for the Automation permission once). CursorPie reads the order of the Spaces
+  and the Space of the app's windows, goes straight to the nearest one, to the left or right and however many
+  Spaces away, and does not stop at a Space in between; if macOS does not tell the order it feels its way, right
+  first, then left (at most ten each way). Once there it raises the app's window and checks that it is in front.
+  The arrow keys need the shortcuts *Move left / right a space* to be on (System Settings > Keyboard > Keyboard
+  Shortcuts > Mission Control). If nothing works you stay where you were and `CursorPie: could not reach the Space
+  of <app>` is printed. Start CursorPie from a terminal with `CURSORPIE_DEBUG=1 cargo run --release` to see what
+  each way found. How it works and the problems met: [docs/OTHER_DESKTOPS.md](docs/OTHER_DESKTOPS.md).
+- macOS: **Bring the window to this Space** is experimental. macOS has no public call that moves a window of
+  another app, so CursorPie uses the private SkyLight calls that Hammerspoon and yabai use, checks afterwards
+  that the window really arrived, and switches to the app's Space when it did not. Apple may change or block
+  those calls in any release (Hammerspoon reports that they silently do nothing on macOS 27), so expect the
+  fallback on some systems. The line `CursorPie: could not move a window of <app> to this Space` on stderr says
+  when that happened.
 - Windows: programs running **as administrator** ignore the input CursorPie sends unless CursorPie also runs
   as administrator (a Windows rule, UIPI). With monitors at different scales the pie may be placed slightly
   off when it moves between them, and Windows may refuse to bring a window to the front.

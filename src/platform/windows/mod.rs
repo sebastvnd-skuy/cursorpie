@@ -10,6 +10,7 @@
 //! | `util` | wide strings, app ids from paths, DPI math, command lines (pure) |
 //! | `dpi` | monitor scale lookup: the bridge between physical pixels and logical points |
 //! | `apps` | frontmost app, app under the pointer, app icons, activation, cursor, displays |
+//! | `desktops` | "Open app" that follows the app's window to its virtual desktop (`IVirtualDesktopManager` and Win+Ctrl+Arrows) |
 //! | `input` | `SendInput` for shortcuts and replayed mouse buttons |
 //! | `layout` | keyboard-layout snapshot (`ToUnicodeEx`) |
 //! | `shell` | `ShellExecuteW`, the file chooser, `explorer`, beep |
@@ -27,6 +28,7 @@ pub mod layout;
 pub mod util;
 
 mod apps;
+mod desktops;
 mod dpi;
 mod input;
 mod install;
@@ -37,6 +39,7 @@ mod shell;
 mod window;
 
 pub use apps::*;
+pub use desktops::*;
 pub use input::*;
 pub use install::*;
 pub use instance::*;

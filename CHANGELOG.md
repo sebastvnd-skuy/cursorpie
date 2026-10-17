@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Open app follows the app to its desktop or Space.** An *Open app* slice for a program that is already
+  running on another virtual desktop (Windows) or Space (macOS) now takes you there and brings its window to
+  the front, instead of leaving you where you were. **Settings > Behavior > Other desktops / Other Spaces**
+  chooses: *Switch to the desktop where the app is* (the default), *Do nothing* (open the app on the current
+  desktop as before) and, on macOS, *Bring the app's window to this Space* (experimental: it relies on private
+  system calls and falls back to switching when macOS refuses them). On macOS the switch works with the
+  Mission Control shortcuts Control+Left / Right (on by default) even when the system setting *When switching
+  to an application, switch to a Space with open windows for the application* is off. If the app is not
+  running, or has a window on the current desktop, nothing changes. On macOS the nearest Space with a window of
+  the app is gone to directly, left or right and however many Spaces away, without stopping in between, and
+  the window is raised and checked to be in front. How it works: `docs/OTHER_DESKTOPS.md`.
 - **Linux migration** New plane for support linux distribution 
 
 ## 0.4.2

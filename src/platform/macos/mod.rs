@@ -9,6 +9,7 @@
 //! | `input` | posting keys and mouse buttons (`CGEvent`) |
 //! | `memory` | returning freed memory to macOS after the UI goes to sleep |
 //! | `login_item` | "Launch at login" LaunchAgent |
+//! | `spaces` | "Open app" that follows the app's window to its Space, or fetches the window |
 //! | `shell` | helpers that run macOS tools: `open`, `osascript`, `mdls`, `afplay` |
 //! | [`layout`] | keyboard-layout snapshot (TIS + `UCKeyTranslate`) |
 
@@ -20,6 +21,7 @@ mod login_item;
 mod memory;
 mod permissions;
 mod shell;
+mod spaces;
 
 pub use apps::*;
 pub use input::*;
@@ -27,3 +29,4 @@ pub use login_item::*;
 pub use memory::*;
 pub use permissions::*;
 pub use shell::*;
+pub use spaces::*;

@@ -20,6 +20,35 @@ pub fn exe_id_from_path(path: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_ascii_lowercase())
 }
 
+/// The app id that the text of an "Open app" slice stands for, to find that app among the running
+/// ones: `chrome`, `Chrome.exe` and `C:\Tools\Chrome.exe` all give `chrome.exe`. The text is what
+/// `ShellExecuteW` accepts, which is more than an executable name (`chrome` is resolved through App
+/// Paths), so the `.exe` suffix is added when it is missing. `None` for blank text or a path that
+/// ends in a separator.
+pub fn app_id_for_open(app: &str) -> Option<String> {
+    let id = exe_id_from_path(app.trim().trim_matches('"'))?;
+    Some(if id.ends_with(".exe") {
+        id
+    } else {
+        format!("{id}.exe")
+    })
+}
+
+/// A GUID as one number, so two of them can be compared and sorted (`GUID` has no `PartialEq`).
+pub fn guid_to_u128(g: &windows_sys::core::GUID) -> u128 {
+    (g.data1 as u128) << 96
+        | (g.data2 as u128) << 80
+        | (g.data3 as u128) << 64
+        | u64::from_be_bytes(g.data4) as u128
+}
+
+/// [`signature`](crate::platform::desktops::signature) of the desktop ids that the windows of a
+/// desktop report. Zero ids (a window that reports none) are left out.
+pub fn desktop_signature(mut ids: Vec<u128>) -> Option<u64> {
+    ids.retain(|&id| id != 0);
+    crate::platform::desktops::signature(ids)
+}
+
 /// Whether a path names an executable.
 pub fn is_exe(path: &str) -> bool {
     path.trim().to_ascii_lowercase().ends_with(".exe")
@@ -196,6 +225,51 @@ pub fn bgra_to_rgba(px: &mut [u8], mask: Option<&[u8]>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_app_text_becomes_the_app_id_of_the_running_program() {
+        assert_eq!(app_id_for_open("chrome"), Some("chrome.exe".into()));
+        assert_eq!(app_id_for_open("  Chrome.EXE "), Some("chrome.exe".into()));
+        assert_eq!(
+            app_id_for_open(r"C:\Program Files\Tools\App.exe"),
+            Some("app.exe".into())
+        );
+        assert_eq!(
+            app_id_for_open(r#""C:\Tools\My App.exe""#),
+            Some("my app.exe".into())
+        );
+        assert_eq!(app_id_for_open("C:/x/Code"), Some("code.exe".into()));
+        assert_eq!(app_id_for_open(r"C:\dir\"), None);
+        assert_eq!(app_id_for_open("   "), None);
+    }
+
+    #[test]
+    fn a_guid_is_one_number_in_the_order_it_is_written() {
+        let id = 0xa5cd92ff_29be_454c_8d04_d82879fb3f1b_u128;
+        assert_eq!(guid_to_u128(&windows_sys::core::GUID::from_u128(id)), id);
+        assert_eq!(guid_to_u128(&windows_sys::core::GUID::default()), 0);
+    }
+
+    #[test]
+    fn a_desktop_is_told_by_the_set_of_ids_of_its_windows() {
+        let a = desktop_signature(vec![1, 2, 3]);
+        assert!(a.is_some());
+        assert_eq!(
+            a,
+            desktop_signature(vec![3, 1, 2, 2]),
+            "order and repeats do not matter"
+        );
+        assert_ne!(
+            a,
+            desktop_signature(vec![1, 2]),
+            "another set is another desktop"
+        );
+        // a pinned window reports the same id on every desktop, the rest tells them apart
+        assert_ne!(desktop_signature(vec![9, 1]), desktop_signature(vec![9, 2]));
+        assert_eq!(desktop_signature(vec![0, 1]), desktop_signature(vec![1]));
+        assert_eq!(desktop_signature(vec![0, 0]), None);
+        assert_eq!(desktop_signature(vec![]), None);
+    }
 
     #[test]
     fn a_folder_with_the_setup_uninstaller_is_a_setup_install() {

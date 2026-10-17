@@ -4,6 +4,7 @@
 //! built and unit tested on any machine. Nothing here does anything useful at runtime: queries
 //! return `None` / `false` and actions are ignored.
 
+use crate::config::DesktopMode;
 use crate::geometry::Point;
 use crate::keys::Shortcut;
 use crate::platform::{FileKind, NativeIcon, ScreenRect};
@@ -61,6 +62,8 @@ pub fn activate_app(_bundle: &str) {}
 
 /// Ignored.
 pub fn open_app(_app: &str) {}
+/// Ignored.
+pub fn reveal_app(_app: &str, _mode: DesktopMode) {}
 /// Ignored.
 pub fn open_url(_target: &str) {}
 /// Ignored.

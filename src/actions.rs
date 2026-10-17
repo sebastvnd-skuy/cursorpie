@@ -70,7 +70,13 @@ fn execute(action: &Action) {
         Action::Nothing => {}
         Action::Key(sc) => platform::press_shortcut(*sc),
         Action::OpenApp(app) if !app.trim().is_empty() => {
-            platform::open_app(app.trim());
+            // read first: the config lock must not be held while the app is looked for
+            let mode = crate::config::cfg().desktop_mode.effective(platform::OS);
+            if mode.follows_app() {
+                platform::reveal_app(app.trim(), mode);
+            } else {
+                platform::open_app(app.trim());
+            }
         }
         Action::OpenUrl(target) if !target.trim().is_empty() => {
             platform::open_url(target.trim());

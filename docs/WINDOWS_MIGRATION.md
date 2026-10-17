@@ -148,6 +148,26 @@ Run on macOS 11+ and on Windows 10 and 11:
 11. Windows: the pie and the margin around the Settings card are see-through (no black or white box, no
     border, no thin line along the top edge), also over a bright window, and no old-style white window
     flashes up when the pie opens.
+12. Virtual desktops and Spaces (`platform/windows/desktops.rs`, `platform/macos/spaces.rs`). With three
+    desktops (Spaces), start a program on desktop 3 and go back to desktop 1. An "Open app" slice for it takes you
+    to desktop 3 and puts its window in front. Repeat from desktop 3 for a program on desktop 1 (the search runs to
+    the left). With Settings > Behavior > Other desktops (Other Spaces) set to "Do nothing", the program opens on the
+    current desktop as it did before. A program that is not running starts on the current desktop, and one with a
+    window on this desktop is opened as before. Whenever the program cannot be reached you are left on the desktop
+    you started on. On a desktop with no windows at all nothing is switched on Windows and the program is opened as
+    before.
+12a. macOS only: turn off System Settings > Desktop & Dock > Mission Control > "When switching to an application,
+    switch to a Space with open windows": "Switch" still reaches the app, by pressing Control+Arrow. Turn off the
+    Mission Control shortcuts too: nothing is switched, you stay where you were and the app is only activated. An
+    app with all windows minimized or hidden opens as before and does not flick through the Spaces.
+12c. macOS only: when "Switch" does not reach the app, run from a terminal with `CURSORPIE_DEBUG=1 cargo run
+    --release` and press the slice. The `CursorPie[spaces]:` lines say whether the app and its windows were found,
+    whether `open -a` and the Accessibility raise brought a window, and, for every arrow key pressed, whether the
+    Space changed. Put those lines in the pull request.
+12b. macOS only: "Bring the app's window to this Space" (experimental). The window of an app on another Space
+    arrives on the current one and is raised, or, when macOS refuses, you are taken to the app's Space and
+    `CursorPie: could not move a window of ...` appears on stderr (run `cargo run --release` from a terminal).
+    Note the macOS version in the pull request.
 
 ## Risks and known limitations
 
@@ -166,6 +186,13 @@ Run on macOS 11+ and on Windows 10 and 11:
   what an "app id" is in `config.json`; it is a possible follow-up, not part of 0.3.0.
 - **Foreground rules.** `SetForegroundWindow` can be refused by Windows; the "focus target" option is
   best effort there.
+- **Virtual desktops have no public switch.** "Other desktops" asks `IVirtualDesktopManager` (documented) which
+  desktop a window is on and presses Win+Ctrl+Left / Right (what the user does) to get there. The interface can
+  neither switch desktops nor move a window of another process (`MoveWindowToDesktop` refuses it), and nothing
+  lists the desktops, so the search steps one at a time, right first, then left (at most ten each way) and walks
+  back when it finds nothing. An undocumented interface (`IVirtualDesktopManagerInternal`) could do it directly,
+  but its ids change between Windows builds, so it is not used. A "bring the window here" mode was left out of the
+  Windows build for the same reason (macOS has one, see `platform/macos/spaces.rs`).
 - **Mixed DPI.** With monitors at different scales the pie window may be placed slightly off when it
   moves between monitors; single-scale setups are exact.
 - **Icons in a copied `config.json`.** Image icons are stored as `~/...` paths, which differ per OS. Profile
