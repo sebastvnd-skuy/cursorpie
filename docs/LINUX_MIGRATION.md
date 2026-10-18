@@ -2,8 +2,8 @@
 
 **Status: the X11 part (phases L1 to L4, with the gaps listed in
 [Implementation status](#implementation-status)) is implemented but has not been compiled or run on a
-real desktop. Wayland (L5 to L7) is a design only.** CursorPie 0.4.2 supported macOS and Windows; Linux built
-a do-nothing stub so `cargo test` runs. This document says how to make Linux behave like the other two, what
+real desktop. Wayland (L5 to L7) is a design only.** Releases up to 0.4.2 supported macOS and Windows only (Linux built
+a do-nothing stub so `cargo test` runs); the X11 backend is listed under `## Unreleased` in `CHANGELOG.md`. This document says how to make Linux behave like the other two, what
 stands in the way, and in which order to do it so macOS and Windows never change along the way. It follows the structure of [WINDOWS_MIGRATION.md](WINDOWS_MIGRATION.md) and reuses its rules
 (portable core, backends with identical function names, characterization tests first).
 
@@ -718,19 +718,21 @@ macOS and Windows builds must show no new crates: every one is under
 
 ## Documentation changes
 
-Made with the phases, not now:
+Done with the X11 release:
 
-- `README.md`: title and tagline, "Install" (packages, udev rule), "First launch and permissions"
-  (Linux page), "Known limitations" (the parity matrix, honestly), project layout, config path.
-- `CONTRIBUTING.md`: Prerequisites (system libraries per distribution), "Build for every platform",
-  "What each OS can check", release artifacts.
-- `src/lib.rs`, `src/platform/mod.rs`, `src/tap/mod.rs`, `src/guides/architecture.rs`: the Linux backend,
-  its threads (tap, watchdog, D-Bus), the capability table.
-- `docs/UI_DESIGN.md`: a "Transparent window on Linux" section next to the Windows one.
+- `README.md` (title, tagline, platform table), `docs/INSTALL.md` (Linux install and packages),
+  `docs/KNOWN_ISSUES.md` (the Linux limits) and `docs/USER_GUIDE.md` (Linux notes).
+- `CONTRIBUTING.md`: prerequisites per distribution, build table, what each OS can check.
+- `Cargo.toml` description, `about.rs` tagline, `docs/UI_DESIGN.md` ("Transparent window on Linux").
 - `docs/WINDOWS_MIGRATION.md`: the non-goal "Linux support" points here.
-- `Cargo.toml` description, `about.rs` tagline.
-- `CHANGELOG.md`: a line under `## Unreleased` when Linux first becomes user-visible (L3 or L4), not for
-  the preparatory phases.
+- `CHANGELOG.md`: the Linux entries under `## Unreleased`.
+
+Still to do, with the phases that need them:
+
+- `docs/INSTALL.md` and `docs/KNOWN_ISSUES.md`: packages (deb, rpm, AppImage) and the udev rule once Wayland capture
+  exists, and the parity matrix, honestly.
+- `src/lib.rs`, `src/platform/mod.rs`, `src/tap/mod.rs`, `src/guides/architecture.rs`: the D-Bus and watchdog
+  threads and the capability table, when they are built.
 
 ## Open decisions for the maintainer
 

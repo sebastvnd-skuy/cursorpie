@@ -3,3 +3,6 @@
 *.png
 *.af
 *.DS_Store
+
+# Keep the logos and sample icons (PNGs are ignored everywhere else).
+!icon/*.png

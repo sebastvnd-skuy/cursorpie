@@ -43,7 +43,7 @@
 //!    config, which *Save* applies).
 //! 5. Use it where needed with `let v = cfg().field;`. **Copy the value out and drop the guard**
 //!    instead of holding the lock across slow work.
-//! 6. Document it in the field table of `README.md`.
+//! 6. Document it in the field table of `docs/CONFIGURATION.md`, and in `docs/USER_GUIDE.md` if users see it.
 //!
 //! ## Add a ready-made slice
 //!

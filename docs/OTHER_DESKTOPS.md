@@ -5,17 +5,16 @@ system's own call (`open -a` on macOS), which leaves you where you were when the
 virtual desktop (Windows) or Space (macOS). **Settings > Behavior > Other desktops / Other Spaces** now
 chooses what happens (`desktop_mode` in `config.json`, the type is `DesktopMode`):
 
-| Mode | macOS | Windows |
-|---|---|---|
-| `SwitchToApp` (default) | go to the Space of the app and raise its window | go to the desktop of the app and raise its window |
-| `BringToCurrent` | move the window to this Space (experimental, private calls), else as `SwitchToApp` | not possible, acts as `SwitchToApp` |
+| Mode | macOS | Windows | Linux (X11) |
+|---|---|---|---|
+| `SwitchToApp` (default) | go to the Space of the app and raise its window | go to the desktop of the app and raise its window | ask the window manager to activate the app's window, which usually goes to its workspace |
+| `BringToCurrent` | move the window to this Space (experimental, private calls), else as `SwitchToApp` | not possible, acts as `SwitchToApp` | not possible, acts as `SwitchToApp` |
+| `DoNothing` | `open -a` as before | start or raise as before | start or raise as before |
 
-On Linux (X11) the window manager does the switching: *Open app* asks it to activate the app's window with
-`_NET_ACTIVE_WINDOW` (`Conn::raise`), and the usual window managers go to the workspace that window is on.
-The app is started only when it has no window. `BringToCurrent` acts as `SwitchToApp`. None of the search
-code of this document is used there; whether a given window manager follows the request has not been
-checked on real desktops (see `docs/LINUX_MIGRATION.md`).
-| `DoNothing` | `open -a` as before | start or raise as before |
+On Linux the window manager does the switching: *Open app* asks it to activate the app's window with
+`_NET_ACTIVE_WINDOW` (`Conn::raise`). The app is started only when it has no window. None of the search code
+described below is used there, and whether a given window manager follows the request has not been checked on
+real desktops (see `docs/LINUX_MIGRATION.md`). The rest of this document is about macOS and Windows.
 
 Nothing changes when the app does not run, is hidden, has no window, or has one on the desktop that is
 shown. `DesktopMode::effective` turns a mode the OS lacks into `SwitchToApp`.

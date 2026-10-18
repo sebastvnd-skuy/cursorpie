@@ -1,11 +1,11 @@
 //! # CursorPie
 //!
-//! A hold-to-open **pie menu for macOS and Windows**: hold a mouse button, flick toward a slice, release.
+//! A hold-to-open **pie menu for macOS, Windows and Linux**: hold a mouse button, flick toward a slice, release.
 //! A slice can send a shortcut, launch an app, open a URL, run a shell command, open a submenu,
 //! or remap the mouse's back/forward buttons. Every app can have its own pie ("profile").
 //!
 //! This is the documentation for **developers and contributors**. End-user documentation lives
-//! in the repository's `README.md`.
+//! in the repository's `README.md` and the `docs/` folder (start with `docs/USER_GUIDE.md`).
 //!
 //! The package is a library (this crate, which holds everything) plus a tiny binary
 //! (`src/main.rs`) that calls [`run`]. Keeping the code in a library lets it be documented here.
