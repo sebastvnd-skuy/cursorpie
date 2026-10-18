@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0
+
 - **Open app follows the app to its desktop or Space.** An *Open app* slice for a program that is already
   running on another virtual desktop (Windows) or Space (macOS) now takes you there and brings its window to
   the front, instead of leaving you where you were. **Settings > Behavior > Other desktops / Other Spaces**
