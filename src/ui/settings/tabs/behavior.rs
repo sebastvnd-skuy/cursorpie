@@ -34,11 +34,12 @@ fn color_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
     });
 }
 
-/// What the OS calls a desktop: a Space on macOS, a virtual desktop on Windows.
+/// What the OS calls a desktop: a Space on macOS, a virtual desktop on Windows, a workspace on Linux.
 fn desktop_noun() -> &'static str {
     match crate::platform::OS {
         crate::platform::Os::Mac => "Space",
         crate::platform::Os::Windows => "virtual desktop",
+        crate::platform::Os::Linux => "workspace",
     }
 }
 
@@ -47,6 +48,7 @@ fn desktops_title() -> &'static str {
     match crate::platform::OS {
         crate::platform::Os::Mac => "Other Spaces",
         crate::platform::Os::Windows => "Other desktops",
+        crate::platform::Os::Linux => "Other workspaces",
     }
 }
 

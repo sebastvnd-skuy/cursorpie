@@ -98,6 +98,10 @@ mod tests {
             DesktopMode::BringToCurrent.effective(Os::Windows),
             DesktopMode::SwitchToApp
         );
+        assert_eq!(
+            DesktopMode::BringToCurrent.effective(Os::Linux),
+            DesktopMode::SwitchToApp
+        );
     }
 
     #[test]

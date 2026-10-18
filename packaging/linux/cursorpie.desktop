@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CursorPie
+GenericName=Pie menu
+Comment=Hold-to-open pie menu for the mouse
+Exec=cursorpie
+Icon=cursorpie
+Terminal=false
+Categories=Utility;
+Keywords=pie;menu;mouse;shortcuts;launcher;
+StartupWMClass=cursorpie

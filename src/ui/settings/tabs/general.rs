@@ -4,7 +4,7 @@ use crate::config::backup::age_label;
 use crate::config::*;
 use crate::msg::Msg;
 use crate::platform;
-use crate::tap::TAP_ACTIVE;
+use crate::tap::{PAUSED, TAP_ACTIVE};
 use crate::ui::app::App;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
@@ -47,6 +47,19 @@ impl App {
                     ui.label(RichText::new("Not running (retrying every 2 s)").color(BAD));
                 }
             });
+            // without a tray icon (Linux, for now) pausing and quitting live here
+            if !platform::OS.has_tray() {
+                ui.horizontal(|ui| {
+                    let mut paused = PAUSED.load(Ordering::SeqCst);
+                    if ui.checkbox(&mut paused, "Pause CursorPie").changed() {
+                        PAUSED.store(paused, Ordering::SeqCst);
+                    }
+                    if ui.button("Quit CursorPie").clicked() {
+                        let ctx = ui.ctx().clone();
+                        self.quit(&ctx);
+                    }
+                });
+            }
             if needs {
                 ui.horizontal(|ui| {
                     if ui.button("Open Accessibility settings").clicked() {
@@ -59,6 +72,11 @@ impl App {
                 muted(
                     ui,
                     "If it still says 'Not running' after granting access, quit and reopen CursorPie.",
+                );
+            } else if platform::OS == platform::Os::Linux {
+                muted(
+                    ui,
+                    "No permission is needed on X11. In a Wayland session CursorPie only sees X11 and XWayland windows: log in with an X11 session for full support.",
                 );
             } else {
                 muted(

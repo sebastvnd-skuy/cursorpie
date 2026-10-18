@@ -27,6 +27,10 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # The Linux backend links to the X11 libraries (see CONTRIBUTING.md, "Prerequisites").
+      - name: Linux libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libxtst-dev libxrandr-dev
       # One command for everything, so what passes on your machine passes here (tools/src/ci.rs
       # holds the list: format, version files, clippy, tests, doc tests, docs on macOS, and the
       # Windows backend checks on macOS and Linux).

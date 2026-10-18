@@ -41,9 +41,14 @@ mod windows;
 #[cfg(windows)]
 use windows as native;
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux as native;
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 mod native {
-    //! No hook on this OS (the Linux test stub): nothing is ever captured.
+    //! No hook on this OS (the test stub): nothing is ever captured.
     use crate::msg::Notifier;
 
     /// Does nothing; `TAP_ACTIVE` stays false.

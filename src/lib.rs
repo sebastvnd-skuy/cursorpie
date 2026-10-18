@@ -32,20 +32,22 @@
 //! | [`geometry`] | any thread | pie sizes and slice hit-testing (shared by tap and UI) |
 //! | [`keys`] | any thread | shortcut model (key code + modifiers) and its labels |
 //! | [`msg`] | any thread | messages sent *to* the UI thread |
-//! | [`platform`] | any thread (some main only) | OS glue: permissions, apps, login item, keyboard layout (macOS, Windows, stub) |
+//! | [`platform`] | any thread (some main only) | OS glue: permissions, apps, login item, keyboard layout (macOS, Windows, Linux, stub) |
 //! | [`ui`] | main thread | eframe app, pie renderer, Settings window, first-launch welcome window, menu bar icon |
 //! | [`about`] | - | name, version, links shown in the About tab |
 //!
 //! ## Platform
 //!
-//! macOS (11 or later) and Windows (10 1809 or later). Other targets build against a do-nothing stub
-//! backend so the portable code can be unit tested there; see [`platform`]. The Windows port is
-//! described in `docs/WINDOWS_MIGRATION.md`.
+//! macOS (11 or later), Windows (10 1809 or later) and Linux (X11 sessions). Other targets build
+//! against a do-nothing stub backend so the portable code can be unit tested there; see [`platform`].
+//! The Windows port is described in `docs/WINDOWS_MIGRATION.md`, the Linux one in
+//! `docs/LINUX_MIGRATION.md`.
 //! To read these docs locally run `cargo docs` (an alias for
 //! `cargo doc --no-deps --document-private-items --open`, see `.cargo/config.toml`).
 //! When published, docs.rs builds them for the Apple targets listed in `Cargo.toml`.
 
-// The Linux stub has no hook, so the gesture machinery is only exercised by tests there.
+// The stub (targets without a backend) has no hook, so the gesture machinery is only exercised by
+// tests there.
 #![cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 
 pub mod about;
@@ -110,6 +112,9 @@ pub fn run() -> eframe::Result<()> {
     // no taskbar button for the hidden pie window (Windows only; macOS hides the Dock icon instead)
     #[cfg(windows)]
     let viewport = viewport.with_taskbar(false);
+    // the X11 window class: lets a window manager rule or a launcher recognize CursorPie
+    #[cfg(target_os = "linux")]
+    let viewport = viewport.with_app_id("cursorpie");
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()

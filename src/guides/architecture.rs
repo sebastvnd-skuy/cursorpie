@@ -20,14 +20,16 @@
 //! | Thread | Started by | Owns | Talks to the others through |
 //! |---|---|---|---|
 //! | **main / UI** | `eframe::run_native` in [`crate::run`] | the [`App`](crate::ui::app::App), every egui window, the menu bar icon, the keyboard-layout snapshot | receives [`Msg`](crate::msg::Msg) values |
-//! | **`cursorpie-tap`** | [`tap::spawn`](crate::tap::spawn) | the OS hook (`CGEventTap` + `CFRunLoop`, or the Windows low-level hooks + message loop), the gesture state | sends `Msg` (`Warm`, `ShowPie`, ...) through a [`Notifier`](crate::msg::Notifier); enqueues actions |
+//! | **`cursorpie-tap`** | [`tap::spawn`](crate::tap::spawn) | the OS hook (`CGEventTap` + `CFRunLoop`, the Windows low-level hooks + message loop, or on Linux the XInput2 grabs on the shared X connection), the gesture state | sends `Msg` (`Warm`, `ShowPie`, ...) through a [`Notifier`](crate::msg::Notifier); enqueues actions |
 //! | **`cursorpie-actions`** | [`actions::init`](crate::actions::init) | the queue of [`Action`](crate::config::Action)s to execute | receives jobs from [`actions::run_in`](crate::actions::run_in) |
 //! | short-lived | on demand | hold timer, double-click timer, file chooser, config save | send `Msg` or touch shared state |
 //!
 //! Why separate threads?
 //!
 //! * The tap callback is on the input path of the whole system. If it is slow the OS disables the
-//!   hook (macOS says so; Windows silently removes it), so it only *decides* and never *does* anything slow.
+//!   hook (macOS says so; Windows silently removes it). On X11 nothing disables a grab, but a stalled
+//!   tap thread would hold back the events of the grabbed buttons until it recovers. Either way it only
+//!   *decides* and never *does* anything slow.
 //! * Actions (sending keys, spawning `open`, sleeping 40 ms between sequence steps) must run in
 //!   the order the user triggered them, so they all go through one worker.
 //! * egui must be driven from the main thread.
@@ -39,9 +41,11 @@
 //! cursor. In *Settings mode* the same window is resized to the card size, made interactive,
 //! lowered to the normal window level and centered on the display that contains the cursor.
 //! [`ui::app`](crate::ui::app) switches between the two (`show_pie`, `open_settings`,
-//! `close_settings`). The window only looks transparent if the renderer supports it: Windows uses
-//! the `glow` renderer for that reason, macOS keeps `wgpu`, and on Windows the OS frame (white box,
-//! border, shadow) is stripped every frame by `platform::clear_window_frame` (see `docs/UI_DESIGN.md`).
+//! `close_settings`). The window only looks transparent if the renderer supports it: Windows and
+//! Linux use the `glow` renderer for that reason, macOS keeps `wgpu`, and on Windows the OS frame
+//! (white box, border, shadow) is stripped every frame by `platform::clear_window_frame`. On Linux that
+//! function does nothing, and per-pixel alpha needs a compositing manager on X11 (see
+//! `docs/UI_DESIGN.md`).
 //! Because the window is click-through, the pie never steals mouse events: the
 //! event tap is what sees the mouse, and the UI only draws.
 //!
@@ -224,42 +228,53 @@
 //! 4. **Release the gesture lock before sending messages or posting events.** The transition
 //!    functions in `tap::trigger` take the `MutexGuard` by value so they can `drop` it first.
 //! 5. **Ignore your own events.** Anything posted by [`actions`](crate::actions) is tagged with
-//!    `SYNTH_TAG` and skipped by the native hook glue before `dispatch`.
+//!    `SYNTH_TAG` and skipped by the native hook glue before `dispatch`. X11 events carry no such
+//!    tag, so the Linux backend lifts its own grabs while it posts a press and puts them back after
+//!    the server has handled it (`Conn::inject_button` in `platform/linux/x11.rs`), and never sees
+//!    its own event.
 //!
 //! ## OS APIs and external tools
 //!
 //! Each need is met by one function of the [`platform`](crate::platform) facade (or by the `tap`
-//! glue); the macOS and Windows implementations sit side by side in `platform/macos/` and
-//! `platform/windows/`. The [Windows migration plan](https://github.com/sebastvnd/cursorpie/blob/main/docs/WINDOWS_MIGRATION.md)
-//! explains the design.
+//! glue); the macOS, Windows and Linux implementations sit side by side in `platform/macos/`,
+//! `platform/windows/` and `platform/linux/`. The
+//! [Windows migration plan](https://github.com/sebastvnd/cursorpie/blob/main/docs/WINDOWS_MIGRATION.md)
+//! and the [Linux migration plan](https://github.com/sebastvnd/cursorpie/blob/main/docs/LINUX_MIGRATION.md)
+//! explain the designs; the Linux one also says what is built and what is not.
 //!
-//! | Need | macOS | Windows | Where |
-//! |---|---|---|---|
-//! | global mouse/keyboard events | `CGEventTap` (HID, head insert, active) | `WH_MOUSE_LL` + `WH_KEYBOARD_LL` | [`tap`](crate::tap) |
-//! | send keys / replay clicks | `CGEvent` posted to the HID tap location | `SendInput` | `platform::press_shortcut`, `platform::post_mouse` |
-//! | permission | `AXIsProcessTrusted` (Accessibility) | none | [`platform`](crate::platform) |
-//! | frontmost app | `NSWorkspace` | `GetForegroundWindow` + process image name | `platform::frontmost_bundle_id` |
-//! | app under the pointer | `CGWindowListCopyWindowInfo` + `NSRunningApplication` | `WindowFromPoint` | `platform::bundle_id_at` |
-//! | real app icon | `NSWorkspace.iconForFile` as TIFF, decoded by the `tiff` crate | `PrivateExtractIconsW` as RGBA | [`ui::appicon`](crate::ui::appicon) |
-//! | give freed memory back | `malloc_zone_pressure_relief` | `SetProcessWorkingSetSize(-1, -1)` | `platform::release_unused_memory` |
-//! | key labels on any layout | TIS + `UCKeyTranslate`, snapshot taken on the main thread | `MapVirtualKeyExW` + `ToUnicodeEx` | [`platform::layout`](crate::platform::layout) |
-//! | tray icon | `tray-icon` / `muda` (menu bar) | `tray-icon` / `muda` (notification area) | [`ui::tray`](crate::ui::tray) |
-//! | no Dock / taskbar entry | `NSApplicationActivationPolicyAccessory` | `with_taskbar(false)` | `platform::set_accessory_policy`, [`run`](crate::run) |
-//! | launch at login | a LaunchAgent plist | `HKCU\...\Run` value, pointing at the installed copy | `platform::set_launch_at_login` |
-//! | install, uninstall, one running copy | none (the `.app` is the install; `scripts/make-dmg.sh` packs it into a `.dmg`) | the program installs itself (copy to `%LOCALAPPDATA%\Programs\CursorPie`, `HKCU\...\Uninstall` entry, named mutex), or the Setup wizard `installer/cursorpie.iss` does and the program then leaves the install alone (`unins000.exe` next to it) | `platform::ensure_installed`, `platform::handle_command_line`, `platform::single_instance` |
-//! | open apps / URLs, file chooser, app id of a file, hover tick | `open`, `osascript`, `mdls`, `afplay` | `ShellExecuteW`, `GetOpenFileNameW`, file name, `MessageBeep` | [`platform`](crate::platform) |
+//! | Need | macOS | Windows | Linux (X11) | Where |
+//! |---|---|---|---|---|
+//! | global mouse/keyboard events | `CGEventTap` (HID, head insert, active) | `WH_MOUSE_LL` + `WH_KEYBOARD_LL` | XInput2 passive grabs (`XIGrabButton`, asynchronous) on the trigger and the side buttons; a core keyboard grab only while a shortcut is recorded | [`tap`](crate::tap) |
+//! | send keys / replay clicks | `CGEvent` posted to the HID tap location | `SendInput` | XTest (`XTestFakeKeyEvent`, `XTestFakeButtonEvent`); key code = Linux key code + 8; grabs lifted around a press | `platform::press_shortcut`, `platform::post_mouse` |
+//! | permission | `AXIsProcessTrusted` (Accessibility) | none | none (X11) | [`platform`](crate::platform) |
+//! | frontmost app | `NSWorkspace` | `GetForegroundWindow` + process image name | `_NET_ACTIVE_WINDOW` + `WM_CLASS`, mapped to a desktop-entry id | `platform::frontmost_bundle_id` |
+//! | app under the pointer | `CGWindowListCopyWindowInfo` + `NSRunningApplication` | `WindowFromPoint` | `_NET_CLIENT_LIST_STACKING` + window geometry, hit test in `platform/linux/toplevels.rs` | `platform::bundle_id_at` |
+//! | real app icon | `NSWorkspace.iconForFile` as TIFF, decoded by the `tiff` crate | `PrivateExtractIconsW` as RGBA | not built yet: the pie shows its own glyph | [`ui::appicon`](crate::ui::appicon) |
+//! | give freed memory back | `malloc_zone_pressure_relief` | `SetProcessWorkingSetSize(-1, -1)` | `malloc_trim` (glibc only) | `platform::release_unused_memory` |
+//! | key labels on any layout | TIS + `UCKeyTranslate`, snapshot taken on the main thread | `MapVirtualKeyExW` + `ToUnicodeEx` | not built yet: the US/ANSI fallback table | [`platform::layout`](crate::platform::layout) |
+//! | tray icon | `tray-icon` / `muda` (menu bar) | `tray-icon` / `muda` (notification area) | not built yet: Pause and Quit are in Settings > General | [`ui::tray`](crate::ui::tray) |
+//! | no Dock / taskbar entry | `NSApplicationActivationPolicyAccessory` | `with_taskbar(false)` | nothing set yet (no window-type hints) | `platform::set_accessory_policy`, [`run`](crate::run) |
+//! | launch at login | a LaunchAgent plist | `HKCU\...\Run` value, pointing at the installed copy | an XDG autostart entry, `~/.config/autostart/cursorpie.desktop` | `platform::set_launch_at_login` |
+//! | install, uninstall, one running copy | none (the `.app` is the install; `scripts/make-dmg.sh` packs it into a `.dmg`) | the program installs itself (copy to `%LOCALAPPDATA%\Programs\CursorPie`, `HKCU\...\Uninstall` entry, named mutex), or the Setup wizard `installer/cursorpie.iss` does and the program then leaves the install alone (`unins000.exe` next to it) | none (packages, or the tarball of `scripts/package-linux.sh`); a `flock` on `$XDG_RUNTIME_DIR/cursorpie.lock` | `platform::ensure_installed`, `platform::handle_command_line`, `platform::single_instance` |
+//! | open apps / URLs, file chooser, app id of a file, hover tick | `open`, `osascript`, `mdls`, `afplay` | `ShellExecuteW`, `GetOpenFileNameW`, file name, `MessageBeep` | `gio launch`, `xdg-open`, `/bin/sh -c`, `zenity` or `kdialog`, desktop-entry file name, `canberra-gtk-play` | [`platform`](crate::platform) |
 //!
-//! The macOS tools ship with the system, so the app needs nothing installed on either OS.
+//! The macOS tools ship with the system, so the app needs nothing installed on macOS or Windows. On
+//! Linux the program links to `libX11`, `libXi`, `libXtst` and `libXrandr`, and uses `xdg-open` and
+//! `gio` when they are present; `zenity` or `kdialog` (file chooser) and `canberra-gtk-play` (hover
+//! tick) are optional.
 //!
 //! The welcome window of the first start has no platform-specific code: it is drawn by
 //! `ui/settings/welcome.rs` and only its texts depend on the OS (`Os::needs_permission`,
-//! `Os::tray_name`). Whether it is due is decided by the marker file `welcome_shown` next to
+//! `Os::tray_name`, `Os::has_tray`). Whether it is due is decided by the marker file `welcome_shown` next to
 //! `config.json` (`config/first_run.rs`).
 //!
 //! ### Portable layer
 //!
 //! The hook glue converts each native event to an `Ev` and calls `tap::dispatch`, which answers
 //! `Keep` or `Drop`. Key codes in events and in `config.json` are **macOS virtual key codes**; the
-//! Windows backend translates at the edge with [`platform::keymap`](crate::platform::keymap).
+//! Windows and Linux backends translate at the edge with [`platform::keymap`](crate::platform::keymap)
+//! (on Linux the X11 keycode is the Linux key code plus 8).
 //! Coordinates are logical points ([`geometry::Point`](crate::geometry::Point)); on Windows the
-//! hook divides pixels by the monitor scale. On Windows a pointer move is never swallowed.
+//! hook divides pixels by the monitor scale, and on Linux by the one global X11 scale. On Windows a
+//! pointer move is never swallowed. On X11 a move reaches the tap only while a grabbed button is
+//! held, and the tap never swallows a move outside a gesture because it gets none.

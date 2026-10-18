@@ -1,18 +1,21 @@
 # Linux support: design and migration plan
 
-**Status: proposal. Nothing in this document is implemented.** CursorPie 0.4.2 supports macOS and Windows;
-Linux builds a do-nothing stub so `cargo test` runs. This document says how to make Linux behave like the
-other two, what stands in the way, and in which order to do it so macOS and Windows never change along the
-way. It follows the structure of [WINDOWS_MIGRATION.md](WINDOWS_MIGRATION.md) and reuses its rules
+**Status: the X11 part (phases L1 to L4, with the gaps listed in
+[Implementation status](#implementation-status)) is implemented but has not been compiled or run on a
+real desktop. Wayland (L5 to L7) is a design only.** CursorPie 0.4.2 supported macOS and Windows; Linux built
+a do-nothing stub so `cargo test` runs. This document says how to make Linux behave like the other two, what
+stands in the way, and in which order to do it so macOS and Windows never change along the way. It follows the structure of [WINDOWS_MIGRATION.md](WINDOWS_MIGRATION.md) and reuses its rules
 (portable core, backends with identical function names, characterization tests first).
 
-Nothing here was built or run: every statement about a Linux API, a compositor or a desktop environment
-is a design assumption. Assumptions that decide whether the design works are collected as spikes in
-[Phase 0](#phase-0-spikes) and must be answered before the phase that depends on them starts.
+Every statement about a Wayland compositor or a desktop environment is still a design assumption.
+Assumptions that decide whether the design works are collected as spikes in
+[Phase 0](#phase-0-spikes); the X11 ones were answered against a real X server (Xvfb), see the results
+there.
 
 ## Contents
 
 - [Summary](#summary)
+- [Implementation status](#implementation-status)
 - [Goals and non-goals](#goals-and-non-goals)
 - [Why Linux is different](#why-linux-is-different)
 - [Support tiers](#support-tiers)
@@ -68,6 +71,62 @@ Decision record:
 
 The single biggest risk is the pie window on Wayland: eframe/winit cannot create layer-shell surfaces,
 which is the right tool there. See [Obstacles](#obstacles-and-solutions), O-4.
+
+## Implementation status
+
+What exists in the code today, what differs from the design below, and what was and was not checked.
+
+**Built (X11, Tier 1):**
+
+- L1, the seam: `Os::Linux`, the Linux key tables (`platform/keymap.rs`), session detection, desktop-entry
+  parsing and app-id matching, window hit test, XDG paths, autostart file text, launch resolution,
+  display-scale rules (all in `platform/linux/`, pure and tested on every OS), Linux defaults
+  (`config/defaults.rs`), config and export locations (`config/store.rs`), welcome text.
+- L2, the skeleton: `cfg(target_os = "linux")` selects the Linux backend; other Unixes keep the stub;
+  `eframe` uses `glow` and `x11` on Linux (`Cargo.toml`).
+- L3, the X11 backend: mouse capture with XInput2 passive grabs (`tap/linux.rs`), key and mouse injection
+  with XTest, pointer, monitors (XRandR), frontmost app and app under the pointer (EWMH), activating an
+  app, keyboard grab while recording a shortcut.
+- L4, the parts that need no new dependency: XDG autostart, `xdg-open`/`gio`/shell launching, *Open app*
+  that follows an app to its workspace (`reveal_app`, see `docs/OTHER_DESKTOPS.md`), a file
+  chooser through `zenity` or `kdialog`, a single-instance lock (`flock`), `malloc_trim`, a hover sound
+  through `canberra-gtk-play`, Pause and Quit buttons in Settings > General, `scripts/package-linux.sh`
+  and `packaging/linux/cursorpie.desktop`.
+
+**Differences from the design:**
+
+| Design | Implemented | Why |
+|---|---|---|
+| `x11rb` crate | hand-written Xlib, XInput2, XTest and XRandR bindings (`platform/linux/xlib.rs`) | no new dependency, and every layout was checked against a real server |
+| `xkbcommon` layout labels | none; labels use the US/ANSI fallback table | not done yet |
+| StatusNotifierItem tray, D-Bus single instance, `--settings` command line | no tray; `flock` file; Pause and Quit in Settings | needs `zbus`, not done yet |
+| Ignore events from the XTEST device | the grabs are lifted around an injected press | the grab-lifting sequence is what was tested |
+| Right button grabbed only while a pie is open | the right button is not grabbed at all; it reaches CursorPie while the trigger is held | an active grab reports every button; tested |
+| Extra mouse buttons as trigger (Appendix B) | only the middle button | the mapping needs real mice |
+| App icons, window hints, XShape fallback | none; the window uses winit's defaults | not done yet |
+| Packages | a tarball with `install.sh` | `.deb`, `.rpm`, AppImage not done |
+
+**Not built:** everything Wayland (L5 to L7), the tray, keyboard-layout labels, app icons, the XShape
+fallback for a missing compositor, the `--doctor` report, Flatpak.
+
+**What was checked:**
+
+- The X11 mechanics, in a throw-away prototype with the same calls against a real X server (Xvfb): passive
+  grabs swallow a press and the motion that follows, XInput2 and key events decode into the structures used
+  in `xlib.rs`, a swallowed click is sent again correctly after lifting the grabs, the grabs come back, a
+  right click during a held trigger is reported, `XGrabKeyboard` reports the key with its modifiers, RandR
+  monitors, `WM_CLASS`, format-32 properties, window geometry in root coordinates, and the
+  `_NET_ACTIVE_WINDOW` client message as a window manager receives it. Spikes S1 and S2 below record the
+  findings.
+- The key tables against the real `linux/input-event-codes.h`: all 54 special-key rows and 48 layout-key
+  rows match, and the modifier codes.
+- The expected values of the pure helpers' tests, by re-implementing their algorithms separately.
+
+**What was not checked:** the Rust code was **never compiled and the Rust tests were never run**: the
+environment it was written in had no Rust toolchain. Expect compile errors and formatting differences
+(`cargo fmt` has not been run); fixing them is the first thing to do. Nothing was run on a real desktop, with
+a real mouse, a window manager, a compositor or a high-DPI display. The `tap/linux.rs` state handling,
+`Conn::activate`, the window gathering and the scale rule have only been exercised through the prototype.
 
 ## Goals and non-goals
 
@@ -189,9 +248,10 @@ Same layout as the table in `WINDOWS_MIGRATION.md`. `Wayland` means "the Tier 2/
    are untouched. As on Windows, pointer moves are never dropped on X11; on evdev they are forwarded
    unless the state machine says `Drop`.
 9. **Our own synthetic events are recognized without a tag value.** macOS and Windows put `SYNTH_TAG` in
-   the event. X11 XTest events carry no such field, so the X11 tap ignores events whose source device
-   is the "Virtual core XTEST pointer"; the evdev tap never opens the uinput devices it created
-   (matched by device name and a marker in the physical-path string).
+   the event. X11 XTest events carry no such field, so the X11 backend lifts its own grabs while it sends a
+   press and puts them back afterwards, and never sees its own event (implemented this way; ignoring the
+   "Virtual core XTEST pointer" device was the alternative). The evdev tap never opens the uinput devices
+   it created (matched by device name and a marker in the physical-path string).
 10. **`glow` on Linux.** `eframe` is declared with `default-features = false`, `glow`, `x11` and
     `wayland` on Linux, `wgpu` stays on macOS only. Rule from `UI_DESIGN.md` carries over: never
     enable `wgpu` in the Linux table, and check with `cargo tree -i wgpu --target
@@ -222,18 +282,17 @@ connect to the compositor's IPC, try to open `/dev/uinput`. The result is a `Cap
 **X11 (`tap/linux/x11.rs`).**
 
 - Passive grab (`XIGrabButton`) on the root window for the trigger button and the two side buttons, in
-  asynchronous mode. The press is delivered to CursorPie, not to the app: the swallow. Right button is
-  grabbed only while a pie is open, otherwise right-clicks would be affected (the state machine already
-  tells right-clicks to pass through; the grab must not exist outside a pie).
+  asynchronous mode. The press is delivered to CursorPie, not to the app: the swallow. The right button is
+  **not** grabbed: while the trigger is held its active grab reports every button (tested), which is
+  when the state machine wants right clicks, and outside a gesture right clicks never reach CursorPie.
 - Motion comes from XInput2 raw events or `XQueryPointer`, only while a gesture is running, as on
   Windows (`on_mouse` returns early when the gesture is `Idle`).
 - A grab catches synthetic events from XTest too. To hand a click or a drag back to the app, the tap
-  **ungrabs, injects through XTest, and grabs again** on release. Which events are ours is decided by
-  the XTEST source device id, found once with `XIQueryDevice`. A short window between ungrab and
-  re-grab can miss a press; the ungrab is held for the shortest time and only exists when a press is
-  handed back. (Open question S2: whether a grab on a *slave* device avoids the dance.)
+  **lifts its grabs, injects through XTest, and grabs again**, so it never sees its own event. A quick
+  click (both swallowed, then sent again after the physical release) works (tested). Handing a **drag**
+  back while the button is still held is best effort: see S2.
 - Key events are needed only to record a shortcut. While `RECORDING` is true the tap grabs the keyboard
-  (`XIGrabKeyboard`-style active grab), captures one key with its modifiers, and ungrabs. Outside
+  (core `XGrabKeyboard`, which reports `XKeyEvent`s), captures one key with its modifiers, and ungrabs. Outside
   recording no keyboard grab exists, same promise as the README's privacy section.
 - The loop waits on the X connection's file descriptor and a wake pipe. It does not block in `dispatch`.
 
@@ -518,7 +577,7 @@ Phases L1 and L2 change no behavior on any OS.
 
 | # | Phase | Exit criteria |
 |---|---|---|
-| 0 | This document, and the [spikes](#phase-0-spikes) | reviewed; S1 to S3 answered before L3, S4 to S6 before L5, S7 and S8 before L6 and L7 |
+| 0 | This document, and the [spikes](#phase-0-spikes) | reviewed; S1 and S2 answered (below); S3 before the window hints, S4 to S6 before L5, S7 and S8 before L6 and L7 |
 | L1 | **Characterization and the seam.** Pin the tests that assume `Os::current()` is `Mac` on Linux; add `Os::Linux` and every pure table: names, primary modifier, hints, app id normalization, `Session::detect`, XDG paths and `user-dirs.dirs` parser, desktop-entry parser and matcher, toplevel hit test, Linux key tables, button tables, command-line parsing | all old and new tests pass on macOS, Windows and Linux; no runtime behavior changes |
 | L2 | **Linux skeleton.** `cfg(target_os = "linux")` replaces the stub on Linux (other targets keep it); `platform/linux/` with capability plumbing and unavailable-because messages; `check-linux` feature; eframe features per target; CI job that builds on Linux with the system libraries | `cargo build` on Linux produces an app that starts, reports "capabilities: none ready" and exits cleanly; macOS and Windows builds unchanged (`cargo tree` shows no new crates there) |
 | L3 | **X11 backend (Tier 1).** capture, injection, apps, toplevels, displays, layout, window hints, shape fallback | Xvfb integration tests pass; manual checklist items 1 to 11 pass on Xorg under at least GNOME, KDE, XFCE and one tiling WM |
@@ -537,8 +596,8 @@ Throwaway programs that answer one question each. None is merged.
 
 | # | Question | Pass condition |
 |---|---|---|
-| S1 | Is X keycode = Linux key code + 8 on current distributions? Are Linux key codes equal to set-1 scan codes for the main block? | XTest sends the expected key on GNOME, KDE and XFCE X11 sessions; the table in Appendix A matches `linux/input-event-codes.h` |
-| S2 | Can a passive grab on a slave pointer avoid the ungrab, inject, re-grab dance? How long is the missed-press window otherwise? | a decision, with measurements of the window in milliseconds |
+| S1 | Is X keycode = Linux key code + 8 on current distributions? Are Linux key codes equal to set-1 scan codes for the main block? | XTest sends the expected key on GNOME, KDE and XFCE X11 sessions; the table in Appendix A matches `linux/input-event-codes.h`. **Result:** the table matches the kernel header in full, and on Xvfb's `evdev` keymap keycode = code + 8 for A, Z, Return, Left, Ctrl, Shift, Alt and Super (F13 reports `XF86Tools`, as the physical key does). Not yet seen on GNOME, KDE and XFCE sessions. |
+| S2 | Can a swallowed press be handed back to the app, for a click and for a drag? | a decision. **Result (Xvfb):** after the physical release, lifting the grabs and sending press and release works and the next press is grabbed again. While the button is still down, the sent press was dropped by the server (the button was already down; on Xvfb the hardware and the injected events share one device, so this is not conclusive for a real mouse). A synchronous grab with `XIAllowEvents(ReplayDevice)` hands the press back perfectly, but it freezes the pointer (its position did not change until released), so it cannot be held for the 500 ms hold. **Decision:** asynchronous grab, quick clicks are reliable, a drag handed back may lose its start; revisit on real hardware. |
 | S3 | What do the window hints produce on GNOME, KDE, XFCE, i3, bspwm, awesome, openbox? Does an override-redirect window under XWayland sit above Wayland windows? | for each: floats, no focus, correct position, always above, no frame |
 | S4 | Does `EVIOCGRAB` plus a cloned uinput device keep the desktop's acceleration, speed and natural-scroll settings on GNOME, KDE, Sway? | per compositor: identical or not; if not, the documented workaround |
 | S5 | CPU and latency of the forwarding loop at 1000 and 8000 Hz; scrolling with hi-res wheels | within the budget in O-16; no duplicated or lost scroll |
@@ -646,8 +705,8 @@ reason; license and maintenance status are confirmed in that pull request.
 
 | Crate | Phase | Used for | Why not std |
 |---|---|---|---|
-| `x11rb` | L3 | X11 protocol: XInput2, XTest, RandR, Shape, XKB, EWMH | no X11 in std; pure Rust, no libX11 link |
-| `xkbcommon` | L3 | layout labels from rule names | needs the keymap compiler |
+| ~~`x11rb`~~ | L3 | not used: hand-written bindings to libX11, libXi, libXtst and libXrandr instead (see [Implementation status](#implementation-status)) | |
+| `xkbcommon` | later | layout labels from rule names | needs the keymap compiler |
 | `zbus` (blocking) | L4 | single instance, portals, StatusNotifierItem, dbusmenu, KWin script, locale1, logind | no D-Bus in std; pure Rust, no libdbus |
 | a StatusNotifierItem helper (for example `ksni`) | L4 | the tray | optional; could be written on `zbus` |
 | `evdev` | L5 | device enumeration, grabs, uinput devices | raw ioctls are error-prone |
@@ -685,7 +744,8 @@ Made with the phases, not now:
 
 ## Appendix A: key code table
 
-Draft, to be verified against `linux/input-event-codes.h` by a unit test (spike S1). The macOS
+Verified against `linux/input-event-codes.h` (all rows match) and by the unit tests in
+`platform/keymap.rs`. The macOS
 code is the one stored in `config.json`; the Linux code is an evdev key code (X11 keycode minus 8).
 
 Layout keys: Linux key code equals the set-1 scan code already in `LAYOUT_KEYS`
@@ -722,7 +782,7 @@ numbers (0 left, 1 right, 2 middle, 3 back, 4 forward, 5 to 7 extra).
 | right | 1 | `BTN_RIGHT` | 3 |
 | back | 3 | `BTN_SIDE` | 8 |
 | forward | 4 | `BTN_EXTRA` | 9 |
-| extra 5, 6, 7 (trigger choices) | 5, 6, 7 | `BTN_FORWARD`, `BTN_BACK`, `BTN_TASK` | the next numbers the driver assigns, found at run time |
+| extra 5, 6, 7 (trigger choices) | 5, 6, 7 | `BTN_FORWARD`, `BTN_BACK`, `BTN_TASK` | the next numbers the driver assigns, found at run time. **Not implemented**: Linux offers only the middle button for now |
 
 Some mice put their thumb buttons on `BTN_FORWARD` and `BTN_BACK` instead. The table is the default; a
 "learn a button" control in Settings is the proper fix and is listed as a follow-up.

@@ -5,10 +5,14 @@ The technical documentation lives in the Rust docs (see [Documentation](#documen
 
 ## Prerequisites
 
-- **macOS 11 or later, or Windows 10 (1809) / 11.** Linux builds a do-nothing stub, enough to run `cargo test`.
+- **macOS 11 or later, Windows 10 (1809) / 11, or Linux with an X11 session.** Other Unixes build a do-nothing stub, enough to run `cargo test`.
 - **Rust 1.88 or later** (edition 2024), installed with [rustup](https://rustup.rs).
 - macOS: Xcode Command Line Tools (`xcode-select --install`) for the linker and `codesign`.
 - Windows: the MSVC build tools (Visual Studio Build Tools, "Desktop development with C++").
+- Linux: a C linker and the development files of libx11, libxi, libxtst and libxrandr (Debian and Ubuntu:
+  `sudo apt install build-essential libx11-dev libxi-dev libxtst-dev libxrandr-dev`; Fedora:
+  `sudo dnf install gcc libX11-devel libXi-devel libXtst-devel libXrandr-devel`). A minimal system may also lack
+  libraries the window toolkit loads at run time (OpenGL, libxkbcommon-x11, libxcursor).
 
 ## Build and run
 
@@ -33,7 +37,8 @@ you a working app; the other builds exist to check that your change still compil
 | macOS | the macOS app | `scripts/bundle.sh` | `target/bundle/CursorPie.app` |
 | macOS | a disk image to distribute | `scripts/make-dmg.sh` | `target/bundle/CursorPie-<version>-<arch>.dmg` |
 | Windows | the Windows app | `scripts\package-windows.ps1` | `target/bundle/CursorPie-windows.zip`, and `CursorPie-<version>-setup.exe` if Inno Setup 6 is installed |
-| Linux | to run the tests | `cargo test` | no app: Linux builds the do-nothing stub |
+| Linux | the Linux app | `scripts/package-linux.sh` | `target/bundle/cursorpie-<version>-linux-<arch>.tar.gz` |
+| other Unix | to run the tests | `cargo test` | no app: it builds the do-nothing stub |
 | any OS | to type-check the Windows backend | `cargo check --features check-windows` | no binary |
 | macOS or Linux | a Windows `.exe` (best effort) | see [Cross-compiling to Windows](#cross-compiling-to-windows) | `cursorpie.exe` |
 
@@ -90,28 +95,11 @@ executable and the wizard.
 
 ### Linux
 
-Linux has no real backend yet. `cargo build` and `cargo test` work (the stub does nothing), which is
-enough to run the whole unit test suite and to write platform-independent code. How a real Linux backend
-would be built, and in which order, is described in `docs/LINUX_MIGRATION.md` (a proposal). If linking fails,
-install your distribution's X11, Wayland and xkbcommon development packages.
-
-### Cross-compiling to Windows
-
-You can produce a `cursorpie.exe` from macOS or Linux with
-[cargo-xwin](https://github.com/rust-cross/cargo-xwin). It needs `clang` and `lld` (LLVM) and
-downloads the Windows SDK on first use, which means accepting Microsoft's license:
-
-```sh
-rustup target add x86_64-pc-windows-msvc
-cargo install --locked cargo-xwin
-cargo xwin build --release --target x86_64-pc-windows-msvc
-# result: target/x86_64-pc-windows-msvc/release/cursorpie.exe
-```
-
-Treat this as a smoke test. The mouse hook, the tray icon, DPI handling and the transparent window only
-prove themselves on a real Windows machine, so run the manual checklist in `docs/WINDOWS_MIGRATION.md`
-before you call a change finished. CI-style checks that need no Windows machine are
-`cargo check --features check-windows` and `cargo clippy --all-targets --features check-windows`.
+`cargo run` builds and starts the app. It works in an **X11 session** (in a Wayland session it only sees X11
+and XWayland windows; see `docs/LINUX_MIGRATION.md` for what is and is not done). `scripts/package-linux.sh`
+builds a tarball with an `install.sh`. If linking fails, install the development packages listed under
+[Prerequisites](#prerequisites). Build on an older distribution if the binary must start on older ones.
+`CURSORPIE_BACKEND=x11` forces the X11 backend, for bug reports.
 
 ### What each OS can check
 
@@ -121,6 +109,7 @@ Rust only compiles the code of the OS you build on, so a lint can only see that 
 |---|---|
 | `platform/macos/`, `tap/macos.rs` | `cargo clippy` and `cargo test` on macOS only |
 | `platform/windows/`, `tap/windows.rs` | Windows, or any OS with `--features check-windows` |
+| `platform/linux/` (the X11 backend), `tap/linux.rs` | Linux only. The pure helpers beside them (session, desktop entries, window hit test, XDG paths) are tested on every OS |
 | everything else | any OS |
 
 To release, follow [Releasing](#releasing). Never change the version by hand.
@@ -229,7 +218,7 @@ src/actions.rs     worker thread that executes actions in order
 src/cache.rs       bounded LRU cache (icon textures)
 src/history.rs     undo / redo snapshots (Settings editor)
 src/side.rs        which pie the back/forward buttons follow
-src/platform/      OS glue behind one facade: macos/, windows/, stub.rs, plus keymap.rs (key tables)
+src/platform/      OS glue behind one facade: macos/, windows/, linux/, stub.rs, plus keymap.rs (key tables)
 docs/              WINDOWS_MIGRATION.md: design, phases and the manual test checklist;
                    UI_DESIGN.md: look, rendering rules and the manual visual checklist;
                    OTHER_DESKTOPS.md: Open app across Spaces / desktops, logic and manual check

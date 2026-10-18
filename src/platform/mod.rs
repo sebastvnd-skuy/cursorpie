@@ -7,7 +7,8 @@
 //! |---|---|---|
 //! | `macos` | `target_os = "macos"` | Core Graphics, AppKit, TIS, LaunchAgent |
 //! | `windows` | `windows` | Win32 through `windows-sys` |
-//! | `stub` | anything else | does nothing; only exists so `cargo test` runs on Linux |
+//! | `linux` | `target_os = "linux"` | X11 through Xlib, XInput2, XTest and XRandR (see `docs/LINUX_MIGRATION.md`) |
+//! | `stub` | anything else | does nothing; only exists so `cargo test` runs on other Unixes |
 //!
 //! Every backend provides the same functions (the list is in the table below); a missing or
 //! differently-typed function is a compile error on that target. This module holds what is shared:
@@ -31,10 +32,18 @@
 //! | [`layout`] | keyboard-layout snapshot |
 //!
 //! The **app id** is the key of per-app profiles: the bundle identifier on macOS
-//! (`com.apple.Safari`) and the lower-case executable name on Windows (`chrome.exe`).
+//! (`com.apple.Safari`), the lower-case executable name on Windows (`chrome.exe`) and the lower-case
+//! desktop-entry id on Linux (`firefox`, `org.mozilla.firefox`).
 
 pub mod desktops;
 pub mod keymap;
+
+// The pure Linux helpers (session, desktop entries, window hit test, XDG paths) compile on every OS so
+// their tests run everywhere; the X11 backend inside is only compiled on Linux.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::backend::*;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -49,9 +58,9 @@ pub(crate) mod windows;
 #[cfg(windows)]
 pub use windows::*;
 
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 mod stub;
-#[cfg(not(any(target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 pub use stub::*;
 
 use crate::config::DesktopMode;
@@ -64,6 +73,7 @@ use std::process::Command;
 pub enum Os {
     Mac,
     Windows,
+    Linux,
 }
 
 /// How the four modifier bits of a shortcut are named on an OS.
@@ -76,17 +86,24 @@ pub struct ModNames {
 }
 
 impl Os {
-    /// The OS this build runs on. Anything that is neither macOS nor Windows (the Linux test stub)
-    /// reports `Mac`, so the macOS characterization tests run unchanged there.
+    /// The OS this build runs on. Targets with no backend (the stub) report `Mac`, so the macOS
+    /// characterization tests run unchanged there; tests that must hold on every build target pin
+    /// their OS with the `_for(Os::Mac)` forms instead.
     pub const fn current() -> Os {
-        if cfg!(windows) { Os::Windows } else { Os::Mac }
+        if cfg!(windows) {
+            Os::Windows
+        } else if cfg!(target_os = "linux") {
+            Os::Linux
+        } else {
+            Os::Mac
+        }
     }
 
-    /// The modifier that built-in shortcuts use for "the command key": Cmd on macOS, Ctrl on Windows.
+    /// The modifier that built-in shortcuts use for "the command key": Cmd on macOS, Ctrl elsewhere.
     pub const fn primary_mod(self) -> u8 {
         match self {
             Os::Mac => MOD_CMD,
-            Os::Windows => MOD_CTRL,
+            Os::Windows | Os::Linux => MOD_CTRL,
         }
     }
 
@@ -105,6 +122,12 @@ impl Os {
                 shift: "Shift",
                 cmd: "Win",
             },
+            Os::Linux => ModNames {
+                ctrl: "Ctrl",
+                alt: "Alt",
+                shift: "Shift",
+                cmd: "Super",
+            },
         }
     }
 
@@ -112,16 +135,16 @@ impl Os {
     pub const fn primary_name(self) -> &'static str {
         match self {
             Os::Mac => "Cmd",
-            Os::Windows => "Ctrl",
+            Os::Windows | Os::Linux => "Ctrl",
         }
     }
 
     /// What an "Open app" slice can do when the app's window is on another desktop, in the order
     /// Settings lists them (see [`DesktopMode`]).
     ///
-    /// Both OSes can switch to the app's desktop. Only macOS can try to pull the window onto the
+    /// Every OS can switch to the app's desktop. Only macOS can try to pull the window onto the
     /// current Space, through private system calls: the public API of Windows cannot move the
-    /// window of another process.
+    /// window of another process, and neither can an X11 client in general.
     pub const fn desktop_modes(self) -> &'static [DesktopMode] {
         match self {
             Os::Mac => &[
@@ -129,7 +152,7 @@ impl Os {
                 DesktopMode::BringToCurrent,
                 DesktopMode::DoNothing,
             ],
-            Os::Windows => &[DesktopMode::SwitchToApp, DesktopMode::DoNothing],
+            Os::Windows | Os::Linux => &[DesktopMode::SwitchToApp, DesktopMode::DoNothing],
         }
     }
 
@@ -142,7 +165,8 @@ impl Os {
     pub const fn trigger_buttons(self) -> &'static [i64] {
         match self {
             Os::Mac => &[2, 5, 6, 7],
-            Os::Windows => &[2],
+            // Linux: extra buttons have no stable numbers yet (docs/LINUX_MIGRATION.md, Appendix B)
+            Os::Windows | Os::Linux => &[2],
         }
     }
 
@@ -151,6 +175,7 @@ impl Os {
         match self {
             Os::Mac => "Finder",
             Os::Windows => "Explorer",
+            Os::Linux => "file manager",
         }
     }
 
@@ -159,7 +184,14 @@ impl Os {
         match self {
             Os::Mac => "menu bar",
             Os::Windows => "system tray",
+            Os::Linux => "system tray",
         }
+    }
+
+    /// Whether this build shows a tray / menu bar icon at all. The first Linux release has none:
+    /// Settings opens by holding the trigger in the center of the pie, and quits from its footer.
+    pub const fn has_tray(self) -> bool {
+        !matches!(self, Os::Linux)
     }
 
     /// What "Launch at login" does on this OS, shown under the checkbox.
@@ -169,6 +201,9 @@ impl Os {
             Os::Windows => {
                 "CursorPie is installed for your user in %LOCALAPPDATA%\\Programs\\CursorPie and starts when you sign in to Windows. Remove it from Settings > Apps."
             }
+            Os::Linux => {
+                "Adds ~/.config/autostart/cursorpie.desktop for your user. It takes effect at your next login."
+            }
         }
     }
 
@@ -177,6 +212,7 @@ impl Os {
         match self {
             Os::Mac => "bundle id, e.g. com.apple.Safari",
             Os::Windows => "exe name, e.g. chrome.exe",
+            Os::Linux => "desktop id, e.g. firefox",
         }
     }
 
@@ -185,6 +221,7 @@ impl Os {
         match self {
             Os::Mac => "Safari  or  /Applications/X.app",
             Os::Windows => "chrome  or  C:\\Path\\App.exe",
+            Os::Linux => "firefox  or  /usr/bin/app",
         }
     }
 
@@ -194,6 +231,7 @@ impl Os {
         match self {
             Os::Mac => a == b,
             Os::Windows => a.eq_ignore_ascii_case(b),
+            Os::Linux => linux::desktop_entry::id_key(a) == linux::desktop_entry::id_key(b),
         }
     }
 
@@ -204,6 +242,7 @@ impl Os {
         match self {
             Os::Mac => t.to_string(),
             Os::Windows => t.to_ascii_lowercase(),
+            Os::Linux => linux::desktop_entry::id_key(t),
         }
     }
 }
@@ -220,7 +259,7 @@ pub enum FileKind {
     Image,
     /// a JSON file (config or profile)
     Json,
-    /// an application: an `.app` bundle on macOS, an `.exe` on Windows
+    /// an application: an `.app` bundle on macOS, an `.exe` on Windows, a `.desktop` file on Linux
     App,
 }
 
@@ -263,6 +302,34 @@ mod tests {
         assert_eq!(Os::Mac.primary_mod(), MOD_CMD);
         assert_eq!(Os::Windows.primary_mod(), MOD_CTRL);
         assert_eq!(MOD_PRIMARY, OS.primary_mod());
+        assert_eq!(Os::Linux.primary_mod(), MOD_CTRL);
+    }
+
+    #[test]
+    fn linux_names_and_hints() {
+        let l = Os::Linux.mod_names();
+        assert_eq!(
+            (l.ctrl, l.alt, l.shift, l.cmd),
+            ("Ctrl", "Alt", "Shift", "Super")
+        );
+        assert_eq!(Os::Linux.primary_name(), "Ctrl");
+        assert!(!Os::Linux.needs_permission());
+        assert_eq!(Os::Linux.trigger_buttons(), &[2]);
+        assert!(!Os::Linux.has_tray());
+        assert!(Os::Mac.has_tray() && Os::Windows.has_tray());
+        assert!(Os::Linux.startup_hint().contains("autostart"));
+        assert!(Os::Linux.app_id_hint().contains("desktop id"));
+    }
+
+    #[test]
+    fn linux_app_ids_ignore_case_and_the_desktop_suffix() {
+        assert!(Os::Linux.app_ids_equal("Firefox", "firefox"));
+        assert!(Os::Linux.app_ids_equal("firefox.desktop", "FIREFOX"));
+        assert!(!Os::Linux.app_ids_equal("firefox", "org.mozilla.firefox"));
+        assert_eq!(
+            Os::Linux.normalize_app_id("  Google-Chrome.desktop "),
+            "google-chrome"
+        );
     }
 
     #[test]
@@ -323,8 +390,9 @@ mod tests {
             Os::Windows.desktop_modes(),
             [DesktopMode::SwitchToApp, DesktopMode::DoNothing]
         );
+        assert_eq!(Os::Linux.desktop_modes(), Os::Windows.desktop_modes());
         // the default must be offered everywhere
-        for os in [Os::Mac, Os::Windows] {
+        for os in [Os::Mac, Os::Windows, Os::Linux] {
             assert!(os.desktop_modes().contains(&DesktopMode::default()));
         }
     }

@@ -135,7 +135,7 @@ Ready-made slices you can add from the **+** button:
 
 ## Install
 
-CursorPie is built from source. You need **macOS 11 or later** or **Windows 10 (1809) / 11**, and **Rust 1.88 or later** (edition 2024).
+CursorPie is built from source. You need **macOS 11 or later**, **Windows 10 (1809) / 11** or **Linux with an X11 session**, and **Rust 1.88 or later** (edition 2024).
 
 ```sh
 git clone https://github.com/sebastvnd/cursorpie.git
@@ -206,7 +206,7 @@ with a live status; on Windows, where to find the tray icon), and ends with a "L
 Someone who used an earlier version is not welcomed again. The "already shown" flag is the empty file
 `welcome_shown` next to `config.json`; delete it to see the window at the next start.
 
-*Windows needs no permission; skip this section.* On macOS, CursorPie needs the **Accessibility** permission to watch the mouse and to send shortcuts. macOS may also ask
+*Windows and Linux (X11) need no permission; skip this section.* On macOS, CursorPie needs the **Accessibility** permission to watch the mouse and to send shortcuts. macOS may also ask
 for **Input Monitoring**.
 
 1. Open **System Settings > Privacy & Security**.
@@ -502,9 +502,10 @@ scripts/bundle.sh       builds and signs target/bundle/CursorPie.app (macOS)
 installer/cursorpie.iss   Inno Setup script of the Windows Setup wizard
 scripts/make-dmg.sh     packs that app into target/bundle/CursorPie-<version>-<arch>.dmg (macOS)
 scripts/package-windows.ps1  builds target\bundle\CursorPie-windows.zip (Windows)
+scripts/package-linux.sh  builds target/bundle/cursorpie-<version>-linux-<arch>.tar.gz (Linux)
 icon/                   sample images for icons (brackets, clipboard); not loaded automatically
 CONTRIBUTING.md         how to build, test and contribute
-docs/                   WINDOWS_MIGRATION.md (Windows port), LINUX_MIGRATION.md (Linux design proposal),
+docs/                   WINDOWS_MIGRATION.md (Windows port), LINUX_MIGRATION.md (Linux design and status),
                         UI_DESIGN.md (look and rendering rules), OTHER_DESKTOPS.md (Open app across Spaces)
 src/
   main.rs               thin binary: calls cursorpie::run()
@@ -520,7 +521,7 @@ src/
   config/               config model, defaults, validation, load/save, import/export, backups,
                         profile sharing (`share.rs`)
   tap/                  global event tap and the gesture state machine
-  platform/             OS glue: macos/, windows/ and a test stub behind one facade; keymap.rs (key tables)
+  platform/             OS glue: macos/, windows/, linux/ and a test stub behind one facade; keymap.rs (key tables)
   ui/                   everything on the UI thread
     app/                eframe app: state, message handling, window management, idle sleep
     pie/                drawing the pie
@@ -555,9 +556,15 @@ Actions you configure yourself (opening URLs, running commands) do whatever you 
 
 ## Known limitations
 
-- macOS and Windows only. Other platforms build a do-nothing stub that exists for unit tests. A design for
-  Linux (X11 first, then Wayland) is in [docs/LINUX_MIGRATION.md](docs/LINUX_MIGRATION.md); it is a proposal,
-  not an implementation.
+- macOS, Windows and Linux only. Other platforms build a do-nothing stub that exists for unit tests.
+- **Linux works in an X11 session.** In a Wayland session CursorPie only sees X11 and XWayland windows, so the
+  gesture does nothing over Wayland-native windows: log in with an X11 session for full support. Wayland
+  support is designed in [docs/LINUX_MIGRATION.md](docs/LINUX_MIGRATION.md) but not built. Also missing on
+  Linux for now: a tray icon (pause and quit are in Settings > General; Settings opens by holding the trigger
+  in the middle of the pie), app icons in the pie, keyboard-layout labels on non-US layouts, and extra mouse
+  buttons as the trigger (only the middle button). Handing a **drag** back to the app while the middle button
+  is held (for example middle-drag scrolling) may lose the start of the drag; a quick click is passed on
+  reliably. Install `zenity` or `kdialog` to use the file chooser buttons.
 - Windows behaves almost identically to macOS. The one gap is extra mouse buttons: only the middle button can be
   the trigger (Windows reports only the middle, back and forward buttons, not buttons 6 to 8).
 - Windows: **app detection cannot tell UWP apps apart.** UWP (Microsoft Store / "packaged") apps, such as

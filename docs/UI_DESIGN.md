@@ -12,6 +12,8 @@ change to either. The code is in `src/ui/`; the rules for contributors are summa
 - [The pie](#the-pie)
 - [Why it used to look jagged and choppy](#why-it-used-to-look-jagged-and-choppy)
 - [Rendering rules](#rendering-rules)
+- [Transparent window on Windows](#transparent-window-on-windows)
+- [Transparent window on Linux](#transparent-window-on-linux)
 - [Testing](#testing)
 - [Manual visual checklist](#manual-visual-checklist)
 
@@ -167,6 +169,51 @@ and `glow`, every other target keeps the defaults. Rules:
 If a machine still shows a black box with `glow`, note the Windows version, the GPU and driver (laptops
 with two GPUs behave differently), and whether Settings is affected too, then open an issue.
 
+## Transparent window on Linux
+
+The same single window is created as on the other platforms: borderless, transparent
+(`with_transparent(true)`), always on top, click-through in pie mode (`with_mouse_passthrough`), not
+focused (`with_active(false)`). What differs is what stands between that request and the screen.
+**None of the rows below was checked on a real desktop yet**; the Linux backend has only been exercised
+against a bare X server (see `docs/LINUX_MIGRATION.md`, "Implementation status").
+
+| Setup | Expected result |
+|---|---|
+| X11, a compositing manager is running (Mutter, KWin, Xfwm with compositing on, picom...) | transparent: the window has an alpha channel and the compositor blends it |
+| X11, **no** compositing manager (a bare i3, bspwm or openbox) | opaque: the pie sits in a **black box**. Per-pixel alpha needs a compositor. Not handled yet; the planned fallback is an XShape mask, see `docs/LINUX_MIGRATION.md` |
+| Wayland session | the window runs through XWayland, because only eframe's `x11` feature is enabled (on purpose, so that the window can be placed under the pointer). Whether it is stacked above Wayland-native windows depends on the compositor |
+
+Rules:
+
+1. **Use `glow`, never `wgpu`, in the Linux dependency table.** `Cargo.toml` builds eframe with
+   `default-features = false` and `glow` + `x11` on Linux, like Windows, so that a Vulkan-less machine
+   still works and the surface has an alpha channel. If both renderers are compiled in, eframe prefers
+   `wgpu`. After changing eframe features run `cargo tree -i wgpu --target x86_64-unknown-linux-gnu`:
+   it must report that `wgpu` is not part of the Linux build. Do not add the `wayland` feature either
+   without reading the "Pie window" part of `docs/LINUX_MIGRATION.md`: a plain Wayland window cannot
+   choose its position or stay on top.
+2. **Keep every layer above the window transparent**, exactly as in the Windows rules: `clear_color`
+   alpha 0, `CentralPanel` with `Frame::new()` in pie mode.
+3. **There is no frame to strip.** `platform::clear_window_frame` does nothing on Linux. winit asks the
+   window manager for no decorations (`with_decorations(false)`); a window manager that ignores that
+   would draw a frame, which has not been seen yet.
+4. **The window class is `cursorpie`** (`with_app_id` in `lib.rs`, which sets `WM_CLASS`). It lets a
+   window-manager rule or a launcher recognize the window. The backend also skips its own windows when
+   it looks for the app under the pointer, by process id and by this id, so the pie never counts as
+   "the app below".
+5. **The scale is global.** X11 has no per-monitor scale. `platform/linux/x11.rs` reads
+   `WINIT_X11_SCALE_FACTOR`, else `Xft.dpi` divided by 96, the numbers winit is expected to use, so the
+   pointer and the window agree. If the pie sits off-center on a high-DPI display, compare
+   `xrdb -query | grep Xft.dpi` with the scale the window uses.
+6. **What is not done.** No `_NET_WM_WINDOW_TYPE` hint, no skip-taskbar or skip-pager hint, no
+   override-redirect, no XShape fallback. A window manager may therefore show a taskbar button for the
+   pie, or tile it (tiling window managers such as i3 and bspwm are the likely trouble). The planned
+   test of the common window managers is spike S3 in `docs/LINUX_MIGRATION.md`.
+
+If a machine shows a black box, note the desktop or window manager, whether a compositor runs, the GPU
+and driver, and whether the session is X11 or Wayland (XWayland), and whether Settings is affected too,
+then open an issue.
+
 ## Testing
 
 Everything that does not need a window is unit tested, and runs on every OS through the stub backend:
@@ -215,3 +262,8 @@ at the very least change the display scaling once:
       the smallest card size, the page dots follow Back and Next, and Skip, Esc and Enter behave as the buttons say.
 - [ ] Windows: hold the trigger over a bright window (a white page): the pie floats over it with no
       black or white box around the ring, and the same for the margin around the Settings card.
+- [ ] Linux (X11): hold the trigger over a bright window: the pie floats over it with no black box. Repeat
+      with the compositor switched off to see the fallback behavior, and note it.
+- [ ] Linux: the pie is centered under the pointer at 100 percent and at a larger scale, and a tiling window
+      manager does not tile it.
+- [ ] Linux (Wayland session, XWayland): the pie appears above a native Wayland window, or note that it does not.

@@ -13,7 +13,33 @@
   running, or has a window on the current desktop, nothing changes. On macOS the nearest Space with a window of
   the app is gone to directly, left or right and however many Spaces away, without stopping in between, and
   the window is raised and checked to be in front. How it works: `docs/OTHER_DESKTOPS.md`.
-- **Linux migration** New plane for support linux distribution 
+- **Linux (X11).** CursorPie now runs on Linux in an X11 session: the hold, flick, release and double-click
+  gestures, per-app profiles (apps are recognized by their desktop-entry id, for example `firefox` or
+  `org.mozilla.firefox`), side-button modes, shortcut recording, launching apps, links and commands, and
+  "Launch at login" through an XDG autostart entry. No permission is needed. The mouse is watched with
+  XInput2 grabs and shortcuts are sent with XTest. `scripts/package-linux.sh` builds a tarball with an
+  installer. Building needs the development files of libx11, libxi, libxtst and libxrandr (see
+  `CONTRIBUTING.md`). The design and what is and is not built are in `docs/LINUX_MIGRATION.md`.
+- **Linux: Open app follows the app to its workspace.** The window manager does the switching: an *Open app*
+  slice for a program that is already running asks it to activate the app's window, and the usual window
+  managers go to the workspace that window is on. **Settings > Behavior > Other workspaces** offers *Switch*
+  (the default) and *Do nothing*; *Bring the window* does not exist on Linux and acts as *Switch*. An app that
+  has no window is started as before. How well this works depends on the window manager and has not been
+  checked on real desktops.
+- **Linux: defaults and files.** Built-in shortcuts use Ctrl and the Super key (instead of Cmd), and redo is
+  Ctrl+Shift+Z. The Launch and quick-action slices run shell commands that work on every desktop (a file
+  manager through `xdg-open`, the first terminal and screenshot tool that is installed, `loginctl
+  lock-session`, Super+. for the emoji picker). Settings and backups are kept in `~/.config/cursorpie` (or
+  `$XDG_CONFIG_HOME/cursorpie`), and exports go to your download folder as `user-dirs.dirs` names it, for
+  example `~/Unduhan` on an Indonesian system. `config.json` keeps its format, so a file from macOS or Windows
+  still opens (app ids from another OS are kept but do not match).
+- **Linux: what is missing.** Wayland sessions only work for X11 and XWayland windows: log in with an X11
+  session for full support. There is no tray icon yet, so Pause and Quit are in **Settings > General** and
+  Settings opens by holding the trigger in the middle of the pie. Also missing: app icons in the pie,
+  keyboard-layout labels on non-US layouts, and extra mouse buttons as the trigger (only the middle button).
+  Handing a **drag** back to the app while the middle button is held (for example middle-drag scrolling) may
+  lose the start of the drag; a quick click is passed on reliably. The file chooser buttons need `zenity` or
+  `kdialog`.
 
 ## 0.4.2
 

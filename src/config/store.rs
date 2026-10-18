@@ -25,6 +25,11 @@ pub fn home_from(os: Os, get: &dyn Fn(&str) -> Option<String>) -> PathBuf {
             .or_else(|| Some(format!("{}{}", get("HOMEDRIVE")?, get("HOMEPATH")?)))
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("C:\\")),
+        Os::Linux => PathBuf::from(
+            get("HOME")
+                .filter(|h| h.starts_with('/'))
+                .unwrap_or_else(|| "/tmp".into()),
+        ),
     }
 }
 
@@ -42,7 +47,30 @@ pub fn support_dir_from(os: Os, get: &dyn Fn(&str) -> Option<String>) -> PathBuf
             .map(PathBuf::from)
             .unwrap_or_else(|| home_from(os, get).join("AppData").join("Roaming"))
             .join("CursorPie"),
+        // `$XDG_CONFIG_HOME/cursorpie`: one directory for config, backups and icons
+        Os::Linux => crate::platform::linux::xdg::support_dir(
+            &home_from(os, get),
+            get("XDG_CONFIG_HOME").as_deref(),
+        ),
     }
+}
+
+/// The folder exports are written to: `~/Downloads`, or on Linux the user's download directory
+/// (`XDG_DOWNLOAD_DIR` in `~/.config/user-dirs.dirs`, which is localized: `~/Unduhan` in Indonesian).
+pub fn downloads_dir_from(os: Os, get: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    let home = home_from(os, get);
+    if os != Os::Linux {
+        return home.join("Downloads");
+    }
+    let config_home =
+        crate::platform::linux::xdg::config_home(&home, get("XDG_CONFIG_HOME").as_deref());
+    let text = fs::read_to_string(config_home.join("user-dirs.dirs")).ok();
+    crate::platform::linux::xdg::download_dir_from(&home, text.as_deref())
+}
+
+/// [`downloads_dir_from`] with the real environment.
+pub fn downloads_dir() -> PathBuf {
+    downloads_dir_from(Os::current(), &env)
 }
 
 /// The real environment as a lookup function.
@@ -147,10 +175,9 @@ pub fn load_backup(n: usize) -> Option<Config> {
     parse_config(&backup::read_backup(&app_support_dir(), n)?)
 }
 
-/// Writes ~/Downloads/cursorpie-config.json and returns its path.
+/// Writes cursorpie-config.json to the downloads folder (`~/Downloads`) and returns its path.
 pub fn export_config(config: &Config) -> std::io::Result<PathBuf> {
-    let mut p = home();
-    p.push("Downloads");
+    let mut p = downloads_dir();
     fs::create_dir_all(&p)?;
     p.push("cursorpie-config.json");
     let data = serde_json::to_string_pretty(config).map_err(std::io::Error::other)?;
@@ -262,6 +289,45 @@ mod tests {
         assert!(dir.starts_with(r"C:\Users\Cy"));
         assert!(dir.to_string_lossy().contains("Roaming"));
         assert_eq!(home_from(Os::Windows, &env_of(&[])), PathBuf::from("C:\\"));
+    }
+
+    #[test]
+    fn linux_keeps_its_files_under_xdg_config_home() {
+        let u = |p: PathBuf| p.to_string_lossy().replace('\\', "/");
+        let e = env_of(&[("HOME", "/home/ann")]);
+        assert_eq!(u(home_from(Os::Linux, &e)), "/home/ann");
+        assert_eq!(
+            u(support_dir_from(Os::Linux, &e)),
+            "/home/ann/.config/cursorpie"
+        );
+        let x = env_of(&[("HOME", "/home/ann"), ("XDG_CONFIG_HOME", "/data/cfg")]);
+        assert_eq!(u(support_dir_from(Os::Linux, &x)), "/data/cfg/cursorpie");
+        assert_eq!(u(home_from(Os::Linux, &env_of(&[]))), "/tmp");
+        assert_eq!(
+            u(home_from(Os::Linux, &env_of(&[("HOME", "relative")]))),
+            "/tmp",
+            "a relative HOME is not trusted"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exports_go_to_the_localized_download_folder_on_linux() {
+        let base = std::env::temp_dir().join(format!("cursorpie-dl-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(
+            base.join("user-dirs.dirs"),
+            "XDG_DOWNLOAD_DIR=\"$HOME/Unduhan\"\n",
+        )
+        .unwrap();
+        let dir = base.to_string_lossy().to_string();
+        let get = move |k: &str| match k {
+            "HOME" | "XDG_CONFIG_HOME" => Some(dir.clone()),
+            _ => None,
+        };
+        assert_eq!(downloads_dir_from(Os::Linux, &get), base.join("Unduhan"));
+        assert_eq!(downloads_dir_from(Os::Mac, &get), base.join("Downloads"));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

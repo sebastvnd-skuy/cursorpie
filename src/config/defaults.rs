@@ -1,7 +1,9 @@
 //! Built-in slices (presets for the "Add a slice" panel) and the default [`Config`].
 //!
 //! Defaults depend on the OS: macOS uses Cmd shortcuts, bundle ids and Finder/Safari; Windows uses
-//! Ctrl/Alt/Win shortcuts, executable names and Explorer/Edge. Every function takes the OS as a
+//! Ctrl/Alt/Win shortcuts, executable names and Explorer/Edge; Linux uses Ctrl shortcuts, lower-case
+//! desktop-entry ids and portable shell commands (there is no neutral app name for "the file
+//! manager"). Every function takes the OS as a
 //! parameter in its `_for` form (so tests cover both); the plain form uses the OS the build runs on.
 
 use super::{
@@ -15,11 +17,12 @@ pub fn presets() -> Vec<Item> {
     presets_for(Os::current())
 }
 
-/// Side-button mode presets for `os`. "Primary" is Cmd on macOS and Ctrl on Windows.
+/// Side-button mode presets for `os`. "Primary" is Cmd on macOS and Ctrl on Windows and Linux.
 pub fn presets_for(os: Os) -> Vec<Item> {
     let p = os.primary_mod();
     // Windows has no Cmd+[ / Cmd+Shift+[ conventions: browsers go back and forward with Alt+arrows
-    // and switch tabs with Ctrl(+Shift)+Tab; redo is Ctrl+Y.
+    // and switch tabs with Ctrl(+Shift)+Tab; redo is Ctrl+Y. Linux has the same browser and tab
+    // keys, but GTK, Qt and Electron redo with Ctrl+Shift+Z.
     let (redo, browser, tabs) = match os {
         Os::Mac => (
             Shortcut::ch('z', p | MOD_SHIFT),
@@ -31,6 +34,17 @@ pub fn presets_for(os: Os) -> Vec<Item> {
         ),
         Os::Windows => (
             Shortcut::ch('y', p),
+            (
+                Shortcut::new(key::LEFT, MOD_ALT),
+                Shortcut::new(key::RIGHT, MOD_ALT),
+            ),
+            (
+                Shortcut::new(key::TAB, MOD_CTRL | MOD_SHIFT),
+                Shortcut::new(key::TAB, MOD_CTRL),
+            ),
+        ),
+        Os::Linux => (
+            Shortcut::ch('z', p | MOD_SHIFT),
             (
                 Shortcut::new(key::LEFT, MOD_ALT),
                 Shortcut::new(key::RIGHT, MOD_ALT),
@@ -97,8 +111,44 @@ pub fn quick_actions_for(os: Os) -> Vec<Item> {
             key_item("Emoji", ":)", Shortcut::ch('.', MOD_CMD)),
             key_item("Lock", "Lock", Shortcut::ch('l', MOD_CMD)),
         ],
+        // MOD_CMD is the Super key here; the rest are shell commands that work on every desktop
+        Os::Linux => vec![
+            Item::run(
+                "Screenshot",
+                "Shot",
+                Action::Command(LINUX_SCREENSHOT.into()),
+            ),
+            Item::run("Files", "F", Action::Command(LINUX_FILES.into())),
+            Item::run("Terminal", ">_", Action::Command(LINUX_TERMINAL.into())),
+            key_item("Emoji", ":)", Shortcut::ch('.', MOD_CMD)),
+            Item::run(
+                "Lock",
+                "Lock",
+                Action::Command("loginctl lock-session".into()),
+            ),
+        ],
     }
 }
+
+/// Starts the first screenshot tool that is installed (there is no standard one on Linux).
+const LINUX_SCREENSHOT: &str = "if command -v spectacle >/dev/null; then spectacle -r; \
+elif command -v gnome-screenshot >/dev/null; then gnome-screenshot -i; \
+elif command -v xfce4-screenshooter >/dev/null; then xfce4-screenshooter -r; \
+elif command -v flameshot >/dev/null; then flameshot gui; \
+elif command -v grim >/dev/null; then grim -g \"$(slurp)\" - | wl-copy; fi";
+
+/// Opens the home folder in the default file manager.
+const LINUX_FILES: &str = "xdg-open \"$HOME\"";
+
+/// Starts the user's terminal: the desktop's default, else the first of a list that is installed.
+const LINUX_TERMINAL: &str = "if command -v xdg-terminal-exec >/dev/null; then exec xdg-terminal-exec; \
+elif command -v x-terminal-emulator >/dev/null; then exec x-terminal-emulator; \
+else for t in kgx gnome-terminal konsole xfce4-terminal alacritty kitty foot xterm; do \
+command -v \"$t\" >/dev/null && exec \"$t\"; done; fi";
+
+/// Starts the default web browser.
+const LINUX_BROWSER: &str = "b=$(xdg-settings get default-web-browser); \
+gtk-launch \"$b\" 2>/dev/null || gio launch \"/usr/share/applications/$b\" 2>/dev/null || xdg-open about:blank";
 
 /// Blank slices for the "+ Add item" menu.
 pub fn blank_items(allow_submenu: bool) -> Vec<Item> {
@@ -127,12 +177,13 @@ impl Config {
     pub fn default_for(os: Os) -> Self {
         let p = presets_for(os);
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let open = |app: &str| Action::OpenApp(app.into());
         let (launchers, browsers, code, shot) = match os {
             Os::Mac => (
                 [
-                    ("Finder", "F", "Finder"),
-                    ("Terminal", ">_", "Terminal"),
-                    ("Safari", "S", "Safari"),
+                    ("Finder", "F", open("Finder")),
+                    ("Terminal", ">_", open("Terminal")),
+                    ("Safari", "S", open("Safari")),
                 ],
                 s(&[
                     "com.apple.Safari",
@@ -143,13 +194,13 @@ impl Config {
                     "com.microsoft.edgemac",
                 ]),
                 s(&["com.microsoft.VSCode", "com.apple.dt.Xcode"]),
-                Shortcut::ch('4', MOD_CMD | MOD_SHIFT),
+                Action::Key(Shortcut::ch('4', MOD_CMD | MOD_SHIFT)),
             ),
             Os::Windows => (
                 [
-                    ("Explorer", "F", "explorer"),
-                    ("Terminal", ">_", "wt"),
-                    ("Edge", "S", "msedge"),
+                    ("Explorer", "F", open("explorer")),
+                    ("Terminal", ">_", open("wt")),
+                    ("Edge", "S", open("msedge")),
                 ],
                 s(&[
                     "msedge.exe",
@@ -160,14 +211,44 @@ impl Config {
                     "vivaldi.exe",
                 ]),
                 s(&["code.exe", "devenv.exe"]),
-                Shortcut::ch('s', MOD_CMD | MOD_SHIFT),
+                Action::Key(Shortcut::ch('s', MOD_CMD | MOD_SHIFT)),
+            ),
+            // app ids are lower-case desktop-entry ids; a browser has several (native, Flatpak)
+            Os::Linux => (
+                [
+                    ("Files", "F", Action::Command(LINUX_FILES.into())),
+                    ("Terminal", ">_", Action::Command(LINUX_TERMINAL.into())),
+                    ("Browser", "S", Action::Command(LINUX_BROWSER.into())),
+                ],
+                s(&[
+                    "firefox",
+                    "org.mozilla.firefox",
+                    "google-chrome",
+                    "com.google.chrome",
+                    "chromium",
+                    "org.chromium.chromium",
+                    "brave-browser",
+                    "com.brave.browser",
+                    "microsoft-edge",
+                    "vivaldi-stable",
+                    "opera",
+                    "librewolf",
+                ]),
+                s(&[
+                    "code",
+                    "code-oss",
+                    "codium",
+                    "vscodium",
+                    "com.visualstudio.code",
+                ]),
+                Action::Command(LINUX_SCREENSHOT.into()),
             ),
         };
         let mut launch_items: Vec<Item> = launchers
             .iter()
-            .map(|(name, icon, app)| Item::run(name, icon, Action::OpenApp((*app).into())))
+            .map(|(name, icon, action)| Item::run(name, icon, action.clone()))
             .collect();
-        launch_items.push(Item::run("Shot", "Shot", Action::Key(shot)));
+        launch_items.push(Item::run("Shot", "Shot", shot));
         let launch = Item::submenu("Launch", "Go", launch_items);
         Config {
             version: CONFIG_VERSION,
@@ -481,7 +562,7 @@ mod tests {
 
     #[test]
     fn both_default_configs_survive_sanitize_and_json() {
-        for os in [Os::Mac, Os::Windows] {
+        for os in [Os::Mac, Os::Windows, Os::Linux] {
             let c = Config::default_for(os);
             let json = serde_json::to_string(&c).unwrap();
             let back: Config = serde_json::from_str(&json).unwrap();
@@ -498,7 +579,7 @@ mod tests {
         assert_eq!(c.clone().sanitize(), c);
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     #[test]
     fn app_ids_match_exactly_on_macos() {
         let c = Config::default();
@@ -511,5 +592,73 @@ mod tests {
             "unknown apps use the general pie"
         );
         assert_eq!(c.profile_for(None), 0);
+    }
+    #[test]
+    fn linux_presets_use_ctrl_and_shift_z_for_redo() {
+        let p = presets_for(Os::Linux);
+        assert_eq!(
+            keys_of(&p[0]),
+            ((6, MOD_CTRL), (6, MOD_CTRL | MOD_SHIFT)),
+            "Ctrl+Z / Ctrl+Shift+Z"
+        );
+        assert_eq!(
+            keys_of(&p[2]),
+            ((8, MOD_CTRL), (9, MOD_CTRL)),
+            "Ctrl+C / Ctrl+V"
+        );
+        assert_eq!(
+            keys_of(&p[3]),
+            ((key::LEFT, MOD_ALT), (key::RIGHT, MOD_ALT)),
+            "Alt+arrows"
+        );
+        assert_eq!(p.len(), presets_for(Os::Mac).len());
+    }
+
+    #[test]
+    fn linux_quick_actions_are_commands_that_exist_everywhere() {
+        let q = quick_actions_for(Os::Linux);
+        assert_eq!(q.len(), 5);
+        let names: Vec<&str> = q.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["Screenshot", "Files", "Terminal", "Emoji", "Lock"]);
+        let command = |i: usize| match &q[i].kind {
+            ItemKind::Run(Action::Command(c)) => c.clone(),
+            other => panic!("not a command: {other:?}"),
+        };
+        assert!(command(0).contains("command -v spectacle"));
+        assert_eq!(command(1), "xdg-open \"$HOME\"");
+        assert!(command(2).contains("xdg-terminal-exec"));
+        assert_eq!(command(4), "loginctl lock-session");
+        assert_eq!(
+            q[3].kind,
+            ItemKind::Run(Action::Key(Shortcut::ch('.', MOD_CMD))),
+            "Super+."
+        );
+    }
+
+    #[test]
+    fn the_linux_default_config_uses_desktop_ids() {
+        let c = Config::default_for(Os::Linux);
+        assert_eq!(c.profiles.len(), 3);
+        let browsers = &c.profiles[1].apps;
+        assert!(browsers.contains(&"firefox".to_string()));
+        assert!(browsers.contains(&"org.mozilla.firefox".to_string()));
+        assert!(browsers.contains(&"google-chrome".to_string()));
+        assert!(c.profiles[2].apps.contains(&"code".to_string()));
+        // ids are already in the canonical form the window lookup reports
+        for app in c.profiles.iter().flat_map(|p| &p.apps) {
+            assert_eq!(&Os::Linux.normalize_app_id(app), app);
+        }
+        assert_eq!(c.trigger_button, 2);
+        // the launch submenu: three launchers and the screenshot item, all runnable commands
+        let launch = c.profiles[0].items.last().unwrap();
+        let ItemKind::Submenu(items) = &launch.kind else {
+            panic!("Launch is a submenu");
+        };
+        assert_eq!(items.len(), 4);
+        assert!(
+            items
+                .iter()
+                .all(|i| matches!(&i.kind, ItemKind::Run(Action::Command(_))))
+        );
     }
 }

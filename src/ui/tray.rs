@@ -114,7 +114,7 @@ mod real {
 
         let rgb = match platform::OS {
             platform::Os::Mac => [0, 0, 0],
-            platform::Os::Windows => WINDOWS_ICON_RGB,
+            platform::Os::Windows | platform::Os::Linux => WINDOWS_ICON_RGB,
         };
         let icon = match Icon::from_rgba(icon_rgba(44, rgb), 44, 44) {
             Ok(i) => i,

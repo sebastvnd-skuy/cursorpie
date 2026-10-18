@@ -84,6 +84,7 @@ pub fn setup_title(os: Os) -> &'static str {
     match os {
         Os::Mac => "Allow CursorPie to watch the mouse",
         Os::Windows => "CursorPie lives in the system tray",
+        Os::Linux => "CursorPie works in your X11 session",
     }
 }
 
@@ -101,6 +102,12 @@ pub fn setup_lead(os: Os) -> &'static str {
              arrow if you do not see it). Right-click it for Settings, Pause and Quit. Windows asks \
              for no permission. Programs that run as administrator only react if CursorPie runs as \
              administrator too."
+        }
+        Os::Linux => {
+            "X11 asks for no permission. CursorPie has no tray icon on Linux yet: hold the trigger in \
+             the center of the pie to open Settings, and quit from the bottom of Settings. In a \
+             Wayland session it only sees X11 and XWayland windows, so log in with an X11 session for \
+             full support."
         }
     }
 }
@@ -133,6 +140,15 @@ fn seconds(ms: u64) -> String {
 
 /// Short tips of the last page.
 pub fn tips(os: Os, settings_hold_ms: u64) -> Vec<String> {
+    let last = if os.has_tray() {
+        format!(
+            "Pause, Settings and Quit are in the {} icon. \"Welcome guide...\" there shows this window again.",
+            os.tray_name()
+        )
+    } else {
+        "Pause and Quit are at the bottom of Settings. There is no tray icon on this system yet."
+            .to_string()
+    };
     vec![
         format!(
             "Hold the trigger in the center of the pie for {} to open Settings.",
@@ -140,10 +156,7 @@ pub fn tips(os: Os, settings_hold_ms: u64) -> Vec<String> {
         ),
         "Double-click the trigger over an app that has its own profile to open that app's pie."
             .into(),
-        format!(
-            "Pause, Settings and Quit are in the {} icon. \"Welcome guide...\" there shows this window again.",
-            os.tray_name()
-        ),
+        last,
     ]
 }
 
@@ -518,6 +531,18 @@ mod tests {
                 .any(|t| t.contains("system tray"))
         );
         assert!(tips(Os::Mac, 1200)[0].contains("1.2 s"));
+    }
+
+    #[test]
+    fn linux_has_its_own_setup_page_and_no_tray_tip() {
+        assert!(setup_title(Os::Linux).contains("X11"));
+        let lead = setup_lead(Os::Linux);
+        assert!(lead.contains("no tray icon"), "{lead}");
+        assert!(!lead.contains("Accessibility"));
+        let t = tips(Os::Linux, 1200);
+        assert_eq!(t.len(), 3);
+        assert!(t.iter().all(|x| !x.contains("icon.")), "{t:?}");
+        assert!(t[2].contains("bottom of Settings"));
     }
 
     /// Draws every page for a few frames in a headless egui context: a smoke test for layout

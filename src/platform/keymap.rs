@@ -278,3 +278,170 @@ mod tests {
         assert_eq!(code_for_event(0xDE, 0x2C, false), Some(6));
     }
 }
+
+// ---------------------------------------------------------------------------------------- Linux
+
+/// `(macOS code, Linux key code)` of the keys whose meaning ignores the layout. The Linux code is an
+/// evdev `KEY_*` value, which is also the X11 keycode minus 8. The layout keys need no table of their
+/// own: for the main block a Linux key code **is** the set-1 scan code of [`LAYOUT_KEYS`].
+const LINUX_SPECIAL_KEYS: &[(u16, u16)] = &[
+    (36, 28),   // Return
+    (76, 96),   // numpad Enter
+    (48, 15),   // Tab
+    (49, 57),   // Space
+    (51, 14),   // Backspace
+    (53, 1),    // Esc
+    (122, 59),  // F1
+    (120, 60),  // F2
+    (99, 61),   // F3
+    (118, 62),  // F4
+    (96, 63),   // F5
+    (97, 64),   // F6
+    (98, 65),   // F7
+    (100, 66),  // F8
+    (101, 67),  // F9
+    (109, 68),  // F10
+    (103, 87),  // F11
+    (111, 88),  // F12
+    (105, 183), // F13
+    (107, 184), // F14
+    (113, 185), // F15
+    (106, 186), // F16
+    (64, 187),  // F17
+    (79, 188),  // F18
+    (80, 189),  // F19
+    (90, 190),  // F20
+    (115, 102), // Home
+    (119, 107), // End
+    (116, 104), // Page Up
+    (121, 109), // Page Down
+    (117, 111), // Delete (forward)
+    (114, 110), // Help is Insert on a PC keyboard
+    (123, 105), // Left
+    (126, 103), // Up
+    (124, 106), // Right
+    (125, 108), // Down
+    (82, 82),   // numpad 0
+    (83, 79),   // numpad 1
+    (84, 80),   // numpad 2
+    (85, 81),   // numpad 3
+    (86, 75),   // numpad 4
+    (87, 76),   // numpad 5
+    (88, 77),   // numpad 6
+    (89, 71),   // numpad 7
+    (91, 72),   // numpad 8
+    (92, 73),   // numpad 9
+    (67, 55),   // numpad *
+    (69, 78),   // numpad +
+    (78, 74),   // numpad -
+    (65, 83),   // numpad .
+    (75, 98),   // numpad /
+    (72, 115),  // Volume Up
+    (73, 114),  // Volume Down
+    (74, 113),  // Mute
+];
+
+/// Linux key codes of the left modifier keys, in the order a shortcut presses them:
+/// `(MOD_* bit, key code)`.
+pub const LINUX_MODIFIER_KEYS: [(u8, u16); 4] = [
+    (crate::keys::MOD_CTRL, 29),
+    (crate::keys::MOD_SHIFT, 42),
+    (crate::keys::MOD_ALT, 56),
+    (crate::keys::MOD_CMD, 125), // Super
+];
+
+/// Linux key code (evdev `KEY_*`) of the key at macOS position `code`. Numpad Clear has no certain
+/// counterpart and is left unmapped.
+pub fn linux_code_for(code: u16) -> Option<u16> {
+    if let Some(s) = scancode_for(code) {
+        return Some(s);
+    }
+    LINUX_SPECIAL_KEYS
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map(|(_, l)| *l)
+}
+
+/// macOS position of the key with this Linux key code.
+pub fn code_for_linux(linux: u16) -> Option<u16> {
+    if let Some(c) = code_for_scancode(linux) {
+        return Some(c);
+    }
+    LINUX_SPECIAL_KEYS
+        .iter()
+        .find(|(_, l)| *l == linux)
+        .map(|(c, _)| *c)
+}
+
+/// X11 keycode of the key at macOS position `code`: the Linux key code plus 8 (the `evdev` XKB
+/// keycodes every mainstream distribution uses).
+pub fn x_keycode_for(code: u16) -> Option<u8> {
+    let k = linux_code_for(code)?.checked_add(8)?;
+    u8::try_from(k).ok()
+}
+
+/// macOS position of the key an X11 keycode names.
+pub fn code_for_x_keycode(keycode: u32) -> Option<u16> {
+    let linux = u16::try_from(keycode.checked_sub(8)?).ok()?;
+    code_for_linux(linux)
+}
+
+#[cfg(test)]
+mod linux_tests {
+    use super::*;
+
+    #[test]
+    fn well_known_linux_codes() {
+        // linux/input-event-codes.h: KEY_A 30, KEY_Z 44, KEY_Q 16, KEY_1 2, KEY_102ND 86
+        assert_eq!(linux_code_for(0), Some(30));
+        assert_eq!(linux_code_for(6), Some(44));
+        assert_eq!(linux_code_for(12), Some(16));
+        assert_eq!(linux_code_for(18), Some(2));
+        assert_eq!(linux_code_for(10), Some(86));
+        // KEY_ENTER 28, KEY_ESC 1, KEY_SPACE 57, KEY_LEFT 105, KEY_F13 183
+        assert_eq!(linux_code_for(36), Some(28));
+        assert_eq!(linux_code_for(53), Some(1));
+        assert_eq!(linux_code_for(49), Some(57));
+        assert_eq!(linux_code_for(123), Some(105));
+        assert_eq!(linux_code_for(105), Some(183));
+        assert_eq!(linux_code_for(71), None, "numpad Clear stays unmapped");
+    }
+
+    #[test]
+    fn x_keycodes_are_the_linux_code_plus_eight() {
+        assert_eq!(x_keycode_for(0), Some(38), "A");
+        assert_eq!(x_keycode_for(6), Some(52), "Z");
+        assert_eq!(x_keycode_for(36), Some(36), "Return");
+        assert_eq!(code_for_x_keycode(52), Some(6));
+        assert_eq!(code_for_x_keycode(3), None, "below the first keycode");
+        assert_eq!(code_for_x_keycode(100_000), None);
+    }
+
+    #[test]
+    fn every_special_key_has_a_linux_code_except_clear() {
+        for (mac, _, _) in SPECIAL_KEYS {
+            let mapped = linux_code_for(*mac).is_some();
+            assert_eq!(mapped, *mac != 71, "mac code {mac}");
+        }
+    }
+
+    #[test]
+    fn linux_codes_are_unique_and_round_trip() {
+        let mut seen = std::collections::HashSet::new();
+        for mac in 0u16..200 {
+            if let Some(l) = linux_code_for(mac) {
+                assert!(seen.insert(l), "Linux code {l} is used twice");
+                assert_eq!(code_for_linux(l), Some(mac), "round trip of {mac}");
+            }
+        }
+        assert!(seen.len() >= 90, "{} keys mapped", seen.len());
+    }
+
+    #[test]
+    fn modifier_keys_cover_every_modifier_bit() {
+        use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT};
+        let bits = LINUX_MODIFIER_KEYS.iter().fold(0u8, |a, (b, _)| a | b);
+        assert_eq!(bits, MOD_CTRL | MOD_SHIFT | MOD_ALT | MOD_CMD);
+        assert_eq!(LINUX_MODIFIER_KEYS[3].1, 125, "KEY_LEFTMETA");
+    }
+}

@@ -177,11 +177,10 @@ pub fn export_profile(profile: &Profile) -> Result<String, String> {
     serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())
 }
 
-/// Writes the profile file to `~/Downloads/<name>.cursorpie-profile.json` and returns its path.
+/// Writes the profile file to `<downloads>/<name>.cursorpie-profile.json` and returns its path.
 pub fn export_to_downloads(profile: &Profile) -> Result<PathBuf, String> {
     let text = export_profile(profile)?;
-    let mut p = super::home();
-    p.push("Downloads");
+    let mut p = super::downloads_dir();
     fs::create_dir_all(&p).map_err(|e| e.to_string())?;
     p.push(export_file_name(&profile.name));
     fs::write(&p, text).map_err(|e| e.to_string())?;

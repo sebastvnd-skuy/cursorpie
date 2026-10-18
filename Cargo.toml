@@ -3,7 +3,7 @@ name = "cursorpie"
 version = "0.4.2"
 edition = "2024"
 rust-version = "1.88"
-description = "Hold-to-open pie menu for macOS and Windows: per-app profiles, shortcuts, launchers and submenus."
+description = "Hold-to-open pie menu for macOS, Windows and Linux (X11): per-app profiles, shortcuts, launchers and submenus."
 license = "MIT"
 
 authors = ["sebastvnd@gmail.com"]
@@ -58,10 +58,23 @@ windows-sys = { version = "0.61", optional = true, features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
-# UI on macOS (and on Linux, which only builds the test stub): eframe's default features, that is
-# the `wgpu` renderer (Metal on macOS).
-[target.'cfg(not(windows))'.dependencies]
+# UI on macOS (and on any other target that only builds the test stub): eframe's default features,
+# that is the `wgpu` renderer (Metal on macOS).
+[target.'cfg(not(any(windows, target_os = "linux")))'.dependencies]
 eframe = "0.36"
+
+# Linux: the same `glow` renderer as Windows (per-pixel alpha, and it works without Vulkan). Only the
+# `x11` window system is enabled, on purpose: in a Wayland session the window then runs through
+# XWayland, where it can be placed under the pointer, and the X11 backend (see platform::linux)
+# sees the same windows. Build needs the development files of libx11, libxi, libxtst and
+# libxrandr (see CONTRIBUTING.md). Never add the `wgpu` feature here.
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.36", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "x11",
+] }
 
 # macOS: event tap, frontmost app, activation policy (no Dock icon), app icons.
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -81,7 +94,7 @@ objc2-app-kit = { version = "0.3", features = [
 objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSData"] }
 
 # Tray / menu bar icon (muda menus are re-exported as `tray_icon::menu`). Not built on other
-# targets: on Linux it would need GTK.
+# targets: on Linux it would need GTK (the Linux tray is future work, docs/LINUX_MIGRATION.md).
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
 tray-icon = "0.25"
 
