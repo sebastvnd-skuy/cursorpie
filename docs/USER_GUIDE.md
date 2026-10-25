@@ -66,8 +66,7 @@ Actions are available for Run slices and for each side button of a Mode:
 
 Actions run on one worker thread, so they always execute in the order you triggered them.
 
-**Icons** can be text, emoji, or an image (`.png`, `.jpg`, `.jpeg`, `.webp`); a path may start with `~/`. The
-pie size (140 to 360 px), accent color and sounds are adjustable. An optional soft tick plays when the hovered
+**Icons** can be text, emoji, or an image (`.png`, `.jpg`, `.jpeg`, `.webp`); a path may start with `~/`. An icon is drawn at no more than about 120 px, so a big image is wasted. When you choose an image with **Image...** in the icon picker, CursorPie prepares it: up to 512 px and 512 KB it is used as it is; a bigger one is shrunk to a 256 px PNG copy in the `icons` folder next to `config.json`, the original is never touched, and the status bar tells you what it did. An image with more than 40 megapixels or 64 MB, or a file that is not an image, is refused with a message. The **Mine** page of the picker lists the images in the `icons` folder (up to 120 files of at most 2 MB each) and says how many it left out. The pie size (140 to 360 px), accent color and sounds are adjustable. An optional soft tick plays when the hovered
 slice changes.
 
 ## Profiles
@@ -137,8 +136,8 @@ and stores your changes. **Cancel**, **Esc** and **Cmd+W** (Ctrl+W elsewhere) di
   idle time, on by default, 60 s).
 
 **General** shows the permission status (macOS) with shortcuts to System Settings, the config file location,
-**Reveal in Finder** (Explorer, or the file manager on Linux), **Export...**, **Import...**, **Reset to
-defaults** and **Backups**. On Linux it also has Pause and Quit.
+**Reveal in Finder** (Explorer, or the file manager on Linux), **Export...**, **Import...** (a file over
+4 MiB is refused), **Reset to defaults** and **Backups**. On Linux it also has Pause and Quit.
 
 **About** shows the version, author, project links, privacy note and credits.
 
@@ -199,7 +198,11 @@ CursorPie sits in the menu bar all day, so it is built to cost almost nothing wh
 
 - **No drawing while idle.** The window is hidden and nothing repaints until you press the trigger.
 - **Icons are cached** (at most 96) and shared by the pie and Settings, and loaded during the hold time so the
-  pie appears without a hitch.
+  pie appears without a hitch. Images are scaled down to at most 128 px when they are loaded, and an image
+  over 4096 px on a side is not loaded at all.
+- **Settings draws only what you see.** The icon picker builds and loads just the rows on screen, a few images
+  per frame, so a big `icons` folder neither freezes Settings nor fills memory. The list of ready-made slices
+  exists only while the **Add a slice** panel is open.
 - **Sleep.** After 60 seconds without a pie or Settings (**Settings > Behavior > Memory**), CursorPie drops the
   cached icons and the Settings working copy and asks the system to take the freed pages back. The next press
   loads what the pie needs again. Switch the option off to keep everything in memory.

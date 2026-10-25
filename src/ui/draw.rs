@@ -40,21 +40,36 @@ pub fn fit_within(w: u32, h: u32, max: u32) -> (u32, u32) {
 ///
 /// Lanczos can overshoot, and a premultiplied pixel must never have a color channel above its
 /// alpha (the GPU would add light instead of blending), so the channels are clamped afterwards.
-pub fn prepare_icon(img: image::RgbaImage, max: u32) -> image::RgbaImage {
+pub fn prepare_icon(mut img: image::RgbaImage, max: u32) -> image::RgbaImage {
     let premul = |c: u8, a: u8| ((c as u16 * a as u16 + 127) / 255) as u8;
-    let (w, h) = fit_within(img.width(), img.height(), max);
-    let mut color = image::RgbImage::new(img.width(), img.height());
-    let mut alpha = image::GrayImage::new(img.width(), img.height());
+    let (src_w, src_h) = (img.width(), img.height());
+    let (w, h) = fit_within(src_w, src_h, max);
+
+    // Already small enough: premultiply in place. No second bitmap is allocated (a premultiplied
+    // channel is never above its alpha, so the clamp of the resize path is not needed here).
+    if (w, h) == (src_w, src_h) {
+        for px in img.as_chunks_mut::<4>().0 {
+            let a = px[3];
+            for v in &mut px[..3] {
+                *v = premul(*v, a);
+            }
+        }
+        return img;
+    }
+
+    let mut color = image::RgbImage::new(src_w, src_h);
+    let mut alpha = image::GrayImage::new(src_w, src_h);
     for (x, y, p) in img.enumerate_pixels() {
         let [r, g, b, a] = p.0;
         color.put_pixel(x, y, image::Rgb([premul(r, a), premul(g, a), premul(b, a)]));
         alpha.put_pixel(x, y, image::Luma([a]));
     }
-    if (w, h) != (img.width(), img.height()) {
-        let lanczos = image::imageops::FilterType::Lanczos3;
-        color = image::imageops::resize(&color, w, h, lanczos);
-        alpha = image::imageops::resize(&alpha, w, h, lanczos);
-    }
+    // The full-size source is no longer needed: give it back before the (allocating) resize, so a
+    // big image never exists in three copies at once.
+    drop(img);
+    let lanczos = image::imageops::FilterType::Lanczos3;
+    color = image::imageops::resize(&color, w, h, lanczos);
+    alpha = image::imageops::resize(&alpha, w, h, lanczos);
     let mut out = image::RgbaImage::new(w, h);
     for (x, y, p) in out.enumerate_pixels_mut() {
         let [r, g, b] = color.get_pixel(x, y).0;
@@ -64,10 +79,40 @@ pub fn prepare_icon(img: image::RgbaImage, max: u32) -> image::RgbaImage {
     out
 }
 
+/// Longest side, in pixels, of a source image that is decoded at all. A decoded bitmap costs
+/// 4 bytes per pixel, so 4096 x 4096 is already 64 MiB for something drawn at 30 to 120 points.
+/// Bigger files are refused (the slice shows "?") instead of risking a memory spike.
+pub const MAX_SOURCE_SIDE: u32 = 4096;
+
+/// Opens `path` with its format guessed from the content, without decoding anything yet.
+pub(crate) fn open_reader(
+    path: &std::path::Path,
+) -> Option<image::ImageReader<std::io::BufReader<std::fs::File>>> {
+    image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()
+}
+
+/// Decodes an icon file to RGBA, but only if its size (read from the header, nothing is decoded
+/// for that) is within [`MAX_SOURCE_SIDE`].
+fn decode_icon(path: &std::path::Path) -> Option<image::RgbaImage> {
+    let (w, h) = open_reader(path)?.into_dimensions().ok()?;
+    if w > MAX_SOURCE_SIDE || h > MAX_SOURCE_SIDE {
+        return None;
+    }
+    // `into_rgba8` reuses the buffer when the file is already RGBA, `to_rgba8` would copy it
+    Some(open_reader(path)?.decode().ok()?.into_rgba8())
+}
+
 /// Loads an image file as a texture (scaled down to at most [`ICON_MAX_PX`], see [`prepare_icon`]).
-pub fn load_icon(ctx: &egui::Context, path: &PathBuf, name: &str) -> Option<egui::TextureHandle> {
-    let img = image::open(path).ok()?.to_rgba8();
-    let rgba = prepare_icon(img, ICON_MAX_PX);
+/// Only the small texture is kept: the decoded source bitmap is dropped before this returns.
+pub fn load_icon(
+    ctx: &egui::Context,
+    path: &std::path::Path,
+    name: &str,
+) -> Option<egui::TextureHandle> {
+    let rgba = prepare_icon(decode_icon(path)?, ICON_MAX_PX);
     let size = [rgba.width() as usize, rgba.height() as usize];
     let color = egui::ColorImage::from_rgba_premultiplied(size, rgba.as_raw());
     Some(ctx.load_texture(name, color, egui::TextureOptions::LINEAR))
@@ -352,6 +397,26 @@ mod tests {
         let out = prepare_icon(src, 128);
         assert_eq!((out.width(), out.height()), (8, 8));
         assert_eq!(out.get_pixel(0, 0).0, [100, 50, 25, 128]);
+    }
+
+    #[test]
+    fn oversized_source_images_are_not_decoded() {
+        let dir = std::env::temp_dir().join(format!("cursorpie-draw-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (big, ok) = (dir.join("big.png"), dir.join("ok.png"));
+        image::RgbaImage::new(MAX_SOURCE_SIDE + 1, 1)
+            .save(&big)
+            .unwrap();
+        image::RgbaImage::from_pixel(64, 48, image::Rgba([1, 2, 3, 255]))
+            .save(&ok)
+            .unwrap();
+        assert!(
+            decode_icon(&big).is_none(),
+            "too wide: refused from the header"
+        );
+        assert_eq!(decode_icon(&ok).map(|i| i.dimensions()), Some((64, 48)));
+        assert!(decode_icon(&dir.join("missing.png")).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ------------------------------------------------------------ math

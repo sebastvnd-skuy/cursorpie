@@ -128,6 +128,8 @@ Timing: 0.22 s to open (slices appear one after another, with a small overshoot)
 6. **Keep icons premultiplied** from load to draw; never upload a texture with a color channel above its
    alpha.
 7. **Keep colors, radii and sizes in `theme.rs`.**
+8. **Draw only what is on screen.** A list or grid that can pass a screenful uses `ScrollArea::show_rows` (see `icon_picker.rs`), builds its tiles from indexes instead of cloned strings, and loads textures only for the visible rows, a few per frame (`LOADS_PER_FRAME`).
+9. **Limit a file where it enters.** Read an image's size from its header and refuse it before decoding (`draw::MAX_SOURCE_SIDE`); shrink what the user chooses once (`ui::iconfit`) and say so in the status bar.
 
 ## Transparent window on Windows
 
@@ -258,6 +260,8 @@ at the very least change the display scaling once:
 - [ ] Undo and Redo are dimmed when unavailable and show a tooltip.
 - [ ] Shrink the screen height (or use a short laptop display): the Menu tab still fits.
 - [ ] Use an image icon with a transparent background: no dark halo around it.
+- [ ] Icon picker, **Mine** page, with 100 or more images in the `icons` folder: scrolling stays smooth, tiles show a dot-dot-dot for a moment and then their image, and memory does not jump when the page opens.
+- [ ] Choose an image over 1000 px with **Image...**: the status bar says it was shrunk, the icon stays sharp, the original is untouched. Choose a text file renamed `.png`: the status bar says it cannot be read.
 - [ ] Welcome window (delete `welcome_shown`, or use the tray item): the three pages fit without scrolling at
       the smallest card size, the page dots follow Back and Next, and Skip, Esc and Enter behave as the buttons say.
 - [ ] Windows: hold the trigger over a bright window (a white page): the pie floats over it with no

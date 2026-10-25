@@ -22,6 +22,13 @@
 //!   4. The same walk with the keys sent through System Events (`osascript`), for a macOS that
 //!      ignores keys posted by other programs. It asks for the Automation permission once.
 //!
+//!   **More than one screen.** With separate Spaces per display (the macOS default) every screen
+//!   has its own row of Spaces and Control+Arrow acts on the screen under the pointer. So the
+//!   screen that holds the app's window is found first ([`locate_target`]), the walk uses the row
+//!   and the shown Space of that screen only, and the pointer is moved onto that screen while the
+//!   keys are sent and put back afterwards: the switch animation happens on the screen of the
+//!   window, not on the screen that was clicked.
+//!
 //!   Once the Space is shown the window is raised itself ([`focus_app`]): after the switch animation
 //!   it is raised through Accessibility, the app is made frontmost, and the front window is checked.
 //!
@@ -37,8 +44,8 @@
 use super::shell::open_app;
 use crate::config::DesktopMode;
 use crate::platform::desktops::{
-    Desktops, MAX_STEPS, Presence, WindowInfo, app_name_of_path, presence_of, same_app_path,
-    signature, steps_between, walk_to_target,
+    Desktops, DisplayRow, MAX_STEPS, Presence, WindowInfo, app_name_of_path, pick_display,
+    presence_of, same_app_path, signature, steps_between, walk_to_target,
 };
 use crate::platform::spawn_reaped;
 use core_foundation::array::{CFArray, CFArrayRef};
@@ -47,7 +54,7 @@ use core_foundation::boolean::CFBoolean;
 use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::number::CFNumber;
 use core_foundation::string::{CFString, CFStringRef};
-use core_graphics::geometry::CGRect;
+use core_graphics::geometry::{CGPoint, CGRect};
 use core_graphics::window::{
     copy_window_info, kCGNullWindowID, kCGWindowAlpha, kCGWindowBounds, kCGWindowIsOnscreen,
     kCGWindowLayer, kCGWindowListExcludeDesktopElements, kCGWindowListOptionAll,
@@ -71,6 +78,9 @@ const ARRIVE: Duration = Duration::from_millis(700);
 const FRONT_WAIT: Duration = Duration::from_millis(500);
 /// How long the animation of a Space switch is given before the next arrow key is pressed.
 const STEP_PAUSE: Duration = Duration::from_millis(350);
+/// How long the window server gets to notice that the pointer is on another display before the
+/// arrow key is pressed: Control+Arrow acts on the display under the pointer.
+const POINTER_SETTLE: Duration = Duration::from_millis(150);
 /// How often the screen is looked at while waiting.
 const POLL: Duration = Duration::from_millis(50);
 
@@ -194,45 +204,198 @@ fn window_list(on_screen_only: bool) -> Vec<WindowInfo> {
     out
 }
 
+/// The display a walk is about: the one that holds a window of the app. With separate Spaces per
+/// display every screen has its own row of Spaces, so the walk is made on that row, and
+/// Control+Arrow is sent while the pointer is on that screen (the key acts on the display under
+/// the pointer), never on the screen that was clicked when the window is on another.
+struct Target {
+    /// The display, as `SLSCopyManagedDisplaySpaces` names it.
+    display: String,
+    /// The Spaces of that display, left to right.
+    row: Vec<u64>,
+    /// The Spaces of that display that have a window of the app.
+    spaces: Vec<u64>,
+    /// Where the pointer has to be for the keys to act on that display: `None` when it is there
+    /// already, or when there is one display only.
+    pointer: Option<CGPoint>,
+}
+
 /// The row of Spaces as [`walk_to_target`] needs it, looking for the windows of the app `pid`.
 struct Row {
     pid: i32,
-    /// The ordinary windows of the app, on any Space: the Spaces they are on are the ones to go to.
-    windows: Vec<u32>,
     /// The private calls, when this macOS has them: they tell the order of the Spaces, so the way
     /// there is known, and tell an empty Space from another.
     sky: Option<SkyLight>,
     /// Send the arrow keys through System Events instead of posting them directly.
     via_script: bool,
+    /// The display of the window, when the window server can tell.
+    target: Option<Target>,
+    /// Where the pointer was before it was moved to the display of the window, to put it back.
+    saved_pointer: Option<CGPoint>,
+    /// Whether the pointer was moved to the display of the window already.
+    aimed: bool,
 }
 
 impl Row {
-    fn new(pid: i32, windows: Vec<u32>, via_script: bool) -> Self {
+    /// `windows` are the ordinary windows of the app, on any Space, front to back: the Spaces they
+    /// are on are the ones to go to.
+    fn new(pid: i32, windows: &[u32], via_script: bool) -> Self {
+        let sky = SkyLight::load();
+        let target = sky.as_ref().and_then(|sky| locate_target(sky, windows));
         Row {
             pid,
-            windows,
-            sky: SkyLight::load(),
+            sky,
             via_script,
+            target,
+            saved_pointer: None,
+            aimed: false,
         }
     }
 
-    /// Whether a window of the app is on a Space that is shown.
+    /// Whether a window of the app is on a Space that is shown (on any display).
     fn app_is_here(&self) -> bool {
         presence_of(&window_list(true), self.pid) == Presence::Here
+    }
+
+    /// The Space the display of the window shows right now. `None` without a known display.
+    fn target_space(&self) -> Option<u64> {
+        let (sky, target) = (self.sky.as_ref()?, self.target.as_ref()?);
+        sky.displays()
+            .into_iter()
+            .find(|d| d.display == target.display)
+            .map(|d| d.current)
+            .filter(|space| *space != 0)
+    }
+
+    /// Puts the pointer on the display of the window, once: the Control+Arrow shortcuts switch
+    /// the Spaces of the display under the pointer.
+    fn aim_pointer(&mut self) {
+        let Some(point) = self.target.as_ref().and_then(|t| t.pointer) else {
+            return;
+        };
+        if self.aimed {
+            return;
+        }
+        self.aimed = true;
+        self.saved_pointer = super::cursor_pos().map(|(x, y)| CGPoint::new(x, y));
+        trace(|| format!("pointer to the display of the window: {point:?}"));
+        warp_pointer(point);
+        std::thread::sleep(POINTER_SETTLE);
+    }
+}
+
+impl Drop for Row {
+    /// The pointer goes back to where the user had it.
+    fn drop(&mut self) {
+        if let Some(point) = self.saved_pointer.take() {
+            warp_pointer(point);
+        }
+    }
+}
+
+/// The display that has the windows to go to, from the Spaces they are on. See [`Target`].
+fn locate_target(sky: &SkyLight, windows: &[u32]) -> Option<Target> {
+    if windows.is_empty() {
+        return None;
+    }
+    let rows = sky.displays();
+    let under_pointer = pointer_display(&rows).map(|r| r.display.clone());
+    let window_spaces: Vec<Vec<u64>> = windows.iter().map(|w| sky.spaces_of(*w)).collect();
+    let (at, spaces) = pick_display(&rows, &window_spaces, under_pointer.as_deref())?;
+    let chosen = &rows[at];
+    let pointer = if rows.len() > 1 && under_pointer.as_deref() != Some(chosen.display.as_str()) {
+        display_bounds(&chosen.display).map(|b| {
+            CGPoint::new(
+                b.origin.x + b.size.width / 2.0,
+                b.origin.y + b.size.height / 2.0,
+            )
+        })
+    } else {
+        None
+    };
+    trace(|| {
+        format!(
+            "{} display(s); pointer on {under_pointer:?}; windows on display {:?} (Spaces {spaces:?} of {:?}, shows {})",
+            rows.len(),
+            chosen.display,
+            chosen.spaces,
+            chosen.current
+        )
+    });
+    Some(Target {
+        display: chosen.display.clone(),
+        row: chosen.spaces.clone(),
+        spaces,
+        pointer,
+    })
+}
+
+/// The display under the pointer, among the displays of the window server.
+fn pointer_display(rows: &[DisplayRow]) -> Option<&DisplayRow> {
+    let (x, y) = super::cursor_pos()?;
+    let point = CGPoint::new(x, y);
+    rows.iter()
+        .find(|r| display_bounds(&r.display).is_some_and(|b| b.contains(&point)))
+}
+
+/// Moves the pointer without generating mouse events.
+fn warp_pointer(point: CGPoint) {
+    // SAFETY: a plain call with a point by value.
+    unsafe {
+        CGWarpMouseCursorPosition(point);
+    }
+}
+
+/// The bounds (global coordinates, in points) of the display the window server names `identifier`:
+/// the UUID of the display, or `Main` when the Spaces are shared by all displays.
+fn display_bounds(identifier: &str) -> Option<CGRect> {
+    use core_graphics::display::CGDisplay;
+    if identifier.eq_ignore_ascii_case("Main") {
+        return Some(CGDisplay::main().bounds());
+    }
+    CGDisplay::active_displays()
+        .ok()?
+        .into_iter()
+        .find(|id| display_uuid(*id).is_some_and(|u| u.eq_ignore_ascii_case(identifier)))
+        .map(|id| CGDisplay::new(id).bounds())
+}
+
+/// The UUID of a display as text, the name `SLSCopyManagedDisplaySpaces` gives it.
+fn display_uuid(id: u32) -> Option<String> {
+    // SAFETY: the CFUUID that is returned is wrapped at once, so it is released; the string made
+    // from it is wrapped the same way.
+    unsafe {
+        let uuid = CGDisplayCreateUUIDFromDisplayID(id);
+        if uuid.is_null() {
+            return None;
+        }
+        let uuid = CFType::wrap_under_create_rule(uuid);
+        let text = CFUUIDCreateString(std::ptr::null(), uuid.as_CFTypeRef());
+        (!text.is_null()).then(|| CFString::wrap_under_create_rule(text).to_string())
     }
 }
 
 impl Desktops for Row {
     type Id = u64;
 
+    /// A window of the app is on the Space that the display of the window shows. Without a known
+    /// display: on any Space that is shown.
     fn target_here(&mut self) -> bool {
-        self.app_is_here()
+        match (self.target_space(), self.target.as_ref()) {
+            (Some(space), Some(target)) => target.spaces.contains(&space),
+            _ => self.app_is_here(),
+        }
     }
 
-    /// The Space that is shown: its id from the window server, together with the windows on it, so
-    /// that a change of either counts as a move, and an empty Space can still be told. CursorPie's
-    /// own windows are left out of the windows: the pie may still be fading out.
+    /// The Space that is shown on the display of the window, so that what happens on the other
+    /// displays does not count as a move. Without a known display: the Space that is shown, its id
+    /// from the window server, together with the windows on it, so that a change of either counts
+    /// as a move, and an empty Space can still be told. CursorPie's own windows are left out of the
+    /// windows: the pie may still be fading out.
     fn current(&mut self) -> Option<u64> {
+        if let Some(space) = self.target_space() {
+            return Some(space);
+        }
         let me = std::process::id() as i32;
         let windows = signature(
             window_list(true)
@@ -250,27 +413,24 @@ impl Desktops for Row {
         Some(hasher.finish())
     }
 
-    /// Steps to the nearest Space with a window of the app, from the order the window server
-    /// reports the Spaces in.
+    /// Steps to the nearest Space with a window of the app, on the row of the display of the
+    /// window, from the order the window server reports the Spaces in.
     fn route(&mut self) -> Option<isize> {
-        let sky = self.sky.as_ref()?;
-        let here = sky.shown_space();
-        let order = sky.space_order(here);
-        let targets: Vec<u64> = self
-            .windows
-            .iter()
-            .flat_map(|w| sky.spaces_of(*w))
-            .collect();
-        let steps = steps_between(&order, &here, &targets);
+        let here = self.target_space()?;
+        let target = self.target.as_ref()?;
+        let steps = steps_between(&target.row, &here, &target.spaces);
         trace(|| {
             format!(
-                "Spaces in order {order:?}, shown {here}, windows of the app on {targets:?}: {steps:?} steps"
+                "display {:?}: Spaces in order {:?}, shown {here}, windows of the app on {:?}: {steps:?} steps",
+                target.display, target.row, target.spaces
             )
         });
         steps
     }
 
     fn step(&mut self, forward: bool) {
+        // the keys act on the display under the pointer: it has to be the display of the window
+        self.aim_pointer();
         let before = self.current();
         if self.via_script {
             press_space_arrow_with_script(forward);
@@ -294,18 +454,18 @@ impl Desktops for Row {
             std::thread::sleep(STEP_PAUSE);
         }
         let after = self.current();
+        let here = self.target_here();
+        let via_script = self.via_script;
         trace(|| {
             format!(
-                "step {} (script: {}): Space {} after {} ms, app here: {}",
+                "step {} (script: {via_script}): Space {} after {} ms, app here: {here}",
                 if forward { "right" } else { "left" },
-                self.via_script,
                 if after == before {
                     "did not change"
                 } else {
                     "changed"
                 },
                 start.elapsed().as_millis(),
-                self.app_is_here()
             )
         });
     }
@@ -323,7 +483,7 @@ fn press_space_arrow_with_script(forward: bool) {
 
 /// Waits (at most `OPEN_WAIT`) until a window of the app `pid` is on a Space that is shown.
 fn wait_until_here(pid: i32) -> bool {
-    let row = Row::new(pid, Vec::new(), false);
+    let row = Row::new(pid, &[], false);
     let start = Instant::now();
     while start.elapsed() < OPEN_WAIT {
         if row.app_is_here() {
@@ -438,7 +598,11 @@ pub fn reveal_app(app: &str, mode: DesktopMode) {
     // 3. and 4. walk the Spaces with the arrow keys, posted and then through System Events
     for via_script in [false, true] {
         trace(|| format!("walking the Spaces (script: {via_script})"));
-        if walk_to_target(&mut Row::new(pid, windows.clone(), via_script), MAX_STEPS) {
+        let reached = {
+            let mut row = Row::new(pid, &windows, via_script);
+            walk_to_target(&mut row, MAX_STEPS)
+        }; // the row is gone here: the pointer is back where the user had it
+        if reached {
             focus_app(pid, app, true);
             return;
         }
@@ -464,6 +628,18 @@ unsafe extern "C" {
         attribute: CFStringRef,
         value: CFTypeRef,
     ) -> c_int;
+    /// The CFUUID of a display (ColorSync, part of ApplicationServices); a new object.
+    fn CGDisplayCreateUUIDFromDisplayID(display: u32) -> CFTypeRef;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFUUIDCreateString(allocator: *const c_void, uuid: CFTypeRef) -> CFStringRef;
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGWarpMouseCursorPosition(new_cursor_position: CGPoint) -> c_int;
 }
 
 /// Raises the main (else the focused) window of the app `pid` with the Accessibility action
@@ -651,11 +827,21 @@ impl SkyLight {
         }
     }
 
-    /// The ids of the Spaces of the display that has the Space `here`, from left to right: the
-    /// order Control+Arrow goes through. Empty when `here` is on no display of the list.
-    fn space_order(&self, here: u64) -> Vec<u64> {
+    /// Every display with the Spaces it has, from left to right, and the one it shows. With
+    /// separate Spaces per display each screen has its own row (Control+Arrow goes through the row
+    /// of the display under the pointer); with shared Spaces there is one entry.
+    fn displays(&self) -> Vec<DisplayRow> {
+        let key_display = CFString::from_static_string("Display Identifier");
+        let key_current = CFString::from_static_string("Current Space");
         let key_spaces = CFString::from_static_string("Spaces");
         let key_id = CFString::from_static_string("ManagedSpaceID");
+        let id_of = |space: &CFDictionary<CFString, CFType>| {
+            space
+                .find(&key_id)
+                .and_then(|v| v.downcast::<CFNumber>())
+                .and_then(|n| n.to_i64())
+                .map(|n| n as u64)
+        };
         // SAFETY: the result, when not null, is a new array that is released by the wrapper; its
         // items are dictionaries, which are only read through the typed wrappers.
         let displays = unsafe {
@@ -665,9 +851,14 @@ impl SkyLight {
             }
             CFArray::<*const c_void>::wrap_under_create_rule(list)
         };
+        let mut out = Vec::new();
         for display in displays.iter() {
             let display: CFDictionary<CFString, CFType> =
                 unsafe { CFDictionary::wrap_under_get_rule(*display as CFDictionaryRef) };
+            let name = display
+                .find(&key_display)
+                .and_then(|v| v.downcast::<CFString>())
+                .map(|s| s.to_string());
             let Some(spaces) = display
                 .find(&key_spaces)
                 .and_then(|v| v.downcast::<CFArray>())
@@ -679,22 +870,44 @@ impl SkyLight {
                 .filter_map(|space| {
                     let space: CFDictionary<CFString, CFType> =
                         unsafe { CFDictionary::wrap_under_get_rule(*space as CFDictionaryRef) };
-                    space
-                        .find(&key_id)
-                        .and_then(|v| v.downcast::<CFNumber>())
-                        .and_then(|n| n.to_i64())
-                        .map(|n| n as u64)
+                    id_of(&space)
                 })
                 .collect();
-            if ids.contains(&here) {
-                return ids;
+            let current = display
+                .find(&key_current)
+                .and_then(|v| v.downcast::<CFDictionary>())
+                .and_then(|d| {
+                    let d: CFDictionary<CFString, CFType> =
+                        unsafe { CFDictionary::wrap_under_get_rule(d.as_concrete_TypeRef()) };
+                    id_of(&d)
+                })
+                .unwrap_or(0);
+            if let Some(display) = name {
+                out.push(DisplayRow {
+                    display,
+                    current,
+                    spaces: ids,
+                });
             }
         }
-        Vec::new()
+        out
+    }
+
+    /// The Space shown on the display under the pointer: the one the user is looking at when they
+    /// click. With one display, or when the display cannot be told, the Space that is shown.
+    fn space_under_pointer(&self) -> u64 {
+        let rows = self.displays();
+        if rows.len() > 1
+            && let Some(row) = pointer_display(&rows)
+            && row.current != 0
+        {
+            return row.current;
+        }
+        self.shown_space()
     }
 }
 
-/// Moves the window `number` onto the Space that is shown. `true` only when the window server then
+/// Moves the window `number` onto the Space shown on the display under the pointer. `true` only when the window server then
 /// reports the window on that Space: the calls themselves return success on macOS versions where
 /// they do nothing.
 fn bring_window_here(number: u32) -> bool {
@@ -705,7 +918,7 @@ fn bring_window_here(number: u32) -> bool {
     // reads it through the pointer.
     unsafe {
         let connection = (sl.main_connection)();
-        let here = sl.shown_space();
+        let here = sl.space_under_pointer();
         if here == 0 {
             return false;
         }

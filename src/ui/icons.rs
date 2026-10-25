@@ -99,6 +99,15 @@ impl IconCache {
         });
     }
 
+    /// Whether `icon` is already in the cache (a remembered failure counts). Costs a lookup and
+    /// never decodes anything, so a screen can ask before it spends time on a load.
+    pub fn contains(&self, icon: &str) -> bool {
+        if icon.starts_with(appicon::PREFIX) {
+            return self.lru.contains(icon);
+        }
+        icon_path(icon).is_some_and(|p| self.lru.contains(&*p.to_string_lossy()))
+    }
+
     /// The texture for an icon string. None for text icons and for images that cannot be loaded.
     pub fn get(&mut self, ctx: &egui::Context, icon: &str) -> Option<egui::TextureHandle> {
         // "app:<bundle id>" = the real icon of an app, asked from macOS (see `appicon`)
@@ -256,6 +265,21 @@ mod tests {
             1,
             "a failed load is forgotten so it can be retried"
         );
+    }
+
+    #[test]
+    fn contains_tells_loaded_from_not_loaded_without_loading() {
+        let dir = scratch("contains");
+        let file = dir.join("a.png");
+        write_png(&file, [0, 255, 0, 255], 8);
+        let ctx = egui::Context::default();
+        let mut c = IconCache::new();
+        let s = file.to_string_lossy().to_string();
+        assert!(!c.contains(&s));
+        assert!(c.is_empty(), "asking does not load");
+        let _ = c.get(&ctx, &s);
+        assert!(c.contains(&s));
+        assert!(!c.contains("<>"), "text icons are never cached");
     }
 
     #[test]

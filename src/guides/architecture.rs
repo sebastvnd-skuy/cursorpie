@@ -147,7 +147,7 @@
 //!
 //! The window is hidden almost all the time, and egui does not repaint a hidden window, so the idle
 //! cost is already near zero. What stays allocated is *state*: decoded icon textures and the
-//! Settings working copy. Three mechanisms keep that small without making the pie slower.
+//! Settings working copy. Four mechanisms keep that small without making the pie slower.
 //!
 //! **1. A bounded icon cache** ([`ui::icons`](crate::ui::icons), built on [`cache::Lru`](crate::cache::Lru)).
 //! Decoding an app icon (a multi-size TIFF from macOS) or scaling an image file takes far longer
@@ -166,7 +166,26 @@
 //! lookups, so this is free in the common case. Sending the message follows the tap rules below:
 //! it never blocks.
 //!
-//! **3. Sleep.** [`ui::sleep::Sleeper`](crate::ui::sleep::Sleeper) is a small state machine over
+//! **3. Bounded at the door, drawn only when visible.** A cache limits what it *keeps*; these rules limit
+//! what is *read and drawn* in the first place:
+//!
+//! * An image is refused from its header, before it is decoded, when a side is over
+//!   [`MAX_SOURCE_SIDE`](crate::ui::draw::MAX_SOURCE_SIDE) (4096 px). A decoded bitmap costs 4 bytes per pixel,
+//!   so the limit is also a memory limit. [`prepare_icon`](crate::ui::draw::prepare_icon) premultiplies a small
+//!   image in place and drops the full-size source before it resizes a big one, so a big image never exists in
+//!   several copies at once. Only the texture (at most 128 px) is kept.
+//! * [`ui::iconfit`](crate::ui::iconfit) prepares an image the user chooses, on the file chooser's worker
+//!   thread: it is used as it is when small, saved as a 256 px PNG in the icons folder when big, or refused
+//!   with a sentence for the status bar. The user is told, never left with a silent `?`.
+//! * A grid that can pass a screenful is virtualized (`ScrollArea::show_rows`): the icon picker builds and
+//!   loads only the visible rows, and at most `LOADS_PER_FRAME` new images per frame, asking for another frame
+//!   while some are waiting.
+//! * Data that does not change between frames, such as the tiles of the "Add a slice" panel
+//!   (`Ed::add_catalog`), is built once when its panel opens and dropped when it is not showing.
+//! * A user-chosen text file is read with `Read::take` ([`read_text_capped`](crate::config::read_text_capped)),
+//!   so a wrong file is never loaded whole.
+//!
+//! **4. Sleep.** [`ui::sleep::Sleeper`](crate::ui::sleep::Sleeper) is a small state machine over
 //! `Instant`s:
 //!
 //! ```text
@@ -187,14 +206,15 @@
 //!
 //! | State | Freed when Settings closes | Freed when the UI sleeps | Never freed |
 //! |---|---|---|---|
-//! | `App::edit` (config copy), undo history, picker lists, backup list | yes | yes | |
+//! | `App::edit` (config copy), undo history, picker lists, backup list, `Ed::add_catalog` | yes | yes | |
 //! | icon textures | no (only changed files are re-read) | yes | |
 //! | the live config, side-button state, gesture state | | | yes |
 //! | egui font atlas, GPU surface | | | yes |
 //!
 //! `Config::sleep_after_s` sets the idle time (0 = never sleep). Rules for new code: a cache must
 //! be bounded, must be cleared in `enter_sleep`, and must never be filled on the frame that opens
-//! the pie (warm it instead).
+//! the pie (warm it instead). A list longer than a screenful is virtualized, and input is limited
+//! where it enters (see 3 above).
 //!
 //! ## Undo, redo and backups
 //!

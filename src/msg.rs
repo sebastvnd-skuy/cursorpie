@@ -35,6 +35,8 @@ pub enum Msg {
         profile: usize,
         path: Vec<usize>,
         file: String,
+        /// What was done to the image (shrunk, ...), for the status bar
+        note: Option<String>,
     },
     /// An app was chosen for the "apps" list of `profile`; `bundle` is its bundle identifier.
     AppPicked { profile: usize, bundle: String },

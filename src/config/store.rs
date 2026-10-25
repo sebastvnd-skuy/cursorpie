@@ -15,6 +15,24 @@ pub fn parse_config(text: &str) -> Option<Config> {
         .map(Config::sanitize)
 }
 
+/// Largest config file Settings imports. A real config is a few KiB; the limit only keeps a wrong
+/// file (a video, a disk image) from being read into memory.
+pub const MAX_CONFIG_FILE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Reads a UTF-8 text file of at most `max` bytes. The read itself is capped (`Read::take`), so a
+/// file that is bigger than it claims, or still growing, is never loaded whole.
+/// None = unreadable, not text, or too large.
+pub fn read_text_capped(path: impl AsRef<std::path::Path>, max: u64) -> Option<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    let n = fs::File::open(path)
+        .ok()?
+        .take(max.saturating_add(1))
+        .read_to_string(&mut text)
+        .ok()?;
+    ((n as u64) <= max).then_some(text)
+}
+
 /// The user's home directory for `os`, with `get` standing in for the environment: `$HOME` on
 /// macOS (`/tmp` if unset), `%USERPROFILE%` on Windows (then `%HOMEDRIVE%%HOMEPATH%`, then `C:\`).
 pub fn home_from(os: Os, get: &dyn Fn(&str) -> Option<String>) -> PathBuf {
@@ -220,6 +238,20 @@ pub fn set_active(profile: usize, path: Vec<usize>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_text_capped_refuses_files_over_the_limit() {
+        let dir = std::env::temp_dir().join(format!("cursorpie-cap-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("c.json");
+        fs::write(&f, "12345").unwrap();
+        assert_eq!(read_text_capped(&f, 5).as_deref(), Some("12345"));
+        assert_eq!(read_text_capped(&f, 4), None, "one byte over");
+        fs::write(&f, [0xff, 0xfe]).unwrap();
+        assert_eq!(read_text_capped(&f, 10), None, "not UTF-8");
+        assert_eq!(read_text_capped(dir.join("missing"), 10), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn parse_config_needs_a_version() {

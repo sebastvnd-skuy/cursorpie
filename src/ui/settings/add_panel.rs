@@ -1,6 +1,6 @@
 //! The "Add a slice" panel: ready-made slices to append to the current ring.
 
-use super::state::Ed;
+use super::state::{AddCatalog, Ed};
 use crate::config::*;
 use crate::ui::draw::*;
 use crate::ui::settings::theme::*;
@@ -18,6 +18,18 @@ pub(super) fn add_panel(
 ) {
     let mut picked: Option<Item> = None;
     let mut cancel = false;
+    // built once when the panel opens, not on every frame (see `AddCatalog`)
+    let can_nest = depth + 1 < MAX_DEPTH;
+    if ed
+        .add_catalog
+        .as_ref()
+        .is_none_or(|c| c.can_nest != can_nest)
+    {
+        ed.add_catalog = Some(AddCatalog::new(can_nest));
+    }
+    let Some(catalog) = ed.add_catalog.as_ref() else {
+        return;
+    };
     card().show(ui, |ui| {
         let inner_w = width - 26.0;
         ui.set_width(inner_w);
@@ -29,14 +41,9 @@ pub(super) fn add_panel(
                 }
             });
         });
-        let groups: [(&str, Vec<Item>); 3] = [
-            ("Quick actions", quick_actions()),
-            ("Side buttons", presets()),
-            ("Custom", blank_items(depth + 1 < MAX_DEPTH)),
-        ];
         let (tw, th, gap) = (86.0_f32, 64.0_f32, GAP);
         let cols = (((inner_w + gap) / (tw + gap)).floor().max(1.0)) as usize;
-        for (title, list) in groups {
+        for (title, list) in &catalog.groups {
             muted(ui, title);
             for row in list.chunks(cols) {
                 ui.horizontal(|ui| {
@@ -68,10 +75,12 @@ pub(super) fn add_panel(
     });
     if cancel {
         ed.adding = false;
+        ed.add_catalog = None;
     }
     if let Some(it) = picked {
         ring.push(it);
         ed.sel = Some(ring.len() - 1);
         ed.adding = false;
+        ed.add_catalog = None;
     }
 }

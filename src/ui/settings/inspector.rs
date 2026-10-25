@@ -65,12 +65,15 @@ fn pick_icon(env: &Env, path: &[usize]) {
         env.ctx.clone(),
         FileKind::Image,
         "Choose an icon image",
-        move |file| {
-            Some(Msg::IconPicked {
+        // runs on the chooser's worker thread: a big image is shrunk there, not on the UI thread
+        move |file| match crate::ui::iconfit::fit(&file) {
+            Ok(fitted) => Some(Msg::IconPicked {
                 profile,
                 path,
-                file,
-            })
+                file: fitted.icon,
+                note: fitted.note,
+            }),
+            Err(why) => Some(Msg::Notice(why)),
         },
     );
 }
@@ -290,7 +293,7 @@ pub(super) fn item_inspector(
     if change_icon {
         ed.picking_icon = true;
         ed.icon_query.clear();
-        ed.user_icons = super::icon_catalog::user_icons();
+        ed.reload_user_icons();
     }
     if shift != 0 {
         let j = (i as i32 + shift) as usize;

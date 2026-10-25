@@ -67,6 +67,15 @@ impl<K: Hash + Eq + Clone, V> Lru<K, V> {
         })
     }
 
+    /// Whether `key` is cached. Does not count as a use.
+    pub fn contains<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        self.map.contains_key(key)
+    }
+
     /// Inserts or replaces `key` and marks it as used.
     pub fn insert(&mut self, key: K, value: V) {
         self.tick += 1;
@@ -169,6 +178,16 @@ mod tests {
             c.get("k4").is_some() && c.get("k5").is_some(),
             "the freshest stay"
         );
+    }
+
+    #[test]
+    fn contains_does_not_count_as_a_use() {
+        let mut c = filled(3);
+        c.new_frame(10);
+        assert!(c.contains("k1") && !c.contains("nope"));
+        c.new_frame(1); // k1 was only asked about, never used: it is evictable
+        assert_eq!(c.len(), 1);
+        assert!(!c.contains("k0") && !c.contains("k1"));
     }
 
     #[test]

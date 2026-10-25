@@ -21,8 +21,8 @@ written for people changing the code, not for users.
 
 | Document | Status | What it covers |
 |---|---|---|
-| [WINDOWS_MIGRATION.md](WINDOWS_MIGRATION.md) | Done (0.3.0) | How the macOS-only code base became macOS and Windows, and the Windows checklist |
-| [LINUX_MIGRATION.md](LINUX_MIGRATION.md) | X11 built, Wayland designed | The Linux design, what is implemented, and the Linux checklist |
+| [WINDOWS_MIGRATION.md](WINDOWS_MIGRATION.md) | Done, Windows is stable | How the macOS-only code base became macOS and Windows, and the Windows checklist |
+| [LINUX_MIGRATION.md](LINUX_MIGRATION.md) | X11 supported but experimental, checklist under internal observation; Wayland designed | The Linux design, what is implemented, and the Linux checklist |
 | [OTHER_DESKTOPS.md](OTHER_DESKTOPS.md) | Done | How *Open app* follows an app to another desktop or Space |
 | [UI_DESIGN.md](UI_DESIGN.md) | Living | Look, rendering rules and the visual checklist |
 

@@ -99,7 +99,9 @@ administrator too, because Windows blocks input to them otherwise.
 
 ## Linux (X11)
 
-Linux support is new and **experimental**. Install the development files first:
+Linux (X11) is supported but **experimental**: it works, but its behavior on different distributions and
+desktops is still being observed, so expect rough edges and please report them. Install the development files
+first:
 
 ```sh
 # Debian, Ubuntu

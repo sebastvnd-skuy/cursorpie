@@ -3,6 +3,11 @@
 //! All widths are derived from `w` (the panel width given by the caller), not from
 //! `available_width()`, and the grid is laid out by hand, row by row. That way nothing can
 //! spill out of the card even if egui gets the remaining width wrong.
+//!
+//! The grid is **virtualized**: `ScrollArea::show_rows` only runs the closure for the rows that
+//! are on screen, so a folder with 120 images costs the same as one with 12, and only the visible
+//! images are ever turned into textures. Those loads are also spread over several frames
+//! ([`LOADS_PER_FRAME`]) so opening the "Mine" page never freezes the window.
 
 use super::icon_catalog::{self, CATEGORIES, IconDef};
 use super::state::Ed;
@@ -19,10 +24,15 @@ pub(super) struct Picked {
     pub back: bool,
 }
 
-/// One tile of the grid.
+/// Most image files decoded in one frame while the grid fills up. Tiles still waiting show "…"
+/// and are loaded on the following frames (the picker asks for them with `request_repaint`).
+const LOADS_PER_FRAME: usize = 6;
+
+/// One tile of the grid. A user image is an index into `Ed::user_icons`, so building the list of
+/// tiles (every frame) does not clone a single path.
 enum Cell {
     Glyph(&'static IconDef),
-    Mine(String),
+    Mine(usize),
 }
 
 /// Draws the picker in a panel `w` pixels wide; `icon` is the icon being edited.
@@ -75,7 +85,7 @@ pub(super) fn icon_picker(
             .clicked()
         {
             ed.icon_cat = mine;
-            ed.user_icons = icon_catalog::user_icons();
+            ed.reload_user_icons();
         }
     });
 
@@ -100,7 +110,7 @@ pub(super) fn icon_picker(
             .on_hover_text("Reload the icons folder")
             .clicked()
         {
-            ed.user_icons = icon_catalog::user_icons();
+            ed.reload_user_icons();
         }
     });
 
@@ -120,83 +130,131 @@ pub(super) fn icon_picker(
         }
     }
     if ed.icon_cat == 0 || ed.icon_cat == mine {
-        for p in &ed.user_icons {
+        for (i, p) in ed.user_icons.iter().enumerate() {
             let file = p.rsplit('/').next().unwrap_or(p);
             if q.is_empty() || file.to_lowercase().contains(&q) {
-                cells.push(Cell::Mine(p.clone()));
+                cells.push(Cell::Mine(i));
             }
         }
     }
 
+    if ed.icon_cat == mine && ed.icons_not_listed > 0 {
+        muted(
+            ui,
+            &format!(
+                "{} image(s) in the icons folder are not listed (over 2 MB, or more than {}). \
+                 Choose a big one with Image… and it is shrunk for you.",
+                ed.icons_not_listed,
+                icon_catalog::MAX_USER_ICONS
+            ),
+        );
+    }
+
+    if cells.is_empty() {
+        muted(
+            ui,
+            if ed.icon_cat == mine {
+                "Drop images into the icons folder (Folder), then press Reload."
+            } else {
+                "No icons found."
+            },
+        );
+        return out;
+    }
+
     let (tile_w, gap) = (42.0_f32, GAP);
     let cols = (((w - 10.0) + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+    let total_rows = cells.len().div_ceil(cols);
     let h = ui.available_height().max(80.0);
-    egui::ScrollArea::vertical()
-        .id_salt("icon_grid")
-        .max_height(h)
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.set_max_width(w);
-            ui.spacing_mut().item_spacing = Vec2::splat(gap);
-            if cells.is_empty() {
-                muted(
-                    ui,
-                    if ed.icon_cat == mine {
-                        "Drop images into the icons folder (Folder), then press Reload."
-                    } else {
-                        "No icons found."
-                    },
-                );
-            }
-            for row in cells.chunks(cols) {
-                ui.horizontal(|ui| {
-                    for cell in row {
-                        match cell {
-                            Cell::Glyph(def) => {
-                                let (rect, resp) = tile(
-                                    ui,
-                                    Vec2::splat(tile_w),
-                                    icon.as_str() == def.glyph,
-                                    accent,
-                                );
-                                let fs = if def.glyph.chars().count() > 2 {
-                                    12.0
-                                } else {
-                                    22.0
-                                };
-                                ui.painter().text(
-                                    rect.center(),
-                                    Align2::CENTER_CENTER,
-                                    def.glyph,
-                                    FontId::proportional(fs),
-                                    Color32::from_white_alpha(235),
-                                );
-                                if resp.on_hover_text(def.name).clicked() {
-                                    out.chosen = Some(def.glyph.to_string());
+    let mut loads_left = LOADS_PER_FRAME;
+    let mut pending = false;
+    // `show_rows` takes the row distance from the spacing of the Ui it is called on, so the gap is
+    // set on a scope around the scroll area (nothing else is drawn after the grid).
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::splat(gap);
+        egui::ScrollArea::vertical()
+            .id_salt("icon_grid")
+            .max_height(h)
+            .auto_shrink([false, false])
+            .show_rows(ui, tile_w, total_rows, |ui, rows| {
+                ui.set_max_width(w);
+                for row in rows {
+                    let from = row * cols;
+                    let to = (from + cols).min(cells.len());
+                    ui.horizontal(|ui| {
+                        for cell in &cells[from..to] {
+                            match cell {
+                                Cell::Glyph(def) => {
+                                    let (rect, resp) = tile(
+                                        ui,
+                                        Vec2::splat(tile_w),
+                                        icon.as_str() == def.glyph,
+                                        accent,
+                                    );
+                                    let fs = if def.glyph.chars().count() > 2 {
+                                        12.0
+                                    } else {
+                                        22.0
+                                    };
+                                    ui.painter().text(
+                                        rect.center(),
+                                        Align2::CENTER_CENTER,
+                                        def.glyph,
+                                        FontId::proportional(fs),
+                                        Color32::from_white_alpha(235),
+                                    );
+                                    if resp.on_hover_text(def.name).clicked() {
+                                        out.chosen = Some(def.glyph.to_string());
+                                    }
                                 }
-                            }
-                            Cell::Mine(path) => {
-                                let file = path.rsplit('/').next().unwrap_or(path);
-                                let tex = ed.icon_for(ctx, path);
-                                let (rect, resp) =
-                                    tile(ui, Vec2::splat(tile_w), *icon == *path, accent);
-                                draw_icon(
-                                    ui.painter(),
-                                    tex.as_ref(),
-                                    path,
-                                    rect.center(),
-                                    30.0,
-                                    255,
-                                );
-                                if resp.on_hover_text(file).clicked() {
-                                    out.chosen = Some(path.clone());
+                                Cell::Mine(i) => {
+                                    // only the rows on screen get here: one clone per visible tile
+                                    let path = ed.user_icons[*i].clone();
+                                    let file = path.rsplit('/').next().unwrap_or(path.as_str());
+                                    let loaded = ed.icons.contains(&path);
+                                    let waiting = !loaded && loads_left == 0;
+                                    let tex = if waiting {
+                                        None
+                                    } else {
+                                        if !loaded {
+                                            loads_left -= 1;
+                                        }
+                                        ed.icon_for(ctx, &path)
+                                    };
+                                    let (rect, resp) =
+                                        tile(ui, Vec2::splat(tile_w), *icon == path, accent);
+                                    if waiting {
+                                        pending = true;
+                                        ui.painter().text(
+                                            rect.center(),
+                                            Align2::CENTER_CENTER,
+                                            "…",
+                                            FontId::proportional(18.0),
+                                            Color32::from_white_alpha(90),
+                                        );
+                                    } else {
+                                        draw_icon(
+                                            ui.painter(),
+                                            tex.as_ref(),
+                                            &path,
+                                            rect.center(),
+                                            30.0,
+                                            255,
+                                        );
+                                    }
+                                    if resp.on_hover_text(file).clicked() {
+                                        out.chosen = Some(path.clone());
+                                    }
                                 }
                             }
                         }
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
+    });
+    if pending {
+        ctx.request_repaint(); // the tiles that had to wait are loaded on the next frame
+    }
 
     out
 }

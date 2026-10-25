@@ -17,14 +17,17 @@ up the next time CursorPie starts. Next to the file you may find:
 config.json            the live config
 config.backup.1.json   the version before your last Save (up to config.backup.5.json)
 config.broken.json     a config that could not be read (see below)
-icons/                 images copied in by a profile import
+icons/                 images copied in by a profile import, and the smaller copies made when you choose a big image
 welcome_shown          empty file: the welcome window was already shown
 ```
 
 Export writes `cursorpie-config.json` to your Downloads folder.
 
-## Structure
+## Image icons
 
+An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a path may start with `~/`). CursorPie reads its size from the file header first and does not decode an image over 4096 px on a side: the slice shows `?`. A loaded image is scaled down to at most 128 px. Choose images in Settings with **Image...** and big ones are shrunk for you; if you write a path by hand, use a file that is already small (at most 512 px).
+
+## Structure
 `profiles[] > items[] > kind`, where `kind` is `Mode`, `Run` or `Submenu`. Actions are `Nothing`, `Key`,
 `OpenApp`, `OpenUrl`, `Command` or `Sequence`. Enums use serde's default external tagging, for example
 `{"Run": {"OpenApp": "Notes"}}`.

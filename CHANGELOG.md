@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Fix bug many display on macOS**
+- **Lower memory use in Settings.** The icon picker only draws (and only loads) the icons that are on
+  screen, and loads a few per frame instead of all at once. Image icons larger than 4096 px on a side are no
+  longer decoded, and a decoded image no longer exists in several full-size copies while it is scaled down.
+  The "Add a slice" tiles are built once when the panel opens and freed when it closes. Importing a config
+  reads at most 4 MiB.
+- **Big images are shrunk when you choose them.** Choosing an image larger than 512 px or 512 KB as a slice icon
+  saves a 256 px PNG copy in the icons folder and uses that (the original is untouched), and the status bar
+  says what was done. An image that cannot be read, or has more than 40 megapixels, is refused with a message.
+  The "Mine" page tells you when images in the icons folder are not listed because they are too big.
+
 ## 0.5.0
 
 - **Open app follows the app to its desktop or Space.** An *Open app* slice for a program that is already

@@ -141,6 +141,7 @@ impl App {
                         if ed.adding {
                             add_panel(ui, ed, ring, nav.len(), accent, right.width());
                         } else {
+                            ed.add_catalog = None; // the hidden panel keeps nothing
                             item_inspector(ui, ed, &env, ring, &nav);
                         }
                     }

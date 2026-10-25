@@ -3,8 +3,8 @@
 use super::App;
 use crate::config::share::{add_profile, import_file};
 use crate::config::{
-    Action, ItemKind, cfg, has_commands, icons_dir, item_at_mut, parse_config,
-    profile_has_commands, tilde,
+    Action, ItemKind, MAX_CONFIG_FILE_BYTES, cfg, has_commands, icons_dir, item_at_mut,
+    parse_config, profile_has_commands, read_text_capped, tilde,
 };
 use crate::msg::Msg;
 use crate::platform;
@@ -71,11 +71,15 @@ impl App {
                 profile,
                 path,
                 file,
+                note,
             } => {
                 if let Some(p) = self.edit.profiles.get_mut(profile)
                     && let Some(item) = item_at_mut(&mut p.items, &path)
                 {
                     item.icon = file;
+                }
+                if let Some(note) = note {
+                    self.say(note);
                 }
             }
             Msg::AppPicked { profile, bundle } => {
@@ -85,8 +89,8 @@ impl App {
                     p.apps.push(bundle);
                 }
             }
-            Msg::ImportPicked(file) => match std::fs::read_to_string(&file)
-                .ok()
+            // streamed with a size cap: a wrong file is never read whole into memory
+            Msg::ImportPicked(file) => match read_text_capped(&file, MAX_CONFIG_FILE_BYTES)
                 .and_then(|t| parse_config(&t))
             {
                 Some(cfg_in) => {

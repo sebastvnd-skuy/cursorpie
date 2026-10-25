@@ -13,6 +13,7 @@
 //! * [Add a message to the UI thread](#add-a-message-to-the-ui-thread)
 //! * [Add a menu bar item](#add-a-menu-bar-item)
 //! * [Cache something in the UI](#cache-something-in-the-ui)
+//! * [Show a long list or read a user file](#show-a-long-list-or-read-a-user-file)
 //! * [Keep the profile rules](#keep-the-profile-rules)
 //! * [Make a change undoable](#make-a-change-undoable)
 //! * [Change gesture behavior](#change-gesture-behavior)
@@ -107,7 +108,10 @@
 //! Append `ic("glyph", "Name", "search keywords")` to a category in
 //! `ui/settings/icon_catalog.rs`. Glyphs are drawn with egui's bundled fonts; if one renders as
 //! an empty box, remove it. Users can also drop images into
-//! `~/Library/Application Support/CursorPie/icons/`.
+//! `~/Library/Application Support/CursorPie/icons/` (the folder next to `config.json` on every system).
+//! The picker lists at most `MAX_USER_ICONS` files of at most 2 MB and says how many it left out
+//! (`icon_catalog::scan_user_icons`); an image the user *chooses* with "Image..." goes through
+//! [`iconfit::fit`](crate::ui::iconfit::fit), which shrinks it or refuses it with a message.
 //!
 //! ## Keep the Settings look consistent
 //!
@@ -173,6 +177,21 @@
 //! 4. If the source can change on disk, store a stamp ([`FileStamp`](crate::ui::icons::FileStamp))
 //!    and drop stale entries in a `revalidate` step instead of clearing everything.
 //! 5. Put the pure part (eviction, decisions) in a type with no egui or macOS types and unit test it.
+//!
+//! ## Show a long list or read a user file
+//!
+//! 1. A list or grid that can pass a screenful goes in `egui::ScrollArea::show_rows`, so only the visible
+//!    rows run. Set the row gap on a `ui.scope` around the scroll area: `show_rows` takes it from there.
+//!    Build the tiles from indexes into the data, and clone a string only for a tile that is drawn.
+//! 2. Texture loads for those rows are limited per frame (`LOADS_PER_FRAME` in `icon_picker.rs`): ask
+//!    [`IconCache::contains`](crate::ui::icons::IconCache::contains) first, draw a placeholder for the rest and
+//!    call `request_repaint` so they load on the next frame.
+//! 3. Limit a file where it enters: read an image's size with
+//!    `open_reader` and refuse it before decoding, and read text with
+//!    [`read_text_capped`](crate::config::read_text_capped). Do slow work on a worker thread
+//!    (`spawn_file_picker` runs its closure on one) and report the result with `Msg::Notice`.
+//! 4. Unit test the decision (the size limit, the file name, the message) with a scratch directory, like the
+//!    tests in `ui/iconfit.rs`.
 //!
 //! ## Keep the profile rules
 //!

@@ -75,8 +75,8 @@ Step-by-step installs, app bundles and installers, and the permission macOS asks
 | Platform | Status | Good to know |
 |---|---|---|
 | macOS 11 or later | Supported | Needs the Accessibility permission. Any of four mouse buttons can be the trigger |
-| Windows 10 (1809) / 11 | Supported | No permission needed. Only the middle button can be the trigger |
-| Linux, X11 session | Experimental | No permission needed. Wayland only works over X11 and XWayland windows, and there is no tray icon yet |
+| Windows 10 (1809) / 11 | Supported, stable | No permission needed. Only the middle button can be the trigger |
+| Linux, X11 session | Supported, experimental | No permission needed. Its behavior on different distributions and desktops is still being observed. Wayland only works over X11 and XWayland windows, and there is no tray icon yet |
 
 The full list of limits is in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 

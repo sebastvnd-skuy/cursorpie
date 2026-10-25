@@ -48,6 +48,7 @@ impl App {
         self.history.reset(&self.edit);
         self.ed.reset_nav();
         self.ed.user_icons = Vec::new();
+        self.ed.icons_not_listed = 0;
         self.ed.backups = Vec::new();
         self.ed.icon_query = String::new();
         self.ed.new_app = String::new();

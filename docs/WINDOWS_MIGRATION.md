@@ -1,13 +1,13 @@
 # Windows support: design and status
 
-**Status (0.3.0): Windows 10/11 is supported.** CursorPie 0.2.0 was macOS only; since 0.3.0 the same code
-base builds and runs on Windows, and in daily use it behaves almost identically to macOS: the hold-to-open
-pie, per-app profiles, shortcuts, launchers, submenus, Settings and the tray icon are the same features
-as on macOS, and the pie is drawn on a truly transparent window. What Windows does **not**
-have is the extra mouse buttons: the trigger can only be the middle button (Windows reports only the
-middle, back and forward buttons, so macOS buttons 6 to 8 do not exist), and the back/forward side buttons
-are the only other buttons CursorPie uses. See [Status in 0.3.0](#status-in-030) for the details and for
-what has and has not been verified.
+**Status: Windows 10/11 is supported and stable.** CursorPie 0.2.0 was macOS only; since 0.3.0 the
+same code base builds and runs on Windows, and it behaves almost identically to macOS: the
+hold-to-open pie, per-app profiles, shortcuts, launchers, submenus, Settings and the tray icon are
+the same features as on macOS, and the pie is drawn on a truly transparent window. What Windows does
+**not** have is the extra mouse buttons: the trigger can only be the middle button (Windows reports
+only the middle, back and forward buttons, so macOS buttons 6 to 8 do not exist), and the
+back/forward side buttons are the only other buttons CursorPie uses. See [Status](#status) for what
+was verified and which limits remain.
 
 This document explains what was macOS-specific, the design that supports macOS **and** Windows 10/11, and
 the order in which the code was migrated so macOS behavior never changed along the way. The text below
@@ -104,7 +104,7 @@ Each phase is one commit and leaves macOS working. Tests come first.
 | 2 | **Portable core:** `geometry::Point`; the tap split into portable `dispatch` + `tap/macos.rs` glue; `platform/` split into `macos/` and `stub/`; Cargo target-specific dependencies; `compile_error!` removed | all old and new tests pass; `cargo test` also passes on Linux through the stub |
 | 3 | **Windows backend:** hook, `SendInput`, app lookup, DPI, layout, registry, shell, file chooser, icons, tray | `cargo check --features check-windows` is clean; pure helpers tested |
 | 4 | **Per-OS defaults and text**, config paths, case-insensitive app ids, README / CONTRIBUTING / rustdoc guides, CI for macOS + Windows + Linux, Windows packaging script | tests cover both `Os::Mac` and `Os::Windows` defaults |
-| 5 | **Manual verification on real machines** using the checklist below | main flows verified on a real Windows machine by hand; the rest of the checklist is not signed off item by item (see [Status in 0.3.0](#status-in-030)) |
+| 5 | **Manual verification on real machines** using the checklist below | done: main flows verified on real Windows machines; Windows is treated as stable, and the checklist stays the regression list |
 
 ## Test strategy
 
@@ -214,7 +214,7 @@ Run on macOS 11+ and on Windows 10 and 11:
   with a broken OpenGL driver or a remote desktop session without GPU acceleration may fail to create the
   window.
 
-## Status in 0.3.0
+## Status
 
 Verified by hand on a real Windows machine: the pie opens under the cursor and runs slices,
 Settings opens and saves, the tray icon and its menu work, and the pie and the Settings card are drawn on
@@ -223,13 +223,16 @@ a transparent window with no white box, border, flash or top line (after the win
 
 Not at parity: extra mouse buttons (see [Risks](#risks-and-known-limitations)).
 
-Not recorded: the checklist above was not signed off item by item. In particular non-US keyboard layouts
-(item 8), 125 % / 150 % and mixed-DPI setups (item 9), elevated windows and UWP apps have not been
-reported as verified here, so treat them as the likely places for remaining bugs, and please report what
-you see (Windows version, GPU, scaling) in an issue.
+Windows is treated as stable by the maintainers. The limits that remain come from Windows itself and
+are listed for users in [KNOWN_ISSUES.md](KNOWN_ISSUES.md): programs running as administrator
+(UIPI), Store (UWP) apps that share one host process, switching to another virtual desktop, and
+monitors with different scales. The checklist above is the regression list: run the items a change
+touches (the keyboard-layout, scaling and elevated-window items first), and report anything you see
+with the Windows version, GPU and scaling.
 
 Automated checks that need no Windows machine: `cargo check --features check-windows` and
-`cargo test --features check-windows` (186 tests, including the Windows pure helpers) pass on Linux.
+`cargo test --features check-windows` (including the Windows pure helpers) pass on macOS and Linux, and CI
+builds and tests the backend natively on `windows-latest`.
 
 ## Progress
 
@@ -240,5 +243,5 @@ Automated checks that need no Windows machine: `cargo check --features check-win
 | 2 | done: `cargo test` runs on Linux through the stub; macOS glue moved |
 | 3 | done: `cargo check --features check-windows` clean; Windows pure helpers tested on Linux; runs on Windows |
 | 4 | done: per-OS defaults, paths, app ids, docs, CI, packaging script |
-| 5 | main flows verified on Windows by hand (0.3.0); full checklist not signed off item by item |
+| 5 | done: Windows is supported and stable; the checklist stays the regression list |
 | 6 | done (0.3.0): transparent, frameless window on Windows (`glow` + `clear_window_frame`) |

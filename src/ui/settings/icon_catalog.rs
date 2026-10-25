@@ -2,7 +2,7 @@
 //!
 //! - `CATEGORIES`: glyphs (emoji / symbols / short text) usable as slice icons. To add one,
 //!   append a line `ic("glyph", "Name", "search keywords")`.
-//! - `user_icons()`: images (.png .jpg .jpeg .webp) found in the folder
+//! - `scan_user_icons()`: images (.png .jpg .jpeg .webp) found in the folder
 //!   `~/Library/Application Support/CursorPie/icons/`.
 //!
 //! Note: glyphs are drawn with egui's bundled fonts (monochrome Noto Emoji + emoji-icon-font).
@@ -214,11 +214,23 @@ pub fn user_icons_dir() -> PathBuf {
     icons_dir()
 }
 
-/// Images in the icons folder, as strings that can be used directly as `Item::icon`.
-pub fn user_icons() -> Vec<String> {
+/// What [`scan_user_icons`] found.
+pub struct UserIcons {
+    /// Images that can be listed, as strings usable directly as `Item::icon`.
+    pub icons: Vec<String>,
+    /// Images that exist but are left out: over [`MAX_ICON_FILE_BYTES`], or past [`MAX_USER_ICONS`].
+    pub not_listed: usize,
+}
+
+/// Images in the icons folder, and how many were left out (so the picker can say so).
+pub fn scan_user_icons() -> UserIcons {
     let Ok(rd) = fs::read_dir(user_icons_dir()) else {
-        return Vec::new();
+        return UserIcons {
+            icons: Vec::new(),
+            not_listed: 0,
+        };
     };
+    let mut too_big = 0;
     let mut v: Vec<String> = rd
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -229,15 +241,22 @@ pub fn user_icons() -> Vec<String> {
                 .unwrap_or(false)
         })
         .filter(|p| {
-            p.metadata()
+            let fits = p
+                .metadata()
                 .map(|m| m.len() <= MAX_ICON_FILE_BYTES)
-                .unwrap_or(false)
+                .unwrap_or(false);
+            too_big += usize::from(!fits);
+            fits
         })
         .map(|p| tilde(&p))
         .collect();
     v.sort();
+    let over_limit = v.len().saturating_sub(MAX_USER_ICONS);
     v.truncate(MAX_USER_ICONS);
-    v
+    UserIcons {
+        icons: v,
+        not_listed: too_big + over_limit,
+    }
 }
 
 /// Opens the icons folder in the file manager.

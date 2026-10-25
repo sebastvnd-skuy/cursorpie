@@ -1,9 +1,14 @@
 # Linux support: design and migration plan
 
-**Status: the X11 part (phases L1 to L4, with the gaps listed in
-[Implementation status](#implementation-status)) is implemented but has not been compiled or run on a
-real desktop. Wayland (L5 to L7) is a design only.** Releases up to 0.4.2 supported macOS and Windows only (Linux built
-a do-nothing stub so `cargo test` runs); the X11 backend is listed under `## Unreleased` in `CHANGELOG.md`. This document says how to make Linux behave like the other two, what
+**Status: X11 (phases L1 to L4, with the gaps listed in [Implementation
+status](#implementation-status)) is implemented and supported, but experimental. The manual
+[checklist](#manual-verification-checklist) is under internal observation: the maintainers are
+watching how CursorPie behaves on real desktops and whether any part of the X11 implementation is
+wrong, so no item is signed off yet and no results are recorded here. Wayland (L5 to L7) is a design
+only.** Releases up to 0.4.2 supported macOS and Windows only (Linux built a do-nothing stub so
+`cargo test` runs); the X11 backend arrived in 0.5.0 (see `CHANGELOG.md`).
+
+This document says how to make Linux behave like the other two, what
 stands in the way, and in which order to do it so macOS and Windows never change along the way. It follows the structure of [WINDOWS_MIGRATION.md](WINDOWS_MIGRATION.md) and reuses its rules
 (portable core, backends with identical function names, characterization tests first).
 
@@ -122,11 +127,15 @@ fallback for a missing compositor, the `--doctor` report, Flatpak.
   rows match, and the modifier codes.
 - The expected values of the pure helpers' tests, by re-implementing their algorithms separately.
 
-**What was not checked:** the Rust code was **never compiled and the Rust tests were never run**: the
-environment it was written in had no Rust toolchain. Expect compile errors and formatting differences
-(`cargo fmt` has not been run); fixing them is the first thing to do. Nothing was run on a real desktop, with
-a real mouse, a window manager, a compositor or a high-DPI display. The `tap/linux.rs` state handling,
-`Conn::activate`, the window gathering and the scale rule have only been exercised through the prototype.
+**Compiled and tested:** CI builds the Linux backend and runs every test on Ubuntu (`cargo tools
+ci`, see `.github/workflows/ci.yml`), and the pure helpers are tested on every OS. **Under internal
+observation, not signed off:** behavior on real desktops. That means a real mouse, window managers,
+compositors, high-DPI displays and the distributions people use. The state handling in
+`tap/linux.rs`, `Conn::activate`, the window gathering and the scale rule were first exercised only
+through the prototype above, so treat them as the likeliest places for a wrong implementation. Until
+the observation ends, a surprising behavior is as likely to be a bug in the implementation as a
+limit of X11: report it with the distribution, desktop, session type, GPU and scaling (see
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
 
 ## Goals and non-goals
 
@@ -585,7 +594,7 @@ Phases L1 and L2 change no behavior on any OS.
 | L5 | **Wayland capture and injection.** evdev grab and forward, uinput, hotplug, watchdog, lock and seat handling, udev rule and doctor | no lock-out in the fault-injection tests; polling budget met; pointer settings behavior understood (O-3) |
 | L6 | **Wayland pie and adapters.** layer-shell overlay, pointer strategies, KWin, Sway, Hyprland, COSMIC adapters | Tier 2 checklist passes on KDE Plasma 6 and Sway or Hyprland |
 | L7 | **GNOME.** extension and full-screen fallback | Tier 3 checklist passes on a current GNOME |
-| L8 | **Sign-off.** run the full checklist on the support matrix; list what was and was not verified, like "Status in 0.3.0" in the Windows document | matrix table filled in |
+| L8 | **Sign-off.** run the full checklist on the support matrix; list what was and was not verified, like "Status" in the Windows document | matrix table filled in |
 
 Order of value: L1 to L4 give a complete Linux product for X11 users, which is the largest group that has
 no workaround today. L5 to L7 are independent of each other after L5.
@@ -631,6 +640,10 @@ Throwaway programs that answer one question each. None is merged.
   warnings, and `cargo tools ci` is the single definition of "the checks pass".
 
 ## Manual verification checklist
+
+**Status: under internal observation.** Nothing below is signed off. When an item is checked, write
+the result in the pull request or issue with the date, distribution, desktop, session type, GPU and
+scaling, and move the item to "verified" here only when it passed on more than one setup.
 
 Items 1 to 11 are the ones in `WINDOWS_MIGRATION.md`, run on Linux. Items 12 and later are specific to
 Linux. Record the distribution, desktop, session type, GPU and scaling with each result.

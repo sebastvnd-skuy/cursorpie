@@ -129,6 +129,56 @@ pub fn steps_between<T: PartialEq>(row: &[T], from: &T, targets: &[T]) -> Option
         .min_by_key(|n| (n.abs(), -n))
 }
 
+/// One display and its own row of desktops. With separate Spaces per display (the macOS default
+/// with more than one screen) every display has Spaces of its own and shows one of them: the
+/// Spaces of screen 1 are not on the way to a window on screen 2.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DisplayRow {
+    /// What names the display to the system (on macOS the UUID of the display).
+    pub display: String,
+    /// The desktop this display shows right now.
+    pub current: u64,
+    /// The desktops of this display, from left to right.
+    pub spaces: Vec<u64>,
+}
+
+/// The display to walk, and the desktops of the window on it. `window_spaces` holds, for every
+/// window of the app (front to back), the desktops it is on; `pointer` is the display under the
+/// pointer. A display that has a window of the app and is under the pointer wins: the switch then
+/// happens where the user clicked. Otherwise it is the display of the top-most window, so the
+/// switch happens on the screen the window is on, not on the one that happens to be clicked.
+///
+/// Returns the index in `rows` and the desktops of the app's windows on that display, `None` when
+/// no window is on a desktop of any display.
+pub fn pick_display(
+    rows: &[DisplayRow],
+    window_spaces: &[Vec<u64>],
+    pointer: Option<&str>,
+) -> Option<(usize, Vec<u64>)> {
+    // (display, desktop) of every window, front to back
+    let hits: Vec<(usize, u64)> = window_spaces
+        .iter()
+        .flatten()
+        .filter_map(|space| {
+            rows.iter()
+                .position(|r| r.spaces.contains(space))
+                .map(|at| (at, *space))
+        })
+        .collect();
+    let chosen = hits
+        .iter()
+        .map(|(at, _)| *at)
+        .find(|at| Some(rows[*at].display.as_str()) == pointer)
+        .or_else(|| hits.first().map(|(at, _)| *at))?;
+    let mut spaces: Vec<u64> = Vec::new();
+    for (_, space) in hits.iter().filter(|(at, _)| *at == chosen) {
+        if !spaces.contains(space) {
+            spaces.push(*space);
+        }
+    }
+    Some((chosen, spaces))
+}
+
 /// The row of virtual desktops, as the search sees it.
 pub trait Desktops {
     /// What tells one desktop from another.
@@ -452,6 +502,76 @@ mod tests {
         assert_eq!(steps_between(&row, &"x", &["a"]), None);
         assert_eq!(steps_between(&row, &"a", &["x"]), None);
         assert_eq!(steps_between(&row, &"a", &[]), None);
+    }
+
+    /// Screen "a" has the desktops 1 to 3, screen "b" has 7 and 8.
+    fn two_screens() -> Vec<DisplayRow> {
+        vec![
+            DisplayRow {
+                display: "a".into(),
+                current: 1,
+                spaces: vec![1, 2, 3],
+            },
+            DisplayRow {
+                display: "b".into(),
+                current: 7,
+                spaces: vec![7, 8],
+            },
+        ]
+    }
+
+    #[test]
+    fn a_window_on_another_screen_is_walked_on_that_screen() {
+        // the pointer is on screen "a", the window is on desktop 8 of screen "b"
+        let picked = pick_display(&two_screens(), &[vec![8]], Some("a"));
+        assert_eq!(picked, Some((1, vec![8])));
+    }
+
+    #[test]
+    fn the_screen_under_the_pointer_wins_when_it_has_a_window_too() {
+        let windows = [vec![8], vec![3]];
+        assert_eq!(
+            pick_display(&two_screens(), &windows, Some("a")),
+            Some((0, vec![3]))
+        );
+        assert_eq!(
+            pick_display(&two_screens(), &windows, Some("b")),
+            Some((1, vec![8]))
+        );
+        // pointer on no known screen: the top-most window decides
+        assert_eq!(
+            pick_display(&two_screens(), &windows, None),
+            Some((1, vec![8]))
+        );
+    }
+
+    #[test]
+    fn only_the_desktops_of_the_chosen_screen_are_targets() {
+        let windows = [vec![2], vec![8], vec![3], vec![2]];
+        assert_eq!(
+            pick_display(&two_screens(), &windows, Some("a")),
+            Some((0, vec![2, 3]))
+        );
+    }
+
+    #[test]
+    fn a_window_on_no_known_desktop_gives_no_screen() {
+        assert_eq!(pick_display(&two_screens(), &[vec![99]], Some("a")), None);
+        assert_eq!(pick_display(&two_screens(), &[Vec::new()], Some("a")), None);
+        assert_eq!(pick_display(&two_screens(), &[], None), None);
+        assert_eq!(pick_display(&[], &[vec![1]], None), None);
+    }
+
+    #[test]
+    fn the_row_of_the_chosen_screen_gives_the_route() {
+        // from desktop 1 of screen "a" to desktop 8 of screen "b" is not 7 steps on one long row:
+        // the walk is on "b", from what "b" shows (7) to 8
+        let rows = two_screens();
+        let (at, targets) = pick_display(&rows, &[vec![8]], Some("a")).unwrap();
+        assert_eq!(
+            steps_between(&rows[at].spaces, &rows[at].current, &targets),
+            Some(1)
+        );
     }
 
     #[test]

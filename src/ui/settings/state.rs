@@ -5,7 +5,7 @@
 //! `App::ed`; it is an [`IconCache`] (bounded, kept across Settings sessions).
 
 use crate::config::backup::Backup;
-use crate::config::{Config, items_at};
+use crate::config::{Config, Item, blank_items, items_at, presets, quick_actions};
 use crate::tap::RECORDING;
 use crate::ui::icons::IconCache;
 use eframe::egui;
@@ -35,6 +35,30 @@ pub struct Rec {
     pub slot: Slot,
 }
 
+/// The ready-made slices of the "Add a slice" panel, grouped under a title.
+///
+/// Built when the panel opens and dropped when it closes (see `Ed::add_catalog`): the panel is
+/// redrawn every frame, and rebuilding these lists with all their strings that often is wasted work.
+pub struct AddCatalog {
+    /// Whether the groups were built for a ring that may hold a submenu.
+    pub can_nest: bool,
+    pub groups: Vec<(&'static str, Vec<Item>)>,
+}
+
+impl AddCatalog {
+    /// The groups of the panel; `can_nest` = the ring is not yet at the maximum depth.
+    pub fn new(can_nest: bool) -> Self {
+        Self {
+            can_nest,
+            groups: vec![
+                ("Quick actions", quick_actions()),
+                ("Side buttons", presets()),
+                ("Custom", blank_items(can_nest)),
+            ],
+        }
+    }
+}
+
 /// Editor-only state (kept apart from the edited config so both can be borrowed at once).
 pub struct Ed {
     pub tab: Tab,
@@ -48,12 +72,16 @@ pub struct Ed {
     pub nav: Vec<usize>,
     pub sel: Option<usize>,
     pub adding: bool,
+    /// the tiles of the "Add a slice" panel; `Some` only while the panel is showing
+    pub add_catalog: Option<AddCatalog>,
     /// the icon picker is open (it temporarily replaces the inspector)
     pub picking_icon: bool,
     pub icon_query: String,
     /// 0 = all, 1..=N = category, N+1 = the user's own icons
     pub icon_cat: usize,
     pub user_icons: Vec<String>,
+    /// images in the icons folder that `user_icons` leaves out (too big, or over the limit)
+    pub icons_not_listed: usize,
     /// backups of `config.json` found on disk (read when the General tab is opened)
     pub backups: Vec<Backup>,
 }
@@ -78,12 +106,21 @@ impl Ed {
             nav: Vec::new(),
             sel: None,
             adding: false,
+            add_catalog: None,
             picking_icon: false,
             icon_query: String::new(),
             icon_cat: 0,
             user_icons: Vec::new(),
+            icons_not_listed: 0,
             backups: Vec::new(),
         }
+    }
+
+    /// Reads the icons folder again (the "Mine" page): the images to show and how many were left out.
+    pub fn reload_user_icons(&mut self) {
+        let found = super::icon_catalog::scan_user_icons();
+        self.user_icons = found.icons;
+        self.icons_not_listed = found.not_listed;
     }
 
     /// Stops recording a shortcut (also disarms the event tap).
@@ -123,6 +160,33 @@ impl Ed {
         self.nav.clear();
         self.sel = None;
         self.adding = false;
+        self.add_catalog = None;
         self.picking_icon = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tiles(c: &AddCatalog) -> usize {
+        c.groups.iter().map(|(_, list)| list.len()).sum()
+    }
+
+    #[test]
+    fn the_add_catalog_offers_a_submenu_only_when_nesting_is_allowed() {
+        assert_eq!(
+            tiles(&AddCatalog::new(true)),
+            tiles(&AddCatalog::new(false)) + 1
+        );
+    }
+
+    #[test]
+    fn leaving_the_ring_drops_the_add_catalog() {
+        let mut ed = Ed::new();
+        ed.adding = true;
+        ed.add_catalog = Some(AddCatalog::new(true));
+        ed.reset_nav();
+        assert!(!ed.adding && ed.add_catalog.is_none());
     }
 }

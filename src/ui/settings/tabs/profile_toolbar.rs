@@ -101,14 +101,15 @@ pub(super) fn profile_toolbar(
 ) {
     ui.horizontal(|ui| {
         muted(ui, "Profile");
-        let names: Vec<String> = edit.profiles.iter().map(|p| p.name.clone()).collect();
         let before = ed.profile;
+        // names are borrowed from the config: no copy of every name on every frame
+        let current = edit.profiles[ed.profile].name.as_str();
         egui::ComboBox::from_id_salt("profile_select")
             .width(180.0)
-            .selected_text(names[ed.profile].clone())
+            .selected_text(current)
             .show_ui(ui, |ui| {
-                for (i, name) in names.iter().enumerate() {
-                    ui.selectable_value(&mut ed.profile, i, name.as_str());
+                for (i, p) in edit.profiles.iter().enumerate() {
+                    ui.selectable_value(&mut ed.profile, i, p.name.as_str());
                 }
             });
         if ed.profile != before {

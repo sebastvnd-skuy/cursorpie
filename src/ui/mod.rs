@@ -18,6 +18,7 @@
 pub mod app;
 pub mod appicon;
 pub mod draw;
+pub mod iconfit;
 pub mod icons;
 pub mod pie;
 pub mod screen;

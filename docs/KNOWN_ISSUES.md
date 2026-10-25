@@ -15,6 +15,8 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 - "App under the pointer" looks at normal app windows (not the Dock, menu bar or desktop). Bringing it to the
   front activates the whole app, not one particular window.
 - Sequences cannot be edited in Settings yet, only in `config.json`.
+- **Image icons have size limits.** An image over 4096 px on a side, or one that cannot be decoded, is not drawn: the slice shows `?`. The **Mine** page of the icon picker lists at most 120 images of 2 MB each and says how many it left out. Choosing a big image with **Image...** avoids all of this: CursorPie saves a smaller copy in the `icons` folder and tells you (see [USER_GUIDE.md](USER_GUIDE.md)).
+- **Import... refuses a config file over 4 MiB**, and Menu > Share refuses a profile file over 24 MiB.
 - Undo covers one Settings session. After you save and close, use **Settings > General > Backups** (the last
   five saves). Changes Settings does not make, such as the active side-button mode saved when you pick a mode in
   the pie, are not backed up on their own.
@@ -59,7 +61,10 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 
 ## Linux
 
-Linux support is new and experimental. See [LINUX_MIGRATION.md](LINUX_MIGRATION.md) for what is built.
+Linux (X11) is supported but experimental. Its behavior is still being observed on real desktops, and some
+parts may turn out to be wrong, so a surprise here may be a bug rather than a limit. See
+[LINUX_MIGRATION.md](LINUX_MIGRATION.md) for what is built and for the checklist being run; when you report
+something, say which distribution, desktop, session type and scaling you use.
 
 - **X11 sessions only.** In a Wayland session CursorPie sees only X11 and XWayland windows, so the gesture does
   nothing over Wayland-native windows. Log in with an X11 session for full support. Wayland support is designed

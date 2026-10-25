@@ -68,7 +68,8 @@ that starts at login; set `CURSORPIE_NO_INSTALL=1` for the same on any other cop
 packaged exe from the unzipped folder and follow checks 7a to 7c of `docs/WINDOWS_MIGRATION.md`; test the Setup
 wizard with check 7d.
 
-**Linux.** The app works in an **X11 session**; in Wayland it only sees X11 and XWayland windows (see
+**Linux.** The app works in an **X11 session** (supported, but experimental: its checklist is under internal
+observation); in Wayland it only sees X11 and XWayland windows (see
 `docs/LINUX_MIGRATION.md`). `scripts/package-linux.sh` builds a tarball with an `install.sh`. Build on an older
 distribution if the binary must start on older ones. `CURSORPIE_BACKEND=x11` forces the X11 backend, for bug
 reports.
@@ -212,6 +213,9 @@ Merges, reverts, `Release ...` commits and `fixup!` or `squash!` commits are not
   lists read from disk) needs a size limit, and must be dropped in `App::enter_sleep` or when Settings closes (see
   `guides::architecture`, *Idle sleep and caches*). Never key a cache by unbounded input without eviction. Do not
   decode or read files on the frame that opens the pie: warm them in `App::warm`.
+- **Draw only what is visible.** A list or grid that can pass a screenful uses `ScrollArea::show_rows`, never one widget per entry. Build the tiles from indexes, not clones of the strings, and load textures only for the visible rows, a few per frame (see `src/ui/settings/icon_picker.rs`).
+- **Limit input where it enters, and tell the user.** Read an image's size from its header before decoding it and refuse what is too big (`ui::draw::MAX_SOURCE_SIDE`); read a text file with `Read::take`, not `read_to_string` without a limit (`config::read_text_capped`). Prefer shrinking or refusing with a message in the status bar (`Msg::Notice`) to failing silently, and do slow work on a worker thread (see `ui::iconfit`). Keep a decoded source image alive only as long as it takes to make the small one.
+- **Build once, drop when hidden.** Data that does not change between frames is built when its panel opens, kept in `Ed`, and set back to `None` when the panel is not showing (see `Ed::add_catalog`). Do not allocate it again on every frame.
 - **Keep Settings undoable.** Settings edits `App::edit`, and `History` watches it as a whole, so state that
   belongs in the config needs no extra code. State kept elsewhere (`Ed`) is not part of the history: make it
   tolerate a config that changed under it (see `Ed::fit_to`).
