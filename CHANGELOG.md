@@ -12,6 +12,8 @@
   saves a 256 px PNG copy in the icons folder and uses that (the original is untouched), and the status bar
   says what was done. An image that cannot be read, or has more than 40 megapixels, is refused with a message.
   The "Mine" page tells you when images in the icons folder are not listed because they are too big.
+- **Fix bug pie draw center position.**
+- **Add debug/diag tools.** 
 
 ## 0.5.0
 
