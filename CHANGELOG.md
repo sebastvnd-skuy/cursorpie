@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.1
+
 - **Fix bug many display on macOS**
 - **Lower memory use in Settings.** The icon picker only draws (and only loads) the icons that are on
   screen, and loads a few per frame instead of all at once. Image icons larger than 4096 px on a side are no
