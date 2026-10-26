@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.2
+
+- Diag code for developer
+- Fix bug pie position in x11
+- Fix bug pie position in linux
+- New documentation and repair memory management
+
 ## 0.5.1
 
 - **Fix bug many display on macOS**
