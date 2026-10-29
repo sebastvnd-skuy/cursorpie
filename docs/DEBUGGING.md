@@ -4,7 +4,24 @@ CursorPie can write a trace of what it does, so a problem that only happens on o
 the middle of the screen, not under the pointer") can be found without a debugger and without editing the code.
 The log is **off by default** and costs one atomic read per log call while it is off.
 
-The code is `src/diag.rs`; the analyzer is `cargo tools diag` (`tools/src/diag.rs`).
+The log is written by the `diag` crate (`diag/`, a crate of its own with no dependencies); the app sets it up in
+`src/debug.rs`; the analyzer is `cargo tools diag` (`tools/src/diag.rs`).
+
+## Debug builds only
+
+The log is part of **debug builds** (`cargo run`). A **release build has none of its code**: the log lines are
+removed when the program is compiled, so the shipped app writes no log, reads no `CURSORPIE_DEBUG`, and installs
+no panic hook. `CURSORPIE_DEBUG=1` does nothing in it.
+
+To collect a log from a user's machine, give them a release build that keeps it:
+
+```
+cargo build --release --features debug-log
+```
+
+(the `debug-log` feature of the app switches on the `force` feature of the `diag` crate). To check that an
+ordinary release build is clean, build it without the feature and search the binary for a log event name, for
+example `strings target/release/cursorpie | grep -c show_pie`: it should print `0`.
 
 ## Turn it on
 
@@ -13,9 +30,18 @@ The code is `src/diag.rs`; the analyzer is `cargo tools diag` (`tools/src/diag.r
 | `CURSORPIE_DEBUG=1 cursorpie` | one run, from a terminal |
 | an empty file named `debug` next to `config.json` | a copy that starts at login (remove the file to turn it off) |
 
-The value is a list: `1` or `all` (every category), `tap,ui` (only those), `trace` (also the events that come in
-the hundreds, such as every pointer move of a drag), `0` or `off` (off). A set variable wins over the file, so
-`CURSORPIE_DEBUG=0` silences a `debug` file for one run.
+The value is a list of words:
+
+| Word | Meaning |
+|---|---|
+| `1`, `all` | every category |
+| `tap,ui` | only those categories |
+| `-tap` | not that category (`all,-tap` is everything but `tap`) |
+| `trace` | also the events that come in the hundreds, such as every pointer move of a drag |
+| `stderr` | also print every line on the terminal |
+| `0`, `off` | off |
+
+A set variable wins over the file, so `CURSORPIE_DEBUG=0` silences a `debug` file for one run.
 
 | Category | What it records |
 |---|---|
@@ -36,11 +62,13 @@ stderr when it opens the file. Only the newest 10 files are kept and a file stop
 written at once, so the log is complete after a crash.
 
 Every line is one flat JSON object: `t` (seconds since start), `th` (thread), `cat`, `ev` and the fields of the
-event.
+event, in the order they were written.
 
 ```
-{"cat":"ui","ev":"show_pie","left":650.0,"mon":"0,0 1920x1080","t":5.3,"th":"main","top":350.0,"x":800.0,"y":500.0}
+{"t":5.300,"th":"main","cat":"ui","ev":"show_pie","x":800.0,"y":500.0,"left":650.0,"top":350.0,"mon":"0,0 1920x1080"}
 ```
+
+To delete logs by hand: `cargo tools clean-logs` (`--keep N`, `--older-than DAYS`, `--all`, `--dry-run`).
 
 ## Read it
 
@@ -65,19 +93,51 @@ For a quick look without the tool: `jq -c 'select(.cat=="ui" or .cat=="win")' cu
 ## Add a log line
 
 ```rust
-crate::diag_log!("ui", "show_pie", x = x, y = y, profile = profile);
-crate::diag_trace!("tap", "drag", x = pos.x, y = pos.y); // only with `trace`
+diag::log!("ui", "show_pie", x = x, y = y, profile, kind = ?kind);
 ```
+
+The first two arguments are the category (the layer) and the event (what happened). Then any number of fields, in
+three forms that can be mixed:
+
+| Form | Writes |
+|---|---|
+| `x = pos.x` | the value under the name `x` |
+| `profile` | the variable `profile` under its own name |
+| `kind = ?kind` | the `Debug` text of anything, for a value that is not a number, text or boolean |
+
+Other macros and helpers, all in the `diag` crate:
+
+| Use | For |
+|---|---|
+| `diag::trace!(..)` | events in the hundreds (a pointer move); written only with `trace` in the switch |
+| `diag::once!(..)` | "this branch ran": written the first time the line is reached |
+| `let _t = diag::timed!("ui", "load", n = 3);` | how long a block took: the line, with `ms`, is written when `_t` is dropped |
+| `diag::event(cat, ev).field(name, v).write()` | field names that are built at run time (`format!("mon{i}")`) |
+| `diag::enabled("sys")` | a guard in front of work that only the log needs |
+| `diag::Watch` | what was asked for against what happened, for a short time afterwards (see `src/debug.rs`: the window position) |
+
+Rules:
 
 - The values are evaluated **only while the log is on**, so an argument may be expensive (a call to the X
   server, a `format!`). Do not put a side effect in one.
-- Use numbers, strings and booleans only. The log is flat on purpose; the analyzer does not read nesting. Wrap
-  anything else with `format!("{v:?}")`.
+- Values are numbers, strings, booleans, paths, durations and `Option` of those. The log is flat on purpose; the
+  analyzer does not read nesting. Anything else goes through `?` and becomes one text.
 - Category = the layer (`tap`, `ui`, `x11`, `win`, `sys`), event = what happened, in `snake_case`. A field named
   `t`, `th`, `cat` or `ev` is renamed with a leading underscore.
+- Log the input and the decision of a layer side by side, so a reader sees where two numbers that should agree
+  stop agreeing.
 - Never log the user's data: file names, typed text, the content of the config.
 - To teach the analyzer a new check, add a branch in `analyze` of `tools/src/diag.rs` and a test with a few
   sample lines.
+
+The full reference (every function, the switch, the line format, how to test code that logs) is the documentation
+of the crate: `cargo docs`, crate `cursorpie_diag`. Another program of the workspace can use the same log with
+`diag::Builder::new("name")...init()`; the environment variables and the file names follow the name.
+
+## Facts for a bug report
+
+`cargo tools info` prints the OS, the desktop session variables, the tool versions and the number of logs, as a
+block to paste into the issue.
 
 ## A bug report that needs it
 

@@ -1,7 +1,7 @@
 //! `cargo tools diag [FILE]`: reads a debug log of the app and says where the chain broke.
 //!
-//! The app writes the log when it is started with `CURSORPIE_DEBUG=1` (see `src/diag.rs` in the
-//! app crate and `docs/DEBUGGING.md`). Every line is a flat JSON object. This tool follows one
+//! The app writes the log when it is started with `CURSORPIE_DEBUG=1` (the log is written by
+//! the `diag` crate in `diag/`, see `docs/DEBUGGING.md`). Every line is a flat JSON object. This tool follows one
 //! gesture through the layers and compares the numbers each layer reports:
 //!
 //! ```text
@@ -497,17 +497,24 @@ pub fn render(report: &Report) -> String {
 
 // ------------------------------------------------------------------------------ finding a log
 
+/// The start and the end of the file names of the app's logs (see `diag::file_name`).
+pub const LOG_PREFIX: &str = "cursorpie-";
+/// The end of the file names of the app's logs.
+pub const LOG_SUFFIX: &str = ".jsonl";
+
+/// Whether a file name is one of the app's logs, so no other file is ever read or deleted.
+pub fn is_log_name(name: &str) -> bool {
+    name.starts_with(LOG_PREFIX) && name.ends_with(LOG_SUFFIX)
+}
+
 /// The newest log among file names (the names sort by time, see `diag::file_name`).
 fn newest(names: &[String]) -> Option<&String> {
-    names
-        .iter()
-        .filter(|n| n.starts_with("cursorpie-") && n.ends_with(".jsonl"))
-        .max()
+    names.iter().filter(|n| is_log_name(n)).max()
 }
 
 /// Where the app writes its logs on this OS, from an environment lookup. Mirrors
-/// `diag::log_dir_from` and `config::support_dir_from` of the app.
-fn default_log_dir(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+/// `diag::log_dir_from` (crate `diag`) and `config::support_dir_from` of the app.
+pub fn default_log_dir(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     if let Some(d) = get("CURSORPIE_DEBUG_DIR").filter(|d| !d.trim().is_empty()) {
         return Some(PathBuf::from(d.trim()));
     }

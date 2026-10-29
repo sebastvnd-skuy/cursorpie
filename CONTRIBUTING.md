@@ -100,6 +100,9 @@ package (standard library only, never part of the app) and behave the same on ma
 | `cargo tools bump LEVEL` | raises the version and prepares the changelog (see [Releasing](#releasing)) |
 | `cargo tools commit-msg FILE` | checks a commit message (the `commit-msg` hook runs it) |
 | `cargo tools diag [FILE]` | reads a debug log of the app (`CURSORPIE_DEBUG=1`) and says where positions stop agreeing, see [docs/DEBUGGING.md](docs/DEBUGGING.md) |
+| `cargo tools clean-logs` | deletes old debug logs (`--keep N`, `--older-than DAYS`, `--all`, `--dry-run`) |
+| `cargo tools zip` | packs the project into a `.zip` without `target/` and `.git/` (`-o FILE`, `--list`) |
+| `cargo tools info` | prints the facts a bug report needs: OS, desktop session, tool versions |
 
 ### The loop
 
@@ -231,6 +234,7 @@ Merges, reverts, `Release ...` commits and `fixup!` or `squash!` commits are not
   reading them. The tools in `tools/` follow the same rules as the app: standard library only, decisions in pure
   functions, every function documented and tested.
 - **No new dependencies** without a good reason. The app is deliberately small and makes no network connections.
+  The `diag/` crate has none at all, and keeps it that way.
 - **Config compatibility.** New settings need a `Default`; older `config.json` files must keep loading (see
   `guides::config_format`).
 - **Security.** `Command` actions run shell commands with the user's permissions. Never run or import one
@@ -259,7 +263,8 @@ map at the top of the crate docs (`src/lib.rs`) instead of a copy here.
 Outside `src/`, the repository is laid out like this:
 
 ```text
-tools/         the repository tools, run as `cargo tools ...`: ci, check, bump, hooks, commit-msg
+tools/         the repository tools, run as `cargo tools ...`: ci, check, bump, hooks, commit-msg, diag, clean-logs, zip, info
+diag/          the diagnostic log (`CURSORPIE_DEBUG=1`): a crate of its own, no dependencies, see docs/DEBUGGING.md
 .githooks/     Git hooks that call the tools (turned on with `cargo tools hooks install`)
 .github/       the CI workflow and the pull request template
 scripts/       packaging: bundle.sh and make-dmg.sh (macOS), package-windows.ps1, package-linux.sh

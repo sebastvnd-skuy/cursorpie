@@ -24,7 +24,7 @@ impl App {
             } => {
                 // a real gesture takes over from any preview
                 self.preview_until = None;
-                crate::diag_log!(
+                diag::log!(
                     "ui",
                     "msg_show_pie",
                     x = x,

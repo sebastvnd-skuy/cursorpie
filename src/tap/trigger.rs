@@ -65,7 +65,7 @@ fn on_press<'a>(
     button: i64,
 ) -> Verdict {
     let (hold_profile, app) = resolve_profiles(p);
-    crate::diag_log!(
+    diag::log!(
         "tap",
         "on_press",
         x = p.x,
@@ -165,7 +165,7 @@ fn spawn_hold_timer(st: Arc<Mutex<Gesture>>, n: Notifier, id: u64) {
             found
         };
         let Some((pos, profile)) = opened else { return };
-        crate::diag_log!("tap", "hold_open", x = pos.x, y = pos.y, profile = profile);
+        diag::log!("tap", "hold_open", x = pos.x, y = pos.y, profile = profile);
         n.send(Msg::ShowPie {
             x: pos.x,
             y: pos.y,

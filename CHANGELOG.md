@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **The diagnostic log is its own crate.** The code that writes the `CURSORPIE_DEBUG=1` log moved out of the
+  app's sources (`src/diag.rs`) into `diag/`, a crate of the workspace with no dependencies; the app only keeps
+  a small glue module (`src/debug.rs`). Log lines are now `diag::log!("ui", "show_pie", x, y = y, kind = ?kind)`:
+  a bare name logs the variable, `?` logs the `Debug` text. New: `diag::trace!`, `diag::once!`, `diag::timed!`,
+  `diag::event(..)` for names known only at run time, and `diag::Watch` (what was asked for against what
+  happened). The switch accepts `all,-tap` (leave a category out) and `stderr` (also print on the terminal).
+- **The diagnostic log is not in release builds.** It is part of debug builds only; an ordinary release build has
+  none of its code. `cargo build --release --features debug-log` keeps it, for collecting a log on someone else's
+  machine.
+- **New developer tools:** `cargo tools clean-logs`, `cargo tools zip` (the project without `target/`) and
+  `cargo tools info` (facts for a bug report).
+
 ## 0.5.2
 
 - Diag code for developer

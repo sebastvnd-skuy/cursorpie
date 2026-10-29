@@ -104,7 +104,7 @@ impl App {
         let card = fit(area.size());
         let win_sz = card + Vec2::splat(2.0 * WIN_MARGIN);
         let top_left = area.center() - win_sz / 2.0;
-        crate::diag_log!(
+        diag::log!(
             "ui",
             "place_card",
             at_x = at.x,
@@ -114,7 +114,7 @@ impl App {
             w = win_sz.x,
             h = win_sz.y
         );
-        crate::diag::expect_window(top_left.x, top_left.y);
+        crate::debug::expect_window(top_left.x, top_left.y);
 
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(win_sz));
         ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
@@ -175,7 +175,7 @@ impl App {
         path: Vec<usize>,
     ) {
         if self.settings_open {
-            crate::diag_log!(
+            diag::log!(
                 "ui",
                 "show_pie_ignored",
                 reason = "settings_open",
@@ -205,7 +205,7 @@ impl App {
         // whole points: a window on a half-point offset is resampled by the compositor on
         // standard-density screens, which softens everything drawn in it
         let top_left = egui::pos2((x as f32 - w / 2.0).round(), (y as f32 - w / 2.0).round());
-        crate::diag_log!(
+        diag::log!(
             "ui",
             "show_pie",
             x = x,
@@ -216,7 +216,7 @@ impl App {
             ppp = ctx.pixels_per_point(),
             visible_before = self.visible,
             mon = screen_rect_at(self.pie_pos).map_or_else(String::new, |r| {
-                crate::diag::rect_str(
+                diag::rect_str(
                     f64::from(r.min.x),
                     f64::from(r.min.y),
                     f64::from(r.width()),
@@ -224,7 +224,7 @@ impl App {
                 )
             })
         );
-        crate::diag::expect_window(top_left.x, top_left.y);
+        crate::debug::expect_window(top_left.x, top_left.y);
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(top_left));
         if !self.visible {
             self.visible = true;
@@ -291,7 +291,7 @@ impl App {
     /// Current cursor position, or a fixed fallback if the OS cannot tell.
     fn cursor_or_default(&self) -> Pos2 {
         let raw = platform::cursor_pos();
-        crate::diag_log!(
+        diag::log!(
             "ui",
             "cursor_or_default",
             ok = raw.is_some(),
