@@ -120,6 +120,7 @@ fn run(state: Arc<Mutex<Gesture>>, notifier: Notifier) {
             Some(conn) => {
                 if !serve(conn, &state, &notifier) && !reported {
                     reported = true;
+                    diag::log!("tap", "hook", backend = "x11", state = "grab_failed");
                     eprintln!(
                         "CursorPie: could not grab the mouse button (another program may hold it); retrying every 2 s"
                     );
@@ -128,6 +129,7 @@ fn run(state: Arc<Mutex<Gesture>>, notifier: Notifier) {
             None => {
                 if !reported {
                     reported = true;
+                    diag::log!("tap", "hook", backend = "x11", state = "no_x_server");
                     eprintln!("CursorPie: cannot connect to the X server; retrying every 2 s");
                 }
             }
@@ -157,6 +159,7 @@ fn serve(conn: &'static Conn, state: &Arc<Mutex<Gesture>>, notifier: &Notifier) 
         return false;
     }
     TAP_ACTIVE.store(true, Ordering::SeqCst);
+    diag::log!("tap", "hook", backend = "x11", state = "running");
     let mut tap = Tap {
         conn,
         state: state.clone(),

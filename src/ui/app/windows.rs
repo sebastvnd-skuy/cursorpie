@@ -15,6 +15,8 @@ impl App {
     /// Closes Settings and turns the window back into the hidden, click-through pie window.
     /// With `save`, the edited config is sanitized, stored, saved to disk and the launch-at-login setting is applied.
     pub fn close_settings(&mut self, ctx: &egui::Context, save: bool) {
+        // how long closing took (saving is most of it) and whether the edits were kept
+        let _t = diag::timed!("ui", "close_settings", save = save);
         self.ed.stop_recording();
         if save {
             let new = self.edit.clone().sanitize();
@@ -52,6 +54,12 @@ impl App {
 
     /// Turns the window into Settings, centered on the display that contains `at`.
     pub(super) fn open_settings(&mut self, ctx: &egui::Context, at: Pos2, about: bool) {
+        diag::log!(
+            "ui",
+            "open_settings",
+            about = about,
+            already_open = self.settings_open
+        );
         if self.settings_open {
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             if about {

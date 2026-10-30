@@ -70,7 +70,7 @@ pub fn render(info: &Info) -> String {
 }
 
 /// Collects the facts about this machine and checkout at `root`.
-fn gather(root: &Path) -> Info {
+pub fn gather(root: &Path) -> Info {
     let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap_or_default();
     let (_, version) = crate::zip::package_id(&manifest);
     let log_dir = default_log_dir(&|k| std::env::var(k).ok());

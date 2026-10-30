@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 0.5.4
+
+- **More tools to read the diagnostic log.** `cargo tools log` has seven views: `summary` (what was written and what
+  floods the log), `timeline` (one row per press with the hold, UI and window times), `grep` (readable lines of one
+  category or event, no `jq`), `slow` (slow timed steps), `diff` (what a fix changed between two logs), `follow` (a
+  run that is still going) and `report` (facts and verdict for a bug report). `cargo tools diag` now also reports a
+  slow pie opening, slow steps, a config that could not be saved and an action stuck in the queue.
+- **`cargo tools diag-lint` keeps the log and the analyzer together.** It checks every log line in `src/` (known
+  category, `snake_case`, no field named like user data, no repeated field) and that each event the analyzer reads is
+  still written with its fields. It runs in `cargo tools ci --quick` and as a unit test.
+- **More log points where bugs hide:** whether the input hook runs (`tap` / `hook`: a missing macOS permission or a
+  Windows refusal is now in the log), why a hold did not open the pie (`hold_cancelled`), the double-click window and
+  replayed clicks, which profile a press resolved to, which slice was selected, the side buttons, opening and closing
+  Settings, config import, the icon warm-up and the sleep (timed), and every program an action starts (name only,
+  never its arguments): whether it started, and how it ended. `cargo tools diag` turns the failures among them into
+  findings.
+- **New log points:** `cfg` (loading and saving `config.json`, so a failed save is no longer silent), `act` (kind,
+  queue wait and run time of every action, never its content) and `tap` / `on_release` (every backend).
+
+## 0.5.3
+
 - **The diagnostic log is its own crate.** The code that writes the `CURSORPIE_DEBUG=1` log moved out of the
   app's sources (`src/diag.rs`) into `diag/`, a crate of the workspace with no dependencies; the app only keeps
   a small glue module (`src/debug.rs`). Log lines are now `diag::log!("ui", "show_pie", x, y = y, kind = ?kind)`:

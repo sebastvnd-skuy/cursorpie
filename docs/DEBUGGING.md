@@ -48,9 +48,11 @@ A set variable wins over the file, so `CURSORPIE_DEBUG=0` silences a `debug` fil
 | `diag` | the first line: version, OS, session variables (`XDG_SESSION_TYPE`, `DISPLAY`, ...) |
 | `sys` | the monitors and the pointer as the platform reports them at start |
 | `x11` | the display scale chosen for the pointer coordinates |
-| `tap` | the session type, the button grabs, every press and release (position from the event **and** from the X server), the verdict, the hold timer |
-| `ui` | the message that opens the pie, the position the pie asks for, the monitor it picked, the cursor fallback |
+| `tap` | the session type, the button grabs, every press and release (position from the event **and** from the X server), the verdict, the hold timer (`hold_open`, or `hold_cancelled` when it gave up), the double-click window, which profile a press resolved to (`resolve`: whether a target app was found, never which), the slice that was selected, the side buttons, and whether the input hook runs (`hook`: `running`, or why not: `blocked` on macOS, `refused` on Windows, `no_x_server` or `grab_failed` on Linux) |
+| `ui` | the message that opens the pie, the position the pie asks for, the monitor it picked, the cursor fallback; closing the pie, opening and closing Settings (`close_settings` is timed: saving), importing a config, and the timed `warm` (icon loading) and `sleep` (freeing memory) |
 | `win` | where the toolkit says the window really is, for two seconds after a window was placed |
+| `cfg` | loading `config.json` (outcome, size, time) and every save of it (`ok`, and the error kind when it failed: a failed save is otherwise silent) |
+| `act` | every action the worker runs: its kind (never its content), how long it waited in the queue (`wait_ms`) and how long it ran (`ms`); every program it starts (`exited` with its exit code, `spawn_failed` with the error kind, on Windows `shell_execute` with the code), by program name only, never its arguments |
 | `panic` | any panic, with its location |
 
 ## Where the log goes
@@ -90,6 +92,28 @@ request); the app's scale differs from the toolkit's.
 
 For a quick look without the tool: `jq -c 'select(.cat=="ui" or .cat=="win")' cursorpie-*.jsonl`.
 
+The verdict also reports: a pie shown more than 300 ms after the hold timer fired (UI or tap thread busy), a timed
+step slower than 250 ms, a config that could not be saved or read, and an action that waited more than 200 ms in the
+queue.
+
+### Other views of a log: `cargo tools log`
+
+`diag` says where the chain broke. These say what happened, and none of them needs `jq`. Without a file they read
+the newest log.
+
+| Command | Shows |
+|---|---|
+| `cargo tools log summary` | lines, threads, how often each event was written; a `<- floods the log` mark on an event that should be `trace!` |
+| `cargo tools log timeline` | one row per press: hold timer, UI lag, time to the pie, time held, where the window was asked and where it was seen |
+| `cargo tools log grep ui:show_pie` | the lines of a category (`ui`), an event of a category (`ui:show_pie`) or an event of any (`:press`) as readable text; `--field x=800`, `--after S`, `--before S`, `--limit N`, `--raw` |
+| `cargo tools log slow --ms 100` | the `timed!` steps that took that long, slowest first |
+| `cargo tools log diff before.jsonl after.jsonl` | what a change did: findings gone, findings new, events whose count changed |
+| `cargo tools log follow` | prints the lines of a run that is still going, as they are written (Ctrl-C to stop) |
+| `cargo tools log report` | the block of `cargo tools info` and the verdict, to paste into a bug report |
+
+A good loop for a fix: keep the log of the broken run, change the code, make the same gesture again, then
+`cargo tools log diff old.jsonl new.jsonl`. Findings that differ only in their numbers count as the same finding.
+
 ## Add a log line
 
 ```rust
@@ -127,8 +151,15 @@ Rules:
 - Log the input and the decision of a layer side by side, so a reader sees where two numbers that should agree
   stop agreeing.
 - Never log the user's data: file names, typed text, the content of the config.
-- To teach the analyzer a new check, add a branch in `analyze` of `tools/src/diag.rs` and a test with a few
-  sample lines.
+- To teach the analyzer a new check, add a branch in `analyze` of `tools/src/diag.rs` (or in `extra_findings` of
+  `tools/src/logview.rs`) and a test with a few sample lines, and list the events and fields it reads in `EXPECTED`
+  (`tools/src/diag.rs`).
+- `cargo tools diag-lint` checks all of this against the source: category in the table above, `snake_case` names, no
+  field named like the user's data (`path`, `file`, `text`, `cmd`, `url`, ...), no field written twice, and that every
+  event in `EXPECTED` is still written by a line in `src/` with its fields. It is a quick step of `cargo tools ci`
+  (so the `pre-commit` hook runs it) and a unit test, so renaming an event without teaching the analyzer fails
+  instead of making the analysis silently blind. A new category goes in `CATEGORIES` (`tools/src/lint.rs`) and in the
+  table above.
 
 The full reference (every function, the switch, the line format, how to test code that logs) is the documentation
 of the crate: `cargo docs`, crate `cursorpie_diag`. Another program of the workspace can use the same log with
