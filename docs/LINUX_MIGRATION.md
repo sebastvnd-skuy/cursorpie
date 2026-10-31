@@ -108,6 +108,7 @@ What exists in the code today, what differs from the design below, and what was 
 | Ignore events from the XTEST device | the grabs are lifted around an injected press | the grab-lifting sequence is what was tested |
 | Right button grabbed only while a pie is open | the right button is not grabbed at all; it reaches CursorPie while the trigger is held | an active grab reports every button; tested |
 | Extra mouse buttons as trigger (Appendix B) | only the middle button | the mapping needs real mice |
+| Extra mouse buttons in a side-button mode (Appendix B) | X buttons 10 to 20 are buttons 5 to 15, grabbed only while a mode uses them; the mice come from `/proc/bus/input/devices` (`platform/linux/inputdev.rs`) | not yet checked on real mice |
 | App icons, window hints, XShape fallback | none; the window uses winit's defaults | not done yet |
 | Packages | a tarball with `install.sh` | `.deb`, `.rpm`, AppImage not done |
 
@@ -797,10 +798,14 @@ numbers (0 left, 1 right, 2 middle, 3 back, 4 forward, 5 to 7 extra).
 | right | 1 | `BTN_RIGHT` | 3 |
 | back | 3 | `BTN_SIDE` | 8 |
 | forward | 4 | `BTN_EXTRA` | 9 |
-| extra 5, 6, 7 (trigger choices) | 5, 6, 7 | `BTN_FORWARD`, `BTN_BACK`, `BTN_TASK` | the next numbers the driver assigns, found at run time. **Not implemented**: Linux offers only the middle button for now |
+| extra 5, 6, 7... (up to 15) | 5, 6, 7... | `BTN_FORWARD`, `BTN_BACK`, `BTN_TASK`, then the codes up to `0x11f` | 10, 11, 12... (button + 5), as xf86-input-libinput numbers them. Used by the extra buttons of a mode; **not offered as a trigger**: Linux offers only the middle button for now |
 
-Some mice put their thumb buttons on `BTN_FORWARD` and `BTN_BACK` instead. The table is the default; a
-"learn a button" control in Settings is the proper fix and is listed as a follow-up.
+Some mice put their thumb buttons on `BTN_FORWARD` and `BTN_BACK` instead. The table is the default; the
+**Scan this mouse** control of Settings (General, Mouse) is the "learn a button" fix: it listens for raw button
+presses (XInput2 `RawButtonPress`) and stores what was pressed in `mice.json`. The buttons a mouse has come from
+the `KEY` bitmap of its entry in `/proc/bus/input/devices`; only entries that have `BTN_LEFT`, `REL_X` and
+`REL_Y` count, so touchpads, tablets and keyboards are left out, and so are virtual devices of programs
+(`ydotool`, `uinput`).
 
 ## Appendix C: session detection
 

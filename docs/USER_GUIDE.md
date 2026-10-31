@@ -9,6 +9,7 @@ Everything about using CursorPie once it is installed. New here? Read [The gestu
 - [Slices and actions](#slices-and-actions)
 - [Profiles](#profiles)
 - [Side buttons and app pies](#side-buttons-and-app-pies)
+- [Your mouse and its extra buttons](#your-mouse-and-its-extra-buttons)
 - [Settings](#settings)
 - [Undo, redo and backups](#undo-redo-and-backups)
 - [Sharing a profile](#sharing-a-profile)
@@ -49,7 +50,8 @@ A slice is one of three kinds:
 - **Mode** makes your mouse's back and forward buttons send the actions you assigned to this mode, for example
   Undo and Redo, or Cmd+[ and Cmd+] on macOS and Alt+Left and Alt+Right on Windows. The active mode is
   remembered per profile and shown in the center of the pie. If an action is *None*, the native back or
-  forward click passes through.
+  forward click passes through. A mode can also give an action to **every other extra button** of your mouse, see
+  [Your mouse and its extra buttons](#your-mouse-and-its-extra-buttons).
 - **Submenu** opens a nested ring. A ring holds up to 8 slices and menus go up to 5 levels deep. A dot on the
   rim marks a submenu.
 
@@ -104,6 +106,35 @@ click a window to focus it first. Shortcuts always go to the app in front, so Cu
 front right before it sends one, unless it already is. Both are options in Behavior: switch to *the app in
 front* for the old behavior. If CursorPie cannot tell which window is under the pointer, it uses the app in
 front.
+
+## Your mouse and its extra buttons
+
+A Mode slice lists one action for each extra button your mouse has: **Back button**, **Forward button**, then
+**Extra button 6**, **Extra button 7** and so on. Which buttons are listed depends on the mouse CursorPie thinks
+you use. A button with the action *None* keeps working in the app as before.
+
+CursorPie keeps a profile of every mouse it has met (the file `mice.json` next to `config.json`, saved at once,
+not with Save). Every few seconds it looks at the connected mice and tells a **new** mouse from one it **knows**
+(a note appears in Settings). Two mice of the same model share one profile, because their buttons are the same.
+
+**Settings > General > Mouse:**
+
+| Button | What it does |
+|---|---|
+| Scan this mouse | Press every extra button of the mouse once, then **Done**. While the scan runs the buttons do nothing else. What you pressed is stored in the profile and wins over what the system reported. Cancel, or 45 seconds without a press, ends the scan |
+| Detect again | Asks the system which mice are connected now |
+| Forget | Removes a mouse from the list. It is met as a new mouse the next time it is connected |
+
+What the system can tell about your mouse differs:
+
+- **Linux:** the kernel's list of input devices gives the name, the hardware id and the extra buttons. Scan if a
+  button is missing or one is listed that does not exist.
+- **Windows:** only the number of buttons, and only two extra buttons (back and forward) are seen by any program
+  that watches the mouse. A mouse with a different number of buttons counts as another mouse.
+- **macOS:** the system does not list mice for CursorPie, so scan the mouse once; the result is kept.
+
+The trigger button is not offered as an extra button of a mode. If your mouse does nothing when scanned, its
+extra buttons may be handled by the maker's own software.
 
 ## Settings
 

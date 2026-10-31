@@ -15,9 +15,12 @@
 //! │   ├── active            path of the active side-button mode, e.g. [3, 1]
 //! │   └── items[]           (at most MAX_ITEMS = 8 per ring)
 //! │       ├── name, icon    icon = text/emoji, or an image path ("~/" allowed)
-//! │       └── kind          Mode { back, forward } | Run(Action) | Submenu(items[])
+//! │       └── kind          Mode { back, forward, extra? } | Run(Action) | Submenu(items[])
 //! └── scalar settings       timings, size, colors, gesture and side-button options
 //! ```
+//!
+//! `Mode.extra` maps the number of an extra mouse button (5 to 15; 3 and 4 are `back` and `forward`) to an
+//! `Action`; it is left out of the file when empty, and buttons without an entry pass through to the app.
 //!
 //! `Action` is `Nothing | Key(Shortcut) | OpenApp | OpenUrl | Command | Sequence(Vec<Action>)`.
 //! `Shortcut` is `{ key, mods }`, where `key` is a macOS *virtual key code* (a physical key

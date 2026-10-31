@@ -7,7 +7,7 @@
 
 use super::desktop_entry::Index;
 use super::launch::{self, Chooser, Launch};
-use super::{autostart, x11, xdg, xlib};
+use super::{autostart, inputdev, x11, xdg, xlib};
 use crate::config::DesktopMode;
 use crate::geometry::Point;
 use crate::keys::Shortcut;
@@ -88,16 +88,25 @@ pub fn press_shortcut(sc: Shortcut) {
     }
 }
 
-/// The X button number of a macOS button number (0 left, 1 right, 2 middle, 3 back, 4 forward).
+/// The X button number of a macOS button number (0 left, 1 right, 2 middle, 3 back, 4 forward, 5 and
+/// up extra). The extra buttons follow back and forward in the order the driver numbers them: X
+/// button 10, 11, 12... (`BTN_FORWARD`, `BTN_BACK`, `BTN_TASK`...), up to `mouse::MAX_BUTTON`.
 pub(crate) fn x_button_for(button: i64) -> Option<i32> {
     match button {
         0 => Some(1),
         1 => Some(3),
         2 => Some(2),
-        3 => Some(8),
-        4 => Some(9),
+        b if crate::mouse::is_extra(b) => Some(b as i32 + 5),
         _ => None,
     }
+}
+
+/// The mice the kernel lists right now, with the extra buttons each one has (see [`inputdev`]). Empty
+/// when the list cannot be read (the app then relies on a scan in Settings).
+pub fn mouse_devices() -> Vec<crate::mouse::Device> {
+    std::fs::read_to_string("/proc/bus/input/devices")
+        .map(|text| inputdev::parse_devices(&text))
+        .unwrap_or_default()
 }
 
 /// Re-posts a swallowed press or release of `button`. The event goes to the current pointer
@@ -391,7 +400,9 @@ mod tests {
         assert_eq!(x_button_for(2), Some(2), "middle is X button 2");
         assert_eq!(x_button_for(3), Some(8), "back");
         assert_eq!(x_button_for(4), Some(9), "forward");
-        assert_eq!(x_button_for(5), None);
+        assert_eq!(x_button_for(5), Some(10), "the first extra button");
+        assert_eq!(x_button_for(15), Some(20), "the last one CursorPie handles");
+        assert_eq!(x_button_for(16), None);
         assert_eq!(x_button_for(-1), None);
     }
 

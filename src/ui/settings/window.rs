@@ -267,6 +267,7 @@ impl App {
                 for (tab, title, hint) in sections {
                     if nav_item(ui, title, hint, self.ed.tab == tab, accent).clicked() {
                         self.ed.tab = tab;
+                        self.ed.scan = None; // a scan belongs to the General tab
                         self.ed.picking_icon = false;
                         if tab == Tab::General {
                             self.ed.backups = backups(); // read once, not on every frame

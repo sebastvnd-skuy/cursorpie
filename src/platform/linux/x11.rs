@@ -730,10 +730,12 @@ impl Conn {
         crate::config::lock(&GRABS).master = id;
     }
 
-    /// Asks for the release of any button as a raw event: it is also reported while a grab is
-    /// lifted, which is how the end of a handed-over drag is noticed.
-    pub fn select_raw_release(&self) {
+    /// Asks for the press and the release of any button as raw events: they are also reported while
+    /// a grab is lifted (the end of a handed-over drag is noticed that way) and for buttons that are
+    /// not grabbed at all (which is how a scan of the mouse in Settings hears them).
+    pub fn select_raw_buttons(&self) {
         let mut bits = [0u8; XI_MASK_LEN];
+        set_bit(&mut bits, XI_RAW_BUTTON_PRESS);
         set_bit(&mut bits, XI_RAW_BUTTON_RELEASE);
         let mut mask = XIEventMask {
             deviceid: XI_ALL_MASTER_DEVICES,

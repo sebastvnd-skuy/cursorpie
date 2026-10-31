@@ -52,6 +52,15 @@ impl App {
             Msg::NewProfileAppPicked(bundle) => self.ed.new_profile_app = bundle,
             Msg::ProfileImportPicked(file) => self.import_profile(&file),
             Msg::Notice(text) => self.say(text),
+            Msg::MouseChanged { new, name, extra } => {
+                let which = if new { "New mouse" } else { "Mouse back again" };
+                self.say(format!("{which}: {name} ({extra} extra buttons)"));
+            }
+            Msg::ButtonScanned(button) => {
+                if let Some(scan) = self.ed.scan.as_mut() {
+                    scan.press(button);
+                }
+            }
             Msg::Warm { general, app } => self.warm(ctx, general, app),
             Msg::Refocus => ctx.send_viewport_cmd(egui::ViewportCommand::Focus),
             Msg::HidePie => {
@@ -74,6 +83,9 @@ impl App {
                         (ItemKind::Mode { back, .. }, Slot::Back) => *back = Action::Key(sc),
                         (ItemKind::Mode { forward, .. }, Slot::Forward) => {
                             *forward = Action::Key(sc)
+                        }
+                        (ItemKind::Mode { extra, .. }, Slot::Extra(b)) => {
+                            extra.insert(b, Action::Key(sc));
                         }
                         (ItemKind::Run(a), Slot::Run) => *a = Action::Key(sc),
                         _ => {}
@@ -143,6 +155,9 @@ impl App {
                     && let Some(item) = item_at_mut(&mut p.items, &path)
                 {
                     match (&mut item.kind, slot) {
+                        (ItemKind::Mode { extra, .. }, Slot::Extra(b)) => {
+                            extra.insert(b, Action::OpenApp(app));
+                        }
                         (ItemKind::Run(a), Slot::Run) => *a = Action::OpenApp(app),
                         (ItemKind::Mode { back, .. }, Slot::Back) => *back = Action::OpenApp(app),
                         (ItemKind::Mode { forward, .. }, Slot::Forward) => {

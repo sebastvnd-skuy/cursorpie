@@ -26,6 +26,8 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 
 ## macOS
 
+- CursorPie cannot list the mice on a Mac: scan the mouse in **Settings > General > Mouse** to tell it which extra
+  buttons it has, and it will not notice that you changed mouse.
 - Ad-hoc signed builds may need the Accessibility permission again after each rebuild. Sign with a stable
   identity (`SIGN_ID`) to avoid that.
 - **Launch at login** points at the executable that was running when you enabled it. Toggle it off and on again
@@ -44,7 +46,9 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 
 ## Windows
 
-- Only the middle button can be the trigger. Windows reports only the middle, back and forward buttons.
+- Only the middle button can be the trigger. Windows reports only the middle, back and forward buttons, so a
+  mode can use only those two side buttons, and CursorPie cannot tell two mice apart, only mice with a different
+  number of buttons.
 - Programs running **as administrator** ignore the input CursorPie sends unless CursorPie also runs as
   administrator (a Windows rule, UIPI).
 - **UWP apps cannot be told apart.** Store apps such as Calculator, Photos or Settings run inside one shared host
@@ -73,6 +77,9 @@ something, say which distribution, desktop, session type and scaling you use.
   the middle of the pie.
 - No app icons in the pie, and no keyboard-layout labels on non-US layouts.
 - Only the middle button can be the trigger.
+- **Extra buttons of a mode** (button 5 and up) use the buttons the X server numbers 10 to 20. A mouse that maps its
+  thumb buttons differently, or a button map changed with `xinput set-button-map`, may need a scan, and the scan
+  hears the physical button, not the remapped one. Mice listed twice by a receiver count as one.
 - Handing a **drag** back to the app while the middle button is held (for example middle-drag scrolling) may lose
   the start of the drag. A quick click is passed on reliably.
 - Whether your window manager follows the request to switch workspace for **Open app** has not been checked on

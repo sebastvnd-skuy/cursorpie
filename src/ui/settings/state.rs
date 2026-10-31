@@ -6,6 +6,7 @@
 
 use crate::config::backup::Backup;
 use crate::config::{Config, Item, blank_items, items_at, presets, quick_actions};
+use crate::mouse::Scan;
 use crate::tap::RECORDING;
 use crate::ui::icons::IconCache;
 use eframe::egui;
@@ -26,6 +27,8 @@ pub enum Slot {
     Back,
     Forward,
     Run,
+    /// An extra button of the mouse (button number 5 and up) of a side-button mode.
+    Extra(i64),
 }
 
 /// The action field currently recording a shortcut.
@@ -84,6 +87,8 @@ pub struct Ed {
     pub icons_not_listed: usize,
     /// backups of `config.json` found on disk (read when the General tab is opened)
     pub backups: Vec<Backup>,
+    /// A scan of the mouse is running (General tab); dropping it ends the scan
+    pub scan: Option<Scan>,
 }
 
 impl Default for Ed {
@@ -113,6 +118,7 @@ impl Ed {
             user_icons: Vec::new(),
             icons_not_listed: 0,
             backups: Vec::new(),
+            scan: None,
         }
     }
 

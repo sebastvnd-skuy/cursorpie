@@ -35,6 +35,10 @@ pub fn clear_window_frame(_handle: isize) {}
 pub fn window_manager_may_recenter() -> bool {
     false
 }
+/// No mice to list.
+pub fn mouse_devices() -> Vec<crate::mouse::Device> {
+    Vec::new()
+}
 /// No pointer.
 pub fn cursor_pos() -> Option<(f64, f64)> {
     None

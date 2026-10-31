@@ -27,6 +27,8 @@ impl App {
         let accent = rgb(edit.accent);
         let accent_rgb = edit.accent;
         let tx_ref: &Sender<Msg> = tx;
+        let trigger = edit.trigger_button;
+        let mouse = crate::mouse::active_buttons();
 
         profile_toolbar(ui, ctx, edit, ed, tx_ref);
         ui.add_space(GAP);
@@ -126,6 +128,8 @@ impl App {
             accent,
             profile: ed.profile,
             width: right.width(),
+            trigger,
+            mouse: &mouse,
         };
         ui.scope_builder(UiBuilder::new().max_rect(right), |ui| {
             ui.set_clip_rect(ui.clip_rect().intersect(right)); // clip anything that overflows

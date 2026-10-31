@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.6.0
+
+- **Side-button slices can use every button of the mouse, not only back and forward.** A slice set to "Side
+  buttons" now lists one more action for each extra button of your mouse (button 5 and up). The new `extra` map
+  of a `Mode` in `config.json` stores them; files without it load as before, and a mode without extras is written
+  exactly as it was. Buttons nothing is set for still reach the app.
+- **CursorPie knows your mouse.** A new `mice.json` (next to `config.json`) keeps a profile for every mouse it has
+  met, keyed by its USB or Bluetooth id: the buttons the system reports and the ones you scanned. Every five
+  seconds it looks at what is connected and tells a new mouse from one it already knows (a note in Settings). On
+  Linux the buttons come from `/proc/bus/input/devices`; on Windows from the number of buttons; macOS has no list
+  CursorPie can read, so scan the mouse there.
+- **Settings, General, Mouse:** "Scan this mouse" (press every extra button once; the buttons do nothing else
+  meanwhile), "Detect again" and a list of known mice with "Forget".
+- **Linux:** extra buttons are numbered like the other systems (X button 10 and up are button 5 and up) and are
+  grabbed only while a mode uses them.
+
 ## 0.5.4
 
 - **More tools to read the diagnostic log.** `cargo tools log` has seven views: `summary` (what was written and what

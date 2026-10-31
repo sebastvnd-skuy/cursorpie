@@ -307,7 +307,7 @@ mod tests {
 
     /// `(back, forward)` of a mode slice as `(key, mods)` pairs.
     fn keys_of(item: &Item) -> ((u16, u8), (u16, u8)) {
-        let ItemKind::Mode { back, forward } = &item.kind else {
+        let ItemKind::Mode { back, forward, .. } = &item.kind else {
             panic!("{} is not a mode", item.name);
         };
         let k = |a: &Action| match a {

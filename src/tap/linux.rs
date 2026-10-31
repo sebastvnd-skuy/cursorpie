@@ -1,7 +1,8 @@
 //! X11 event layer: passive grabs on the mouse buttons CursorPie uses, on their own thread.
 //!
 //! [`spawn`] connects to the X server and grabs the trigger button and the two side buttons with
-//! XInput2 (asynchronous mode, any modifier). A grabbed press is delivered to CursorPie instead of
+//! XInput2 (asynchronous mode, any modifier). The extra buttons are grabbed only when a mode sends an
+//! action for them. A grabbed press is delivered to CursorPie instead of
 //! the app under the pointer, and while it is held the pointer motion is too: that is the
 //! "swallow". Native events are translated into the portable `Ev` and routed by `dispatch`.
 //!
@@ -24,15 +25,17 @@ use super::{
     Ev, Gesture, Kind, PAUSED, RECORDING, RIGHT_BUTTON, SIDE_BACK, SIDE_FORWARD, SWALLOW_KEY,
     TAP_ACTIVE, Verdict, dispatch,
 };
-use crate::config::{cfg, lock};
+use crate::config::{cfg, extra_buttons_in_use, lock};
 use crate::geometry::Point;
 use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT};
-use crate::msg::Notifier;
+use crate::mouse;
+use crate::msg::{Msg, Notifier};
 use crate::platform::keymap;
 use crate::platform::linux::backend::{post_mouse, x_button_for};
 use crate::platform::linux::session::Session;
 use crate::platform::linux::x11::{self, Conn};
 use crate::platform::linux::xlib::*;
+use std::collections::BTreeSet;
 use std::os::raw::c_int;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::Ordering;
@@ -45,7 +48,9 @@ const IDLE_WAIT_MS: c_int = 30;
 /// How long the keyboard stays grabbed after recording ended, waiting for the key's release.
 const KEY_RELEASE_GRACE: Duration = Duration::from_millis(1500);
 
-/// The macOS button number of an X button; `None` for buttons CursorPie ignores.
+/// The macOS button number of an X button; `None` for buttons CursorPie ignores (the wheel, X
+/// buttons 4 to 7, and everything past `mouse::MAX_BUTTON`). X button 10 and up are the extra buttons
+/// 5 and up.
 pub(super) fn mac_button(x_button: c_int) -> Option<i64> {
     match x_button {
         1 => Some(0),
@@ -53,6 +58,7 @@ pub(super) fn mac_button(x_button: c_int) -> Option<i64> {
         3 => Some(RIGHT_BUTTON),
         8 => Some(SIDE_BACK),
         9 => Some(SIDE_FORWARD),
+        x if x >= 10 && mouse::is_extra(i64::from(x) - 5) => Some(i64::from(x) - 5),
         _ => None,
     }
 }
@@ -75,8 +81,9 @@ pub(super) fn mods_from_state(state: u32) -> u8 {
     m
 }
 
-/// The X buttons to grab for a trigger (macOS numbering): the trigger itself and both side buttons.
-pub(super) fn wanted_buttons(trigger: i64) -> Vec<c_int> {
+/// The X buttons to grab for a trigger (macOS numbering): the trigger itself, both side buttons and
+/// the extra buttons (`extras`) that a mode sends an action for.
+pub(super) fn wanted_buttons(trigger: i64, extras: &BTreeSet<i64>) -> Vec<c_int> {
     let mut v = Vec::new();
     if let Some(x) = x_button_for(trigger) {
         v.push(x);
@@ -84,6 +91,11 @@ pub(super) fn wanted_buttons(trigger: i64) -> Vec<c_int> {
     for side in [8, 9] {
         if !v.contains(&side) {
             v.push(side);
+        }
+    }
+    for x in extras.iter().filter_map(|b| x_button_for(*b)) {
+        if !v.contains(&x) {
+            v.push(x);
         }
     }
     v
@@ -141,9 +153,12 @@ fn run(state: Arc<Mutex<Gesture>>, notifier: Notifier) {
 
 /// Installs the grabs and handles events. Returns only if the trigger button could not be grabbed.
 fn serve(conn: &'static Conn, state: &Arc<Mutex<Gesture>>, notifier: &Notifier) -> bool {
-    conn.select_raw_release();
-    let trigger = cfg().trigger_button;
-    let wanted = wanted_buttons(trigger);
+    conn.select_raw_buttons();
+    let (trigger, extras) = {
+        let c = cfg();
+        (c.trigger_button, extra_buttons_in_use(&c))
+    };
+    let wanted = wanted_buttons(trigger, &extras);
     let all_grabbed = conn.set_grabs(&wanted);
     diag::log!(
         "tap",
@@ -166,8 +181,9 @@ fn serve(conn: &'static Conn, state: &Arc<Mutex<Gesture>>, notifier: &Notifier) 
         notifier: notifier.clone(),
         wanted,
         trigger,
+        extras,
         lifted: false,
-        pending_click: [false; 2],
+        pending_click: [false; mouse::SLOTS],
         keyboard: false,
         keyboard_deadline: None,
     };
@@ -196,11 +212,13 @@ struct Tap {
     wanted: Vec<c_int>,
     /// The trigger button the grabs were made for (macOS numbering).
     trigger: i64,
+    /// The extra buttons the grabs were made for.
+    extras: BTreeSet<i64>,
     /// The grabs are lifted because CursorPie is paused.
     lifted: bool,
-    /// A side-button press the state machine kept: `[back, forward]`. Its click is sent again when
-    /// the button is released.
-    pending_click: [bool; 2],
+    /// A side or extra button press the state machine kept, by `mouse::slot`. Its click is sent
+    /// again when the button is released.
+    pending_click: [bool; mouse::SLOTS],
     /// The keyboard is grabbed to record a shortcut.
     keyboard: bool,
     /// When to give up waiting for the recorded key's release.
@@ -246,6 +264,9 @@ impl Tap {
                     match evtype {
                         XI_BUTTON_PRESS | XI_BUTTON_RELEASE | XI_MOTION => {
                             self.on_device(evtype, &*(data as *const XIDeviceEvent));
+                        }
+                        XI_RAW_BUTTON_PRESS => {
+                            self.on_raw_press(&*(data as *const XIRawEvent));
                         }
                         XI_RAW_BUTTON_RELEASE => {
                             self.on_raw_release(&*(data as *const XIRawEvent));
@@ -318,11 +339,8 @@ impl Tap {
                 verdict = format!("{verdict:?}")
             );
         }
-        let side = match button {
-            SIDE_BACK => Some(0),
-            SIDE_FORWARD => Some(1),
-            _ => None,
-        };
+        // the trigger's own press and release are handled by its gesture
+        let side = mouse::slot(button).filter(|_| button != self.trigger);
         let Some(i) = side else { return };
         match kind {
             Kind::Down if matches!(verdict, Verdict::Keep) => self.pending_click[i] = true,
@@ -332,6 +350,17 @@ impl Tap {
                 post_mouse(pos, Kind::Up, button);
             }
             _ => {}
+        }
+    }
+
+    /// A button went down, grabbed or not. Only a scan in Settings cares: the press is reported so
+    /// the button is found even when no mode uses it (and so nothing grabbed it).
+    fn on_raw_press(&mut self, e: &XIRawEvent) {
+        if !mouse::scanning() {
+            return;
+        }
+        if let Some(button) = mac_button(e.detail).filter(|b| mouse::is_extra(*b)) {
+            self.notifier.send(Msg::ButtonScanned(button));
         }
     }
 
@@ -375,12 +404,16 @@ impl Tap {
             self.lifted = false;
         }
 
-        // a changed trigger button needs new grabs
-        let trigger = cfg().trigger_button;
-        if !self.lifted && trigger != self.trigger {
-            self.wanted = wanted_buttons(trigger);
+        // a changed trigger button, or a mode that now uses another extra button, needs new grabs
+        let (trigger, extras) = {
+            let c = cfg();
+            (c.trigger_button, extra_buttons_in_use(&c))
+        };
+        if !self.lifted && (trigger != self.trigger || extras != self.extras) {
+            self.wanted = wanted_buttons(trigger, &extras);
             self.conn.set_grabs(&self.wanted);
             self.trigger = trigger;
+            self.extras = extras;
         }
 
         // recording a shortcut: take the keyboard, and give it back once the key is released
@@ -418,29 +451,41 @@ mod tests {
         assert_eq!(mac_button(9), Some(SIDE_FORWARD));
         assert_eq!(mac_button(4), None, "wheel up");
         assert_eq!(mac_button(5), None, "wheel down");
-        assert_eq!(mac_button(10), None);
+        assert_eq!(mac_button(10), Some(5), "the first extra button");
+        assert_eq!(mac_button(20), Some(15), "the last one");
+        assert_eq!(mac_button(21), None);
+        assert_eq!(mac_button(7), None, "wheel right");
     }
 
     #[test]
     fn every_grabbed_button_maps_back_to_a_known_button() {
-        for x in wanted_buttons(2) {
+        for x in wanted_buttons(2, &BTreeSet::from([5, 6, 15])) {
             assert!(mac_button(x).is_some(), "X button {x}");
         }
     }
 
     #[test]
     fn the_trigger_and_both_side_buttons_are_grabbed() {
-        assert_eq!(wanted_buttons(2), [2, 8, 9]);
+        let none = BTreeSet::new();
+        assert_eq!(wanted_buttons(2, &none), [2, 8, 9]);
         assert_eq!(
-            wanted_buttons(3),
+            wanted_buttons(3, &none),
             [8, 9],
             "macOS button 3 is the back button, X button 8"
         );
         assert_eq!(
-            wanted_buttons(5),
-            [8, 9],
-            "no X button known for an extra button"
+            wanted_buttons(5, &none),
+            [10, 8, 9],
+            "macOS button 5 is X button 10"
         );
+    }
+
+    #[test]
+    fn the_extra_buttons_a_mode_uses_are_grabbed_too() {
+        let extras = BTreeSet::from([5, 7]);
+        assert_eq!(wanted_buttons(2, &extras), [2, 8, 9, 10, 12]);
+        // the trigger is not grabbed twice
+        assert_eq!(wanted_buttons(5, &extras), [10, 8, 9, 12]);
     }
 
     #[test]

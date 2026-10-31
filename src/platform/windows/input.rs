@@ -13,6 +13,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT, MapVirtualKeyW,
     SendInput,
 };
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CMOUSEBUTTONS};
 
 /// `XBUTTON1` and `XBUTTON2` of `MOUSEINPUT::mouseData`.
 const XBUTTON1: u32 = 1;
@@ -115,6 +116,32 @@ pub fn press_shortcut(sc: Shortcut) {
     }
 }
 
+/// The mouse as Windows describes it: one device with the number of buttons the system reports
+/// (`SM_CMOUSEBUTTONS`). Windows does not say which mouse it is, so a different number of buttons is
+/// what tells a different mouse apart (see [`device_for_button_count`]).
+pub fn mouse_devices() -> Vec<crate::mouse::Device> {
+    // SAFETY: plain query.
+    let buttons = unsafe { GetSystemMetrics(SM_CMOUSEBUTTONS) };
+    device_for_button_count(buttons)
+}
+
+/// The device for a mouse with `buttons` buttons: left, right and middle, then the two side buttons
+/// (`XBUTTON1`, `XBUTTON2`), which are the only extra buttons Windows reports to a hook. No mouse
+/// (`buttons` zero or less) gives no device.
+pub(super) fn device_for_button_count(buttons: i32) -> Vec<crate::mouse::Device> {
+    if buttons <= 0 {
+        return Vec::new();
+    }
+    let extra = (0..(buttons - 3).clamp(0, 2))
+        .map(|i| crate::mouse::BACK + i64::from(i))
+        .collect();
+    vec![crate::mouse::Device {
+        name: "Mouse".into(),
+        hw_id: format!("buttons:{buttons}"),
+        extra,
+    }]
+}
+
 /// The `MOUSEINPUT` flags and `mouseData` that press or release `button` (macOS numbering:
 /// 2 = middle, 3 = back, 4 = forward). `None` for buttons Windows has no event for.
 pub(super) fn mouse_flags(kind: Kind, button: i64) -> Option<(u32, u32)> {
@@ -170,6 +197,26 @@ pub fn post_mouse(_pos: Point, kind: Kind, button: i64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mouse_buttons_windows_reports_become_extra_buttons() {
+        assert!(device_for_button_count(0).is_empty(), "no mouse");
+        assert!(device_for_button_count(-1).is_empty());
+        let three = &device_for_button_count(3)[0];
+        assert!(three.extra.is_empty());
+        let five = &device_for_button_count(5)[0];
+        assert_eq!(five.extra, [3, 4], "back and forward");
+        assert_eq!(
+            device_for_button_count(8)[0].extra,
+            [3, 4],
+            "the hook only sees XBUTTON1 and XBUTTON2"
+        );
+        assert_ne!(
+            three.id(),
+            five.id(),
+            "another number of buttons, another mouse"
+        );
+    }
 
     #[test]
     fn modifiers_are_pressed_in_a_fixed_order() {
