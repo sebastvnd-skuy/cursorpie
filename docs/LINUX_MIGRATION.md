@@ -826,7 +826,7 @@ The list is an input to `Session::detect`; the capability probe, not the names, 
 
 ## Appendix D: new files
 
-Planned layout, created in the phase named. Nothing exists yet.
+This new file, up realese in version **0.5.0**..
 
 ```text
 docs/LINUX_MIGRATION.md                this document

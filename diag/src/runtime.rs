@@ -74,7 +74,7 @@ impl Builder {
     }
 
     /// The folder of the program's own files. The marker file [`MARKER_FILE`] is looked for in it
-    /// and the logs go to its [`LOG_DIR`] folder.
+    /// and the logs go to its `LOG_DIR` folder.
     pub fn support_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.support_dir = Some(dir.into());
         self
@@ -311,7 +311,7 @@ pub fn write(cat: &str, ev: &str, fields: &[(&str, Value)]) {
     }
 }
 
-/// [`write`] for fields whose names are built at run time.
+/// `write()` for fields whose names are built at run time.
 pub(crate) fn write_owned(cat: &str, ev: &str, owned: &[(String, Value)]) {
     let fields: Vec<(&str, Value)> = owned.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
     write(cat, ev, &fields);
