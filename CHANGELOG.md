@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.1
+
 - **macOS: "Open app" now opens the app on the screen you clicked.** With two screens, an app that already had
   a window on the other screen (Finder, say) was taken for "already here", so the slice only focused the window
   on the screen you were not looking at. Now, with more than one screen, the app's front window on the screen
