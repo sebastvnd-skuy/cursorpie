@@ -1,17 +1,22 @@
 //! Menu tab: profile toolbar on top, then two tiles side by side without an outer scroll area.
 //!   left  = breadcrumb + the interactive pie
-//!   right = slice editor / "Add a slice" panel / icon picker (scrolls on its own if needed)
+//!   right = slice editor (scrolls on its own if needed)
+//!
+//! "Add a slice" and the icon picker are sheets that float over the window, see
+//! [`sheet`](crate::ui::settings::widgets::sheet).
 
 use super::profile_toolbar::profile_toolbar;
 use crate::config::*;
 use crate::msg::Msg;
 use crate::ui::app::App;
 use crate::ui::draw::*;
+use crate::ui::fonts;
 use crate::ui::settings::add_panel::add_panel;
 use crate::ui::settings::inspector::{Env, item_inspector};
 use crate::ui::settings::pie_designer::{Designer, pie_designer};
 use crate::ui::settings::theme::*;
-use eframe::egui::{self, Rect, RichText, Stroke, StrokeKind, UiBuilder, pos2, vec2};
+use crate::ui::symbols;
+use eframe::egui::{self, Rect, RichText, UiBuilder, pos2, vec2};
 use std::sync::mpsc::Sender;
 
 impl App {
@@ -30,8 +35,8 @@ impl App {
         let trigger = edit.trigger_button;
         let mouse = crate::mouse::active_buttons();
 
-        profile_toolbar(ui, ctx, edit, ed, tx_ref);
-        ui.add_space(GAP);
+        profile_toolbar(ui, ctx, edit, ed, tx_ref, accent);
+        ui.add_space(GAP + 4.0);
 
         // ------------------------------------------------------------ two tiles
         // widths are computed explicitly (not from available_width) so nothing grows with its content
@@ -39,9 +44,9 @@ impl App {
         let left_w = 320.0;
         let gap = GAP;
         // the pie fills the tile's width (when there is enough height) and is centered in the tile
-        let pad = GAP + 2.0;
-        let pie_size = (left_w - 2.0 * pad - 4.0)
-            .min(avail.height() - 100.0)
+        let pad = GAP + 4.0;
+        let pie_size = (left_w - 2.0 * pad)
+            .min(avail.height() - 110.0)
             .clamp(200.0, 300.0);
         let left = Rect::from_min_size(avail.min, vec2(left_w, avail.height()));
         let right = Rect::from_min_size(
@@ -59,18 +64,20 @@ impl App {
         let sel_before = ed.sel;
 
         // left: a bordered tile with the breadcrumb + pie inside
-        ui.painter().rect_filled(left, RADIUS, CARD);
-        ui.painter()
-            .rect_stroke(left, RADIUS, Stroke::new(1.0, BORDER), StrokeKind::Inside);
+        ui.painter().rect_filled(left, PANEL_R, pal().card);
         let res = ui
             .scope_builder(UiBuilder::new().max_rect(left.shrink(pad)), |ui| {
                 ui.horizontal_wrapped(|ui| {
                     let mut go: Option<usize> = None;
-                    if ui.link(RichText::new(&prof.name).strong()).clicked() {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    if ui
+                        .link(fonts::title(&prof.name, 14.0, pal().text))
+                        .clicked()
+                    {
                         go = Some(0);
                     }
                     for d in 0..nav.len() {
-                        ui.label("›");
+                        ui.label(fonts::icon(symbols::CARET_RIGHT, 13.0, pal().muted));
                         let name = item_at(&prof.items, &nav[..=d])
                             .map(|i| i.name.as_str())
                             .unwrap_or("?");
@@ -95,8 +102,8 @@ impl App {
                 ui.vertical_centered(|ui| {
                     ui.label(
                         RichText::new("Click a slice to edit it. Use + to add one.")
-                            .size(12.0)
-                            .color(MUTED),
+                            .size(12.5)
+                            .color(pal().muted),
                     )
                 });
                 res
@@ -130,6 +137,7 @@ impl App {
             width: right.width(),
             trigger,
             mouse: &mouse,
+            bounds: ed.card,
         };
         ui.scope_builder(UiBuilder::new().max_rect(right), |ui| {
             ui.set_clip_rect(ui.clip_rect().intersect(right)); // clip anything that overflows
@@ -143,11 +151,11 @@ impl App {
                     ui.set_max_width(right.width());
                     if let Some(ring) = ring_mut(&mut prof.items, &nav) {
                         if ed.adding {
-                            add_panel(ui, ed, ring, nav.len(), accent, right.width());
+                            add_panel(ctx, ed, ring, nav.len(), accent);
                         } else {
-                            ed.add_catalog = None; // the hidden panel keeps nothing
-                            item_inspector(ui, ed, &env, ring, &nav);
+                            ed.add_catalog = None; // the closed sheet keeps nothing
                         }
+                        item_inspector(ui, ed, &env, ring, &nav);
                     }
                 });
         });

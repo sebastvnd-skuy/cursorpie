@@ -1,5 +1,6 @@
 //! Drawing helpers shared by the pie and the settings window: icons, shapes, easing, colors.
 
+use crate::ui::{fonts, symbols};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Shape, Vec2};
 use std::f32::consts::TAU;
 use std::path::PathBuf;
@@ -118,32 +119,55 @@ pub fn load_icon(
     Some(ctx.load_texture(name, color, egui::TextureOptions::LINEAR))
 }
 
-/// Draws an icon (image or text) centered at `c` in a box of `size`.
+/// Draws an icon centered at `c` in a box of `size`, in the color `ink`.
+///
+/// An icon string is one of three things, see [`crate::ui::symbols`]:
+///
+/// * an image file: drawn as it is, so a colored icon stays colored; only `ink`'s opacity applies;
+/// * `ico:<name>` (or one of the old letter icons, which are mapped to a picture): a glyph of the
+///   icon font, drawn in `ink`;
+/// * any other text or emoji: drawn in `ink` with the text font.
 pub fn draw_icon(
     painter: &egui::Painter,
     tex: Option<&egui::TextureHandle>,
     icon: &str,
     c: Pos2,
     size: f32,
-    alpha: u8,
+    ink: Color32,
 ) {
     if let Some(t) = tex {
-        let sz = t.size_vec2();
-        let k = size / sz.x.max(sz.y).max(1.0);
-        let rect = egui::Rect::from_center_size(c, sz * k);
-        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-        painter.image(t.id(), rect, uv, Color32::from_white_alpha(alpha));
+        draw_texture(painter, t, c, size, Color32::from_white_alpha(ink.a()));
+    } else if let Some(glyph) = symbols::resolve(icon) {
+        fonts::paint_icon(painter, c, glyph, size, ink, false);
     } else {
         // an image path that failed to load shows "?" so the problem is visible
         let text = if icon_path(icon).is_some() { "?" } else { icon };
+        // a long text (an old "Shot" or "Find") must still fit the box
+        let shrink = if text.chars().count() > 2 { 0.5 } else { 0.8 };
         painter.text(
             c,
             Align2::CENTER_CENTER,
             text,
-            FontId::proportional(size * 0.8),
-            Color32::from_white_alpha(alpha),
+            FontId::proportional(size * shrink),
+            ink,
         );
     }
+}
+
+/// Draws a texture centered at `c`, scaled to fit a box of `size`, multiplied by `tint`.
+/// The white glyph of an app icon is drawn with a dark `tint` to make it dark.
+pub fn draw_texture(
+    painter: &egui::Painter,
+    tex: &egui::TextureHandle,
+    c: Pos2,
+    size: f32,
+    tint: Color32,
+) {
+    let sz = tex.size_vec2();
+    let k = size / sz.x.max(sz.y).max(1.0);
+    let rect = egui::Rect::from_center_size(c, sz * k);
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    painter.image(tex.id(), rect, uv, tint);
 }
 
 // ------------------------------------------------------------------- drawing
@@ -188,6 +212,88 @@ pub fn ease_out_back(t: f32) -> f32 {
 pub fn ease_out_cubic(t: f32) -> f32 {
     let u = 1.0 - t.clamp(0.0, 1.0);
     1.0 - u * u * u
+}
+
+// --------------------------------------------------------------------- contrast
+/// Text color on a light surface or a dark accent: near black.
+pub const INK: Color32 = Color32::from_rgb(28, 28, 32);
+
+/// Relative luminance of `c` (WCAG 2), 0 for black and 1 for white.
+pub fn luminance(c: Color32) -> f32 {
+    let lin = |c: u8| {
+        let c = c as f32 / 255.0;
+        if c <= 0.03928 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let [r, g, b, _] = c.to_array();
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+/// WCAG contrast ratio of two colors: 1 (identical) to 21 (black on white).
+pub fn contrast(a: Color32, b: Color32) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// Text color for something filled with `accent`: dark or white, whichever reads better.
+/// The accent is chosen by the user, so a fixed white would be unreadable on a light one.
+pub fn on_accent(accent: Color32) -> Color32 {
+    if contrast(accent, INK) >= contrast(accent, Color32::WHITE) {
+        INK
+    } else {
+        Color32::WHITE
+    }
+}
+
+// ------------------------------------------------------------------- appearance and pie palette
+/// Whether the interface is drawn dark right now. One flag for the whole UI thread, set once a
+/// frame by [`set_dark`] (see `ui::settings::theme::apply_appearance`).
+static DARK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the interface is drawn dark right now.
+pub fn dark() -> bool {
+    DARK.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Switches the interface between light and dark.
+pub fn set_dark(on: bool) {
+    DARK.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The colors of the pie in one appearance.
+#[derive(Clone, Copy, Debug)]
+pub struct PieColors {
+    /// A slice at rest. The hovered slice blends toward the accent.
+    pub slice: [u8; 3],
+    /// A slice that is only a "+" to add one in the Settings pie.
+    pub ghost: [u8; 3],
+    /// The icon and name on a slice at rest.
+    pub ink: Color32,
+    /// The center disc.
+    pub core: Color32,
+}
+
+/// The pie colors for the current appearance: frosted white, or smoked graphite.
+pub fn pie_colors() -> PieColors {
+    if dark() {
+        PieColors {
+            slice: [46, 46, 52],
+            ghost: [36, 36, 41],
+            ink: Color32::from_rgb(240, 240, 246),
+            core: Color32::from_rgb(30, 30, 35),
+        }
+    } else {
+        PieColors {
+            slice: [252, 252, 254],
+            ghost: [238, 238, 244],
+            ink: Color32::from_rgb(44, 44, 52),
+            core: Color32::from_rgb(255, 255, 255),
+        }
+    }
 }
 
 /// `[r, g, b]` as an egui color.

@@ -5,6 +5,9 @@ use super::{
     share::clean_apps,
 };
 
+/// The accent that versions before 0.7 started with. It is replaced by the new default.
+const OLD_DEFAULT_ACCENT: [u8; 3] = [64, 156, 255];
+
 /// Path of the first `Mode` slice in depth-first order, if there is one.
 fn first_mode(items: &[Item]) -> Option<Vec<usize>> {
     for (i, it) in items.iter().enumerate() {
@@ -87,6 +90,13 @@ impl Config {
         if self.sleep_after_s != 0 {
             self.sleep_after_s = self.sleep_after_s.clamp(10, 3600);
         }
+        self.glass_clear = self.glass_clear.min(100);
+        self.glass_frost = self.glass_frost.min(100);
+        self.glass_shine = self.glass_shine.min(100);
+        // the blue of earlier versions was the old default; it is the one that hurt the eyes
+        if self.accent == OLD_DEFAULT_ACCENT {
+            self.accent = Config::default().accent;
+        }
         if !matches!(self.trigger_button, 2 | 5 | 6 | 7) {
             self.trigger_button = 2;
         }
@@ -100,6 +110,34 @@ mod tests {
 
     fn parse(json: &str) -> Config {
         crate::config::parse_config(json).expect("valid config")
+    }
+
+    #[test]
+    fn the_look_settings_default_and_are_clamped() {
+        let old = parse(r#"{"version":2}"#);
+        assert_eq!(old.appearance, crate::config::Appearance::System);
+        assert_eq!(old.pie_style, crate::config::PieStyle::Solid);
+        let wild = parse(
+            r#"{"version":2,"appearance":"Dark","pie_style":"Glass","glass_clear":200,"glass_frost":101,"glass_shine":255}"#,
+        );
+        assert_eq!(wild.appearance, crate::config::Appearance::Dark);
+        assert_eq!(wild.pie_style, crate::config::PieStyle::Glass);
+        assert_eq!(
+            (wild.glass_clear, wild.glass_frost, wild.glass_shine),
+            (100, 100, 100)
+        );
+    }
+
+    #[test]
+    fn the_old_default_blue_becomes_the_new_default_accent() {
+        let old = parse(r#"{"version":2,"accent":[64,156,255]}"#);
+        assert_eq!(old.accent, Config::default().accent);
+        let chosen = parse(r#"{"version":2,"accent":[255,45,85]}"#);
+        assert_eq!(
+            chosen.accent,
+            [255, 45, 85],
+            "a color the user picked stays"
+        );
     }
 
     #[test]

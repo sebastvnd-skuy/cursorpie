@@ -29,13 +29,13 @@ use std::time::Instant;
 
 /// Settings card size. The window is larger by WIN_MARGIN on each side for the drop shadow.
 /// The width leaves room for the sidebar and a Menu editor of the same width it had before.
-pub const CARD_SIZE: [f32; 2] = [1120.0, 680.0];
+pub const CARD_SIZE: [f32; 2] = [1180.0, 740.0];
 /// Space around the card for its drop shadow (window size = card size + 2 x margin).
-pub const WIN_MARGIN: f32 = 28.0;
+pub const WIN_MARGIN: f32 = 40.0;
 /// Narrowest the card gets on a small display: the Menu tab still has room for the pie and an editor.
-pub const CARD_MIN_W: f32 = 940.0;
+pub const CARD_MIN_W: f32 = 980.0;
 /// Shortest the card gets on a small display.
-pub const CARD_MIN_H: f32 = 420.0;
+pub const CARD_MIN_H: f32 = 520.0;
 
 /// The card size for a display `area` points large: [`CARD_SIZE`], shrunk to fit with room for the
 /// shadow and the taskbar or menu bar, but never below [`CARD_MIN_W`] x [`CARD_MIN_H`].
@@ -46,9 +46,9 @@ pub fn card_size_for(area: Vec2) -> Vec2 {
 }
 
 /// Welcome window card size (the window adds [`WIN_MARGIN`] on each side for the shadow).
-pub const WELCOME_SIZE: [f32; 2] = [760.0, 520.0];
+pub const WELCOME_SIZE: [f32; 2] = [820.0, 580.0];
 /// Smallest the welcome card gets on a small display.
-pub const WELCOME_MIN: [f32; 2] = [600.0, 440.0];
+pub const WELCOME_MIN: [f32; 2] = [660.0, 500.0];
 
 /// The welcome card size for a display `area` points large: [`WELCOME_SIZE`], shrunk to fit with
 /// room for the shadow and the taskbar or menu bar, but never below [`WELCOME_MIN`].
@@ -100,7 +100,13 @@ pub struct App {
     // settings
     pub settings_open: bool,
     pub quitting: bool,
+    /// The quit confirmation sheet is showing: Settings has unsaved changes and the user asked to
+    /// quit. See [`crate::ui::settings`] (`quit_dialog`).
+    pub confirm_quit: bool,
     pub edit: Config,
+    /// What `edit` was when Settings opened, to tell whether there is anything unsaved. Dropped
+    /// with the rest of the editor (`App::release_editor`).
+    pub opened: Option<Config>,
     /// Undo / redo for `edit`, see [`crate::history`]
     pub history: History<Config>,
     pub ed: Ed,
@@ -148,6 +154,8 @@ impl App {
             preview_until: None,
             settings_open: false,
             quitting: false,
+            confirm_quit: false,
+            opened: None,
             history: History::new(&edit, HISTORY_LIMIT),
             edit,
             ed: Ed::new(),
@@ -227,6 +235,13 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // light or dark for this frame; Settings previews the choice before it is saved
+        let appearance = if self.settings_open {
+            self.edit.appearance
+        } else {
+            cfg().appearance
+        };
+        crate::ui::settings::theme::apply_appearance(ui.ctx(), appearance);
         if self.settings_open && self.welcome.is_some() {
             self.welcome_ui(ui);
         } else if self.settings_open {

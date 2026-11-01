@@ -171,6 +171,26 @@ impl Item {
     }
 }
 
+/// Whether Settings and the pie are drawn light or dark.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum Appearance {
+    /// Follow the system (light when the system does not say).
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// How the slices of the pie are drawn.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum PieStyle {
+    /// Opaque slices.
+    #[default]
+    Solid,
+    /// Translucent, frosted slices with a bright rim, like frosted glass.
+    Glass,
+}
+
 /// A pie: its slices, and the apps it applies to.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Profile {
@@ -255,6 +275,17 @@ pub struct Config {
     /// Seconds without a pie or Settings on screen before the UI frees its caches and Settings
     /// state (0 = never). See [`ui::sleep`](crate::ui::sleep).
     pub sleep_after_s: u64,
+    /// Light, dark or follow the system.
+    pub appearance: Appearance,
+    /// Whether the slices are opaque or frosted glass.
+    pub pie_style: PieStyle,
+    /// Glass only: how see-through the slices are, in percent (100 = clear, 0 = opaque).
+    pub glass_clear: u8,
+    /// Glass only: how frosted the glass is, in percent: the milky veil, the soft inner glow and
+    /// the sheen. The window cannot blur what is behind it, so this is drawn.
+    pub glass_frost: u8,
+    /// Glass only: how bright the rim and the sheen are, in percent.
+    pub glass_shine: u8,
 }
 
 impl Config {

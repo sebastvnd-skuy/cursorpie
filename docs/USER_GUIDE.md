@@ -142,6 +142,20 @@ Open it from the menu bar or tray icon, or by holding the trigger in the center 
 and stores your changes. **Cancel**, **Esc** and **Cmd+W** (Ctrl+W elsewhere) discard them. **Undo** and
 **Redo** step through your edits.
 
+**Quitting.** **Quit CursorPie** (in the sidebar, in **General**, or in the tray / menu bar icon while Settings
+is open) always asks first:
+
+- With nothing unsaved: "Do you really want to quit?" with **Cancel** and **Quit CursorPie**.
+- With unsaved changes: the window says so and offers **Keep editing**, **Save and quit** (applies and stores
+  your changes, then quits) and **Quit without saving**. Changes you undid back to what Settings opened with
+  count as no changes.
+
+**Esc**, the **x** button and a click outside the window mean "not yet" and return to Settings. With Settings
+closed, Quit in the tray or menu bar icon quits at once.
+
+**The pie is off while Settings is open.** If you press the trigger then, Settings comes to the front (even
+from behind other windows or minimized) and its footer says to Save or Cancel to use the pie again.
+
 **Menu** is where you build pies.
 
 - Choose, create, rename and delete profiles, list the apps each one applies to (type an id or use **Pick

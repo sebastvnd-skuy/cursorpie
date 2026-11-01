@@ -20,73 +20,101 @@ change to either. The code is in `src/ui/`; the rules for contributors are summa
 ## Design goals
 
 CursorPie is a tool you use many times a day for a second at a time, and a Settings window you open
-rarely. The design follows from that:
+rarely. The design is modern flat (post-flat): light, soft and roomy, in the spirit of the system
+settings of a Mac, and follows from that:
 
-- **Quiet and dense.** Neutral graphite surfaces, hairline borders instead of shadows, small type for
-  chrome. Nothing competes with the pie or with the thing you are editing.
-- **One accent.** The user picks the accent color. It marks focus, the primary button and the selected
-  slice, and nothing else is saturated, so it always means "this".
+- **Calm and roomy.** Light surfaces, large rounded cards, no borders where a tint does the job, and
+  space around everything. Nothing competes with the pie or with the thing you are editing.
+- **One accent.** The user picks the accent color (indigo by default, the color of the logo). It marks
+  focus, the primary button and the selected entry, so it always means "this".
+- **One kind of popup.** Whatever opens on top of a page is either a *sheet* (a modal card over a dimmed
+  window: adding a slice, choosing an icon, confirming a quit) or a *popover* (a small card under the button that opened it:
+  New, Rename, All apps, Share). Both are drawn by `widgets::sheet` and `widgets::popover`, close with Esc
+  or a click outside, and look the same everywhere. There are no other floating panels.
+- **One icon set.** Every icon in the interface, and the default slice icons, come from the same set
+  (Phosphor, outline for rest and filled for selected). No icon is a combination of letters.
 - **Predictable.** The buttons you confirm with never move: Undo, Redo, Cancel and Save are in the top
-  bar on every tab, Quit is in the footer.
+  bar on every tab, Quit is at the bottom of the sidebar.
 - **Sharp and smooth.** Edges are anti-aliased and aligned to pixels, and animations take a fixed time.
+
+## Fonts and icons
+
+Text is **Inter** (Regular for text, SemiBold for titles); icons are **Phosphor** (Regular and Fill).
+Both are open licenses (`assets/fonts/LICENSE-*.txt`), compiled into the binary and cut down to what the
+interface uses by `scripts/subset-fonts.py` (340 KB for the four files), so the app looks the same on every
+system and loads nothing at run time. `ui::fonts` registers three families: `Proportional` (Inter first,
+egui's fonts behind it as fallback for emoji and other scripts), `semibold` and `icons` / `icons_fill`.
+
+Icons are named in `ui::symbols` (`symbols::CHECK`, ...). A slice stores an icon as the string
+`ico:<name>`; `symbols::resolve` turns it into a glyph, and also maps the letter icons older versions
+saved (`C/V`, `Tab`, `>_`, ...) to a picture, so an old `config.json` keeps working and looks new. To add
+an icon, add it to the `symbols!` list and run `scripts/subset-fonts.py`; a test fails if a glyph is
+missing from either weight.
 
 ## The Settings window
 
 ```text
-+----------------------------------------------------------------------+
-| logo CURSORPIE ⓘ                            |  UNDO REDO CANCEL SAVE |   top bar, 52 pt
 +--------------+-------------------------------------------------------+
-| Menu         |                                                       |
-| Behavior     |   page of the selected section (padding 16 pt)        |
-| General      |                                                       |
-| About        |                                                       |
-|        v0.3  |                                                       |
+| logo         |  Title                              undo redo Cancel Save |  top bar, 76 pt
+| CursorPie    |  one-line subtitle                                    |
+|              +-------------------------------------------------------+
+| (o) Menu     |                                                       |
+|     Behavior |   page of the selected section (padding 28 pt)        |
+|     General  |                                                       |
+|     About    |                                                       |
+|              +-------------------------------------------------------+
+| v0.6  Quit   |  status, toast or hint                                |  footer, 44 pt
 +--------------+-------------------------------------------------------+
-| status or hint                                            QUIT APP   |   footer, 34 pt
-+----------------------------------------------------------------------+
 ```
 
-- The window is 1120 x 680 pt (`CARD_SIZE`) with a 12 pt corner radius. `card_size_for` shrinks it to
-  fit a small display, but never below 940 x 420 pt, where the Menu tab still has room for its pie tile
-  and an editor, and the body is still 302 pt high.
-- `regions()` in `window.rs` cuts the window into the top bar, the sidebar (200 pt wide), the body and
+- The window is 1180 x 740 pt (`CARD_SIZE`) with a 24 pt corner radius. `card_size_for` shrinks it to fit
+  a small display, but never below 980 x 520 pt, where the Menu tab still has room for its pie tile and
+  an editor.
+- `regions()` in `window.rs` cuts the window into the top bar, the sidebar (232 pt wide), the body and
   the footer. It is a pure function with tests.
-- **The sidebar names the section, the page is on its right.** Each entry has a title and a one-line hint.
-  The selected entry is lifted (`HOT`) and has an accent marker on its left edge; the others are muted
-  and light up under the pointer. The sidebar is `CARD`-colored and the page is `BG`, so panels read as
-  cards on the page.
-- Behavior, General and About are one scrolling column of panels, at most 680 pt wide and aligned to the
-  left of the page, so a slider is never longer than the eye can follow. Menu fills the whole page.
-- Panel titles and badges are small monospace capitals (`card_title`, `badge`). Everything you read or
-  edit, including the sidebar entries and the page titles, is the normal font in sentence case.
-- Controls are almost square (2 pt radius), 32 pt high, and 8 pt apart. Only the window itself is
-  rounded. All colors, radii and spacing are constants in `theme.rs`.
+- **The sidebar names the section.** Each entry is an icon and a title; the selected one has a tinted
+  pill and a filled icon, and the others light up under the pointer.
+- Behavior, General and About are one scrolling column of panels (white cards with rows separated by
+  hairlines), at most 720 pt wide. Menu fills the page: the pie on the left, the editor on the right.
+- Panels are 18 pt rounded; controls are 12 pt rounded and 36 pt high; badges are pills; a choice between a few options is a segmented control (a soft track with the chosen one raised), a longer one is a drop-down in a popup card, and views of one page are icon tabs with a short accent bar. All
+  colors, radii and spacing are constants in `theme.rs`, and every widget is in `widgets.rs`.
+- **Light and dark.** Settings and the pie follow the system, or Light / Dark chosen in Behavior,
+  Look & feel. The colors are two `Palette` values in `theme.rs` (`LIGHT`, `DARK`); code reads the one in
+  use with `pal()` and never keeps a color in a `const`. `App::ui` picks the palette once a frame, so a
+  change in Behavior shows at once, before Save.
+- **The sidebar starts folded.** Settings opens compact: a 76 pt rail of icons, with the names as
+  tooltips, and the page takes the room. The button left of the page title (or Ctrl / Cmd + B) unfolds it
+  to the 232 pt sidebar. The choice is remembered while the app runs, not saved.
+- **The page sits in the middle** of the body at 820 pt wide at most, so there is never an empty strip
+  on one side only.
 
 ### Palette
 
-| Name | Use | `TEXT` on it | `MUTED` on it |
-|---|---|---|---|
-| `BG` | window | 15.7:1 | 6.7:1 |
-| `CARD` | top bar, panels | 14.9:1 | 6.4:1 |
-| `IDLE` | controls at rest | 13.7:1 | 5.9:1 |
-| `HOT` | controls under the pointer | 11.8:1 | 5.1:1 |
-| `INPUT` | text fields, footer | 16.2:1 | 7.0:1 |
-| `BORDER` | hairlines (1.4:1 against `BG`, so they read as lines, not text) | - | - |
+| Field of `pal()` | Use |
+|---|---|
+| `bg` | page |
+| `sidebar` | sidebar |
+| `card` | panels, sheets, popovers |
+| `idle`, `hot` | controls at rest and under the pointer |
+| `input` | text fields |
+| `border`, `divider` | outline of cards, lines between rows |
+| `text`, `muted` | text, secondary text |
+| `good`, `bad` | status text (granted / not granted, destructive actions) |
+| `track`, `keycap` | rail of a slider or switch, face of a key in a shortcut |
 
-`GOOD` and `BAD` reach at least 7:1 on `CARD` and 8:1 on `INPUT`.
-
-The tests in `theme.rs` enforce 7:1 for `TEXT` and 4.5:1 for `MUTED`, `GOOD` and `BAD`, and check that
-`on_accent` stays readable on any accent the user can choose.
+The tests in `theme.rs` enforce 7:1 for `text` and 4.5:1 for `muted`, `good` and `bad` on every surface of both palettes,
+and check that `on_accent` stays readable on any accent the user can choose; `widgets.rs` checks the same
+for every button look.
 
 ## The welcome window
 
-The first start (and "Welcome guide..." in the tray menu) shows a 760 x 520 pt card (`WELCOME_SIZE`,
-shrunk by `welcome_size_for` on small displays, never below 600 x 440 pt) in the same window as Settings,
-with the same shadow, outline, colors, open/close animation and widgets. It has a 52 pt top bar (logo,
-name, Skip), a page in the middle and a 60 pt footer (page dots, Back, Next or Get started).
+The first start (and "Welcome guide..." in the tray menu) shows an 820 x 580 pt card (`WELCOME_SIZE`,
+shrunk by `welcome_size_for` on small displays, never below 660 x 500 pt) in the same window as Settings,
+with the same shadow, outline, colors, open/close animation and widgets. It has a top bar (logo, name,
+Skip), a page in the middle and a footer (page dots, Back, Next or Get started).
 
-- Three pages: how the gesture works, what to do next (macOS: Accessibility, with a status that
-  refreshes every second; Windows: the system tray) and tips with the launch-at-login box.
+- Three pages: how the gesture works (Hold, Flick, Release), what to do next (macOS: Accessibility, with
+  a status that refreshes every second; Windows: the system tray) and tips with the launch-at-login box.
 - It is a mode of the Settings window, not a second window: `App::welcome` is `Some` and
   `settings_open` is true, so the pie stays hidden while it is open.
 - The only text that depends on the OS lives in pure functions of `Os` (`setup_title`, `setup_lead`,
@@ -96,10 +124,23 @@ name, Skip), a page in the middle and a 60 pt footer (page dots, Back, Next or G
 
 ## The pie
 
-The pie is a ring of dark "glass" slices with a one-pixel hairline each. The hovered slice fills with
-the accent, gets a brighter hairline and a bright bar that grows along its rim. A soft shadow sits
-behind the ring, built from a few stacked translucent discs. The center disc shows the active mode or
-the app icon, and the "hold for Settings" progress arc draws around it.
+The pie is a ring of slices with a one-pixel hairline each, light or smoked graphite like Settings.
+Behavior, Pie material chooses between two styles: **Solid** (below) and **Glass**. The hovered
+slice blends to the accent, its icon and name turn to the readable color for that accent
+(`on_accent`), and a bright bar grows along its rim. A soft shadow sits behind the ring, one blurred shape (no
+stack of discs, which left a visible step at each edge). The white center disc shows the active mode or the app icon, and the "hold for
+Settings" progress arc draws around it.
+
+**Glass** (`ui/pie/glass.rs`) makes the slices translucent and paints the light on them as smooth fields,
+the way Apple's Liquid Glass reads: one mesh per slice whose vertices carry a continuous value (a milky
+frost that thins out from the inner edge, a sheen that swells toward the rim, a thin bright rim and a soft
+glow just inside it). The rim follows a single light from the top left, so it is bright on the lit side and
+almost gone on the far side, with a weaker glint at the opposite corner; a faint dark edge on the shaded
+side gives depth. No band, step or flat stroke is used anywhere, because those are what looked broken. Three sliders, in percent: *Clearness* (how
+much of the page shows through, never fully clear), *Frost* and *Shine*. A strip of colors in Settings
+previews them. The window cannot read what is behind it, so the frost is **painted, not a real blur of
+the desktop**; a true backdrop blur needs a native call per system (NSVisualEffectView on macOS, the DWM
+on Windows, the compositor on Linux) and is a follow-up.
 
 Timing: 0.22 s to open (slices appear one after another, with a small overshoot), 0.12 s to close.
 
@@ -251,12 +292,21 @@ at the very least change the display scaling once:
 - [ ] Open a submenu: the ring blooms again around the cursor and is never cut off by the window.
 - [ ] Open and close the pie ten times quickly: no leftover frame, no flash at the old position.
 - [ ] Open Settings: the window outline is a clean one-pixel line, corners are round, no gradient
-      mesh edge.
+      mesh edge, and the shadow is not cut off at the window edge.
 - [ ] Switch through all four sections: nothing moves in the top bar or the sidebar; the selected entry is
-      lifted and has the accent marker.
+      a tinted pill with a filled icon.
 - [ ] Shrink the display width (or use a 1366 x 768 display): the card fits, and the Menu editor still shows
       its fields without a horizontal scroll.
 - [ ] Pick a very light accent (yellow) and a very dark one: Save and the selected slice stay readable.
+- [ ] Every popup is a sheet or a popover: add a slice, pick an icon, New, Rename, All apps and Share all
+      close with Esc and with a click outside, and Esc closes only the top one.
+- [ ] Press Quit (sidebar, General on Linux, tray) with nothing changed: a sheet asks "Do you really want to
+      quit?"; Cancel, Esc, the x and a click outside keep you in Settings. Change something and press Quit:
+      the sheet names the unsaved changes; "Save and quit" saves, "Quit without saving" does not. All three
+      buttons sit in one row at the right.
+- [ ] With Settings open (behind another window, or minimized), hold the trigger: Settings comes forward and
+      the footer explains why the pie did not open.
+- [ ] No icon is a pair of letters, on the sidebar, the buttons, the pie and the icon picker.
 - [ ] Undo and Redo are dimmed when unavailable and show a tooltip.
 - [ ] Shrink the screen height (or use a short laptop display): the Menu tab still fits.
 - [ ] Use an image icon with a transparent background: no dark halo around it.

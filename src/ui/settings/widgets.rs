@@ -1,392 +1,1440 @@
-//! Small widgets reused by the editors: chips, icon buttons, tiles, top bar cells, sidebar entries,
-//! badges, panels, choices.
+//! Small widgets reused by the editors: buttons, segmented controls, icon tabs, tiles, switches, sliders, the rows of a
+//! settings panel, sidebar entries, badges, and the floating sheets and popovers.
 //!
-//! All of them are almost square and take their colors from [`theme`](super::theme).
+//! All of them take their colors and radii from [`theme`](super::theme), their icons from
+//! [`symbols`], and are drawn here with the painter, so a control looks the
+//! same wherever it is used and there is exactly one place to change how it looks.
+//!
+//! The vocabulary, from small to large:
+//!
+//! | Widget | Look |
+//! |---|---|
+//! | [`button`], [`icon_button`] | rounded, [`CONTROL_H`] high; [`Look`] picks primary, soft, plain or danger |
+//! | [`segmented`] | a soft track with the chosen option raised on it, for two to four options |
+//! | [`icon_tabs`] | icons sharing one line, a short accent bar under the current one, for a handful of views |
+//! | [`select`], [`select_icons`] | a drop-down list in a popup card |
+//! | [`menu_popup`] | a menu of [`menu_item`]s under a button, for actions rather than choices |
+//! | a switch, [`slider`] | a round knob on a rail |
+//! | [`row`], [`toggle_row`], [`choice_row`], [`slider_row`] | the rows of a [`panel`]: a label, an optional hint and one control |
+//! | [`panel`] | a titled white card holding rows; every tab is a stack of these |
+//! | [`sheet`], [`popover`] | what floats: a modal sheet over the window, and a small popup under a button |
 
 use super::theme::*;
 use crate::keys::Shortcut;
 use crate::ui::draw::ring_slice;
-use eframe::egui::{self, Color32, Pos2, RichText, Stroke, Vec2};
+use crate::ui::fonts;
+use crate::ui::symbols;
+use eframe::egui::{self, Color32, FontId, Pos2, Rect, RichText, Stroke, Vec2};
+use std::ops::RangeInclusive;
 
-/// Small square button "glyph  label". An empty label shows the glyph only.
-pub(in crate::ui::settings) fn chip(
-    ui: &mut egui::Ui,
-    glyph: &str,
-    label: &str,
-    on: bool,
-    accent: Color32,
-) -> egui::Response {
-    let text = match (glyph.is_empty(), label.is_empty()) {
-        (true, _) => label.to_string(),
-        (_, true) => glyph.to_string(),
-        _ => format!("{glyph}  {label}"),
-    };
-    // off: plain button (keeps the hover outline); on: filled with the accent
-    let label_color = if on { on_accent(accent) } else { MUTED };
-    let mut b = egui::Button::new(RichText::new(text).color(label_color))
-        .corner_radius(RADIUS)
-        .min_size(Vec2::new(0.0, CONTROL_H));
-    if on {
-        b = b.fill(accent).stroke(Stroke::new(1.0, accent));
-    }
-    // Do not wrap this in `ui.scope`: a nested Ui is not moved to the next row by
-    // `horizontal_wrapped`, it just overflows and gets clipped.
-    ui.add(b)
+/// Size of the icon inside a button.
+const BUTTON_ICON: f32 = 17.0;
+/// Space between the icon and the label of a button.
+const ICON_GAP: f32 = 8.0;
+/// Vertical room above and below the content of a row.
+const ROW_PAD: f32 = 11.0;
+
+// ------------------------------------------------------------------ painting helpers
+
+/// The color of `c` made `amount` (0 to 1) darker, for the pressed state of a filled control.
+fn darken(c: Color32, amount: f32) -> Color32 {
+    c.lerp_to_gamma(Color32::BLACK, amount)
 }
 
-/// Square button with a single glyph and a tooltip.
-pub(in crate::ui::settings) fn icon_btn(
-    ui: &mut egui::Ui,
-    glyph: &str,
-    tip: &str,
-    enabled: bool,
-) -> egui::Response {
-    let b = egui::Button::new(RichText::new(glyph).size(14.0)).min_size(Vec2::splat(CONTROL_H));
-    ui.scope(|ui| {
-        ui.spacing_mut().button_padding = Vec2::new(4.0, 4.0);
-        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-        ui.add_enabled(enabled, b)
-    })
-    .inner
-    .on_hover_text(tip)
+/// Lays `text` out on one line, for measuring and painting by hand.
+fn galley(ui: &egui::Ui, text: &str, font: FontId, color: Color32) -> std::sync::Arc<egui::Galley> {
+    ui.painter().layout_no_wrap(text.to_owned(), font, color)
 }
 
-/// Clickable square. The caller draws its content into the returned `rect`.
-///
-/// The selected tile gets a 2 px accent border (the "focused window"), a hovered one a 1 px
-/// accent outline.
-pub(in crate::ui::settings) fn tile(
-    ui: &mut egui::Ui,
-    size: Vec2,
-    selected: bool,
-    accent: Color32,
-) -> (egui::Rect, egui::Response) {
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-    let (bg, stroke) = if selected {
-        (accent.gamma_multiply(0.3), Stroke::new(2.0, accent))
-    } else if resp.hovered() {
-        (HOT, Stroke::new(1.0, accent))
+/// The text font at `size`, in the regular or the title weight.
+fn text_font(size: f32, bold: bool) -> FontId {
+    if bold {
+        FontId::new(size, fonts::semibold())
     } else {
-        (IDLE, Stroke::new(1.0, BORDER))
-    };
-    ui.painter().rect_filled(rect, RADIUS, bg);
-    ui.painter()
-        .rect_stroke(rect, RADIUS, stroke, egui::StrokeKind::Inside);
-    (rect, resp)
+        FontId::proportional(size)
+    }
 }
 
-// ------------------------------------------------------------------ layout helpers
+/// The ring that shows keyboard focus on a control.
+fn focus_ring(ui: &egui::Ui, rect: Rect, radius: egui::CornerRadius, accent: Color32) {
+    ui.painter().rect_stroke(
+        rect.expand(2.0),
+        radius,
+        Stroke::new(2.0, wash(accent, 0.55)),
+        egui::StrokeKind::Outside,
+    );
+}
 
-/// A flat, text-only cell for the top bar: monospace caps, `height` high, as wide as its label.
+// ------------------------------------------------------------------ buttons
+
+/// How a [`button`] looks.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::ui::settings) enum Look {
+    /// Filled with the accent: the one thing to do on this screen.
+    Primary(Color32),
+    /// A soft grey fill: the other things to do.
+    Soft,
+    /// Nothing until the pointer is over it: toolbars.
+    Plain,
+    /// Red text on a pale red wash while hovered: destructive actions.
+    Danger,
+}
+
+impl Look {
+    /// `(fill at rest, fill under the pointer, text color)`.
+    fn colors(self) -> (Color32, Color32, Color32) {
+        self.colors_in(pal())
+    }
+
+    /// [`Look::colors`] in the palette `p`.
+    fn colors_in(self, p: &Palette) -> (Color32, Color32, Color32) {
+        match self {
+            Look::Primary(accent) => (accent, darken(accent, 0.12), on_accent(accent)),
+            Look::Soft => (p.idle, p.hot, p.text),
+            Look::Plain => (Color32::TRANSPARENT, p.idle, p.text),
+            Look::Danger => (Color32::TRANSPARENT, wash(p.bad, 0.10), p.bad),
+        }
+    }
+}
+
+/// Paints the frame of a button-like control and returns the color its content should use.
+fn button_frame(ui: &egui::Ui, rect: Rect, resp: &egui::Response, look: Look) -> Color32 {
+    let enabled = ui.is_enabled();
+    let (rest, hot, fg) = look.colors();
+    let fill = if !enabled {
+        if matches!(look, Look::Primary(_)) {
+            pal().idle
+        } else {
+            Color32::TRANSPARENT
+        }
+    } else if resp.is_pointer_button_down_on() {
+        darken(hot, 0.06)
+    } else if resp.hovered() {
+        hot
+    } else {
+        rest
+    };
+    ui.painter().rect_filled(rect, CONTROL_R, fill);
+    if resp.has_focus()
+        && let Look::Primary(accent) = look
+    {
+        focus_ring(ui, rect, CONTROL_R, accent);
+    }
+    if enabled {
+        fg
+    } else {
+        pal().muted.gamma_multiply(0.7)
+    }
+}
+
+/// A rounded button with an optional icon in front of its label.
 ///
-/// With `fill` it is a solid block (the selected tab, the primary button); without, it is
-/// transparent and lights up under the pointer. A disabled cell is dimmed and ignores clicks, but
-/// still reports hovers so it can carry a tooltip. Labels are given in capitals by the caller.
-pub(in crate::ui::settings) fn bar_button(
+/// It follows the enabled state of the `ui` (wrap it in `add_enabled_ui`, or use
+/// [`button_if`]), and keeps reporting hovers when disabled so it can still carry a tooltip.
+pub(in crate::ui::settings) fn button(
     ui: &mut egui::Ui,
+    look: Look,
+    icon: Option<char>,
     label: &str,
-    enabled: bool,
-    fill: Option<Color32>,
-    fg: Color32,
-    height: f32,
 ) -> egui::Response {
-    const PAD_X: f32 = 14.0;
-    let fg = if enabled { fg } else { fg.gamma_multiply(0.4) };
-    let galley = ui
-        .painter()
-        .layout_no_wrap(label.to_string(), egui::FontId::monospace(11.5), fg);
-    let text_size = galley.size();
-    let sense = if enabled {
+    let bold = matches!(look, Look::Primary(_));
+    let probe = Color32::PLACEHOLDER;
+    let text = (!label.is_empty()).then(|| galley(ui, label, text_font(14.0, bold), probe));
+    let glyph = icon.map(|c| {
+        galley(
+            ui,
+            &c.to_string(),
+            FontId::new(BUTTON_ICON, fonts::icons()),
+            probe,
+        )
+    });
+    let text_w = text.as_ref().map_or(0.0, |g| g.size().x);
+    let icon_w = glyph.as_ref().map_or(0.0, |g| g.size().x);
+    let inner = text_w
+        + icon_w
+        + if text.is_some() && glyph.is_some() {
+            ICON_GAP
+        } else {
+            0.0
+        };
+    // an icon on its own is a square
+    let pad = if text.is_some() { 16.0 } else { 0.0 };
+    let width = (inner + 2.0 * pad).ceil().max(CONTROL_H);
+    let sense = if ui.is_enabled() {
         egui::Sense::click()
     } else {
         egui::Sense::hover()
     };
-    let width = text_size.x.ceil() + 2.0 * PAD_X;
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), sense);
-    let bg = match fill {
-        Some(f) => f,
-        None if enabled && resp.hovered() => IDLE,
-        None => Color32::TRANSPARENT,
-    };
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, CONTROL_H), sense);
+    resp.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+    });
+    let fg = button_frame(ui, rect, &resp, look);
     let painter = ui.painter();
-    painter.rect_filled(rect, RADIUS, bg);
-    painter.galley(
-        egui::pos2(
-            (rect.center().x - text_size.x / 2.0).round(),
-            (rect.center().y - text_size.y / 2.0).round(),
-        ),
-        galley,
-        fg,
-    );
-    if enabled {
+    let mut x = rect.center().x - inner / 2.0;
+    if let Some(g) = glyph {
+        let at = Pos2::new(x, rect.center().y - g.size().y / 2.0);
+        painter.galley(at.round(), g, fg);
+        x += icon_w + ICON_GAP;
+    }
+    if let Some(g) = text {
+        let at = Pos2::new(x, rect.center().y - g.size().y / 2.0);
+        painter.galley(at.round(), g, fg);
+    }
+    if ui.is_enabled() {
         resp.on_hover_cursor(egui::CursorIcon::PointingHand)
     } else {
         resp
     }
 }
 
-/// Height of one sidebar entry.
-pub(in crate::ui::settings) const NAV_H: f32 = 50.0;
+/// [`button`], disabled unless `enabled`.
+pub(in crate::ui::settings) fn button_if(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    look: Look,
+    icon: Option<char>,
+    label: &str,
+) -> egui::Response {
+    ui.add_enabled_ui(enabled, |ui| button(ui, look, icon, label))
+        .inner
+}
 
-/// One entry of the sidebar: a title with a one-line hint under it, as wide as the sidebar.
+/// A square button with one icon and a tooltip. Plain until the pointer is over it.
+pub(in crate::ui::settings) fn icon_button(
+    ui: &mut egui::Ui,
+    icon: char,
+    tip: &str,
+    enabled: bool,
+) -> egui::Response {
+    icon_button_look(ui, Look::Plain, icon, tip, enabled)
+}
+
+/// [`icon_button`] in another [`Look`].
+pub(in crate::ui::settings) fn icon_button_look(
+    ui: &mut egui::Ui,
+    look: Look,
+    icon: char,
+    tip: &str,
+    enabled: bool,
+) -> egui::Response {
+    let resp = button_if(ui, enabled, look, Some(icon), "");
+    if enabled {
+        resp.on_hover_text(tip)
+    } else {
+        resp.on_disabled_hover_text(tip)
+    }
+}
+
+/// Room added around the content of one option of a [`segmented`] control, per side.
+const SEG_PAD: f32 = 12.0;
+
+/// A control to pick one of two to four options: a soft track with the chosen one raised on it
+/// (white on the light appearance, a lighter graphite on the dark one). Calmer than a row of
+/// separate pills, and it never wraps, so nothing jumps when the window is resized: if the icons
+/// do not fit in the width left, they are dropped and only the names stay.
 ///
-/// The selected entry is lifted (`HOT`), gets the accent marker on its left edge and the primary
-/// text color; the others are quiet and light up under the pointer. The title is the normal
-/// font: it is something you read, not chrome.
+/// Returns the index that was clicked, if it is not the selected one.
+pub(in crate::ui::settings) fn segmented(
+    ui: &mut egui::Ui,
+    items: &[(Option<char>, &str)],
+    selected: usize,
+) -> Option<usize> {
+    const TRACK_PAD: f32 = 4.0;
+    // measured in the bold weight, so choosing another option never changes any width
+    let widths = |with_icons: bool| -> Vec<f32> {
+        items
+            .iter()
+            .map(|(icon, label)| {
+                let text = galley(ui, label, text_font(13.5, true), pal().text)
+                    .size()
+                    .x;
+                let glyph = icon.filter(|_| with_icons).map_or(0.0, |c| {
+                    galley(
+                        ui,
+                        &c.to_string(),
+                        FontId::new(15.0, fonts::icons()),
+                        pal().text,
+                    )
+                    .size()
+                    .x + 6.0
+                });
+                (text + glyph + 2.0 * SEG_PAD).ceil()
+            })
+            .collect()
+    };
+    let mut with_icons = true;
+    let mut w = widths(true);
+    if w.iter().sum::<f32>() + 2.0 * TRACK_PAD > ui.available_width() {
+        with_icons = false;
+        w = widths(false);
+    }
+    let total = w.iter().sum::<f32>() + 2.0 * TRACK_PAD;
+    let (track, _) = ui.allocate_exact_size(Vec2::new(total, CONTROL_H), egui::Sense::hover());
+    ui.painter().rect_filled(track, PILL, pal().idle);
+    let raised = if pal().dark { pal().hot } else { pal().card };
+
+    let mut picked = None;
+    let mut x = track.min.x + TRACK_PAD;
+    for (i, ((icon, label), width)) in items.iter().zip(&w).enumerate() {
+        let seg = Rect::from_min_size(
+            Pos2::new(x, track.min.y + TRACK_PAD),
+            Vec2::new(*width, CONTROL_H - 2.0 * TRACK_PAD),
+        );
+        x += width;
+        let resp = ui
+            .interact(
+                seg,
+                ui.id().with(("segment", i, *label)),
+                egui::Sense::click(),
+            )
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        resp.widget_info(|| {
+            egui::WidgetInfo::selected(egui::WidgetType::RadioButton, true, i == selected, *label)
+        });
+        let on = i == selected;
+        if on {
+            ui.painter().rect_filled(seg, PILL, raised);
+            ui.painter().rect_stroke(
+                seg,
+                PILL,
+                Stroke::new(1.0, pal().border),
+                egui::StrokeKind::Inside,
+            );
+        }
+        if resp.has_focus() {
+            focus_ring(ui, seg, PILL, pal().text);
+        }
+        let fg = if on || resp.hovered() {
+            pal().text
+        } else {
+            pal().muted
+        };
+        let text = galley(ui, label, text_font(13.5, on), fg);
+        let glyph = icon
+            .filter(|_| with_icons)
+            .map(|c| galley(ui, &c.to_string(), FontId::new(15.0, fonts::icons()), fg));
+        let content = text.size().x + glyph.as_ref().map_or(0.0, |g| g.size().x + 6.0);
+        let mut cx = seg.center().x - content / 2.0;
+        if let Some(g) = glyph {
+            let gw = g.size().x;
+            ui.painter().galley(
+                Pos2::new(cx, seg.center().y - g.size().y / 2.0).round(),
+                g,
+                Color32::PLACEHOLDER,
+            );
+            cx += gw + 6.0;
+        }
+        ui.painter().galley(
+            Pos2::new(cx, seg.center().y - text.size().y / 2.0).round(),
+            text,
+            Color32::PLACEHOLDER,
+        );
+        if resp.clicked() && !on {
+            picked = Some(i);
+        }
+    }
+    picked
+}
+
+/// A row of views to switch between, as icons only: they share `width` equally, the current one
+/// in the strong color with a short accent bar under it, the others muted. Nothing is cut off
+/// however many there are, and each icon names its view in a tooltip.
+///
+/// Returns the index that was clicked, if it is not the selected one.
+pub(in crate::ui::settings) fn icon_tabs(
+    ui: &mut egui::Ui,
+    items: &[(char, &str)],
+    selected: usize,
+    accent: Color32,
+    width: f32,
+) -> Option<usize> {
+    const H: f32 = 38.0;
+    let mut picked = None;
+    let each = (width / items.len().max(1) as f32).floor();
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        for (i, (icon, label)) in items.iter().enumerate() {
+            let on = i == selected;
+            let (rect, resp) = ui.allocate_exact_size(Vec2::new(each, H), egui::Sense::click());
+            let resp = resp
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_text(*label);
+            resp.widget_info(|| {
+                egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, *label)
+            });
+            if resp.hovered() && !on {
+                ui.painter()
+                    .rect_filled(rect.shrink2(Vec2::new(3.0, 3.0)), CONTROL_R, pal().idle);
+            }
+            if resp.has_focus() {
+                focus_ring(ui, rect.shrink(3.0), CONTROL_R, accent);
+            }
+            let fg = if on || resp.hovered() {
+                pal().text
+            } else {
+                pal().muted
+            };
+            fonts::paint_icon(
+                ui.painter(),
+                Pos2::new(rect.center().x, rect.center().y - 2.0),
+                *icon,
+                19.0,
+                fg,
+                false,
+            );
+            if on {
+                let bar = Rect::from_center_size(
+                    Pos2::new(rect.center().x, rect.max.y - 2.0),
+                    Vec2::new(18.0, 3.0),
+                );
+                ui.painter().rect_filled(bar, PILL, accent);
+            }
+            if resp.clicked() && !on {
+                picked = Some(i);
+            }
+        }
+    });
+    picked
+}
+
+/// A clickable square. The caller draws its content into the returned `rect`.
+///
+/// The selected tile gets a 2 px accent border and a faint wash of the accent; a hovered one
+/// gets the hover fill.
+pub(in crate::ui::settings) fn tile(
+    ui: &mut egui::Ui,
+    size: Vec2,
+    selected: bool,
+    accent: Color32,
+) -> (Rect, egui::Response) {
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let radius = egui::CornerRadius::same(14);
+    let painter = ui.painter();
+    if selected {
+        painter.rect_filled(rect, radius, wash(accent, 0.10));
+        painter.rect_stroke(
+            rect,
+            radius,
+            Stroke::new(2.0, accent),
+            egui::StrokeKind::Inside,
+        );
+    } else {
+        painter.rect_filled(
+            rect,
+            radius,
+            if resp.hovered() {
+                pal().hot
+            } else {
+                pal().idle
+            },
+        );
+    }
+    (rect, resp)
+}
+
+// ------------------------------------------------------------------ switch and slider
+
+/// Size of the track of a switch.
+const SWITCH: Vec2 = Vec2::new(46.0, 28.0);
+
+/// Paints a switch into `rect`, `t` going from 0 (off) to 1 (on).
+fn paint_switch(painter: &egui::Painter, rect: Rect, t: f32, accent: Color32) {
+    painter.rect_filled(rect, PILL, pal().track.lerp_to_gamma(accent, t));
+    let r = rect.height() / 2.0 - 3.0;
+    let x = egui::lerp((rect.min.x + 3.0 + r)..=(rect.max.x - 3.0 - r), t);
+    let c = Pos2::new(x, rect.center().y);
+    // a soft edge under the knob stands in for a shadow
+    painter.circle_filled(
+        c + Vec2::new(0.0, 1.0),
+        r + 1.0,
+        Color32::from_black_alpha(26),
+    );
+    painter.circle_filled(c, r, Color32::WHITE);
+}
+
+/// Where along a rail of `0..=1` the value `v` of `range` sits.
+fn slider_fraction(v: f64, range: (f64, f64)) -> f32 {
+    let span = range.1 - range.0;
+    if span <= 0.0 {
+        0.0
+    } else {
+        (((v - range.0) / span) as f32).clamp(0.0, 1.0)
+    }
+}
+
+/// The value of `range` at `fraction` along the rail; whole numbers when `integral`.
+fn slider_value(fraction: f32, range: (f64, f64), integral: bool) -> f64 {
+    let v = range.0 + (range.1 - range.0) * f64::from(fraction.clamp(0.0, 1.0));
+    if integral { v.round() } else { v }
+}
+
+/// A rail with a round knob, as wide as the space left. Dragging or clicking sets `value`; the
+/// arrow keys move it by a fiftieth of the range while the slider has the focus.
+pub(in crate::ui::settings) fn slider<Num: egui::emath::Numeric>(
+    ui: &mut egui::Ui,
+    value: &mut Num,
+    range: RangeInclusive<Num>,
+    accent: Color32,
+) -> egui::Response {
+    const RAIL_H: f32 = 6.0;
+    const KNOB: f32 = 11.0;
+    let bounds = (range.start().to_f64(), range.end().to_f64());
+    let size = Vec2::new(ui.available_width().max(60.0), 28.0);
+    let (rect, mut resp) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+    let rail = Rect::from_center_size(
+        rect.center(),
+        Vec2::new((rect.width() - 2.0 * KNOB).max(1.0), RAIL_H),
+    );
+
+    if let Some(p) = resp.interact_pointer_pos()
+        && (resp.dragged() || resp.clicked() || resp.is_pointer_button_down_on())
+    {
+        let f = ((p.x - rail.min.x) / rail.width().max(1.0)).clamp(0.0, 1.0);
+        let new = slider_value(f, bounds, Num::INTEGRAL);
+        if new != value.to_f64() {
+            *value = Num::from_f64(new);
+            resp.mark_changed();
+        }
+    }
+    if resp.has_focus() {
+        let step = ((bounds.1 - bounds.0) / 50.0).max(if Num::INTEGRAL { 1.0 } else { 0.0 });
+        let dir = ui.input(|i| {
+            i64::from(i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowUp))
+                - i64::from(
+                    i.key_pressed(egui::Key::ArrowLeft) || i.key_pressed(egui::Key::ArrowDown),
+                )
+        });
+        if dir != 0 {
+            let new = (value.to_f64() + step * dir as f64).clamp(bounds.0, bounds.1);
+            *value = Num::from_f64(new);
+            resp.mark_changed();
+        }
+    }
+    resp.widget_info(|| egui::WidgetInfo::slider(true, value.to_f64(), ""));
+
+    let f = slider_fraction(value.to_f64(), bounds);
+    let x = rail.min.x + rail.width() * f;
+    let painter = ui.painter();
+    painter.rect_filled(rail, PILL, pal().track);
+    let filled = Rect::from_min_max(rail.min, Pos2::new(x, rail.max.y));
+    painter.rect_filled(filled, PILL, accent);
+    let c = Pos2::new(x, rail.center().y);
+    let grow = if resp.hovered() || resp.dragged() {
+        1.0
+    } else {
+        0.0
+    };
+    painter.circle_filled(
+        c + Vec2::new(0.0, 1.5),
+        KNOB + grow + 1.0,
+        Color32::from_black_alpha(30),
+    );
+    painter.circle_filled(c, KNOB + grow, Color32::WHITE);
+    painter.circle_stroke(c, KNOB + grow, Stroke::new(1.0, wash(Color32::BLACK, 0.08)));
+    if resp.has_focus() {
+        painter.circle_stroke(c, KNOB + grow + 2.0, Stroke::new(2.0, wash(accent, 0.55)));
+    }
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+// ------------------------------------------------------------------ sidebar and headings
+
+/// Height of one sidebar entry.
+pub(in crate::ui::settings) const NAV_H: f32 = 44.0;
+
+/// One entry of the sidebar: an icon and a title, as wide as the sidebar. Folded (`compact`), only
+/// the icon is drawn and the title is the tooltip.
+///
+/// The selected entry gets a wash of the accent, the filled version of its icon in the accent
+/// color and the title weight; the others are quiet and light up under the pointer.
 pub(in crate::ui::settings) fn nav_item(
     ui: &mut egui::Ui,
+    icon: char,
     title: &str,
-    hint: &str,
     on: bool,
     accent: Color32,
+    compact: bool,
 ) -> egui::Response {
     let (rect, resp) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), NAV_H), egui::Sense::click());
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, title)
     });
-    let bg = if on {
-        HOT
+    let fill = if on {
+        wash(accent, 0.14)
     } else if resp.hovered() {
-        IDLE
+        wash(pal().text, 0.07)
     } else {
         Color32::TRANSPARENT
     };
-    let title_color = if on || resp.hovered() { TEXT } else { MUTED };
     let painter = ui.painter();
-    painter.rect_filled(rect, RADIUS, bg);
-    if on {
-        let bar = egui::Rect::from_min_size(
-            rect.min + Vec2::new(0.0, GAP),
-            Vec2::new(3.0, rect.height() - 2.0 * GAP),
-        );
-        painter.rect_filled(bar, RADIUS, accent);
+    painter.rect_filled(rect, CONTROL_R, fill);
+    let ink = if on { accent } else { pal().muted };
+    let icon_x = if compact {
+        rect.center().x
+    } else {
+        rect.min.x + 14.0 + 11.0
+    };
+    let icon_c = Pos2::new(icon_x, rect.center().y);
+    fonts::paint_icon(painter, icon_c, icon, 22.0, ink, on);
+    if compact {
+        return resp
+            .on_hover_text(title)
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
     }
-    let left = rect.min.x + GAP + 6.0;
-    let title_g = painter.layout_no_wrap(
-        title.to_string(),
-        egui::FontId::proportional(14.5),
-        title_color,
+    let text = galley(
+        ui,
+        title,
+        text_font(14.5, on),
+        if on { pal().text } else { pal().muted },
     );
-    let hint_g = painter.layout_no_wrap(hint.to_string(), egui::FontId::proportional(11.5), MUTED);
-    let block = title_g.size().y + 2.0 + hint_g.size().y;
-    let top = (rect.center().y - block / 2.0).round();
-    let hint_y = top + title_g.size().y + 2.0;
-    painter.galley(egui::pos2(left, top), title_g, title_color);
-    painter.galley(egui::pos2(left, hint_y.round()), hint_g, MUTED);
+    let at = Pos2::new(
+        rect.min.x + 14.0 + 22.0 + 12.0,
+        rect.center().y - text.size().y / 2.0,
+    );
+    ui.painter().galley(at.round(), text, Color32::PLACEHOLDER);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// The heading of a page in the content area: a large title and a line of secondary text, then
-/// room before the first panel.
-pub(in crate::ui::settings) fn page_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
-    ui.label(RichText::new(title).size(22.0).strong().color(TEXT));
-    muted(ui, subtitle);
-    ui.add_space(GAP * 2.0);
-}
-
-/// A small outlined status label such as the version or "OK": monospace caps in `color`, with a
-/// hairline and a faint wash of the same color behind it.
+/// A small outlined status label such as the version or "OK": a pill with a faint wash of its
+/// own color behind the text.
 pub(in crate::ui::settings) fn badge(ui: &mut egui::Ui, text: &str, color: Color32) {
-    egui::Frame::new()
-        .fill(color.gamma_multiply(0.10))
-        .stroke(Stroke::new(1.0, color.gamma_multiply(0.55)))
-        .corner_radius(RADIUS)
-        .inner_margin(egui::Margin::symmetric(8, 2))
-        .show(ui, |ui| {
-            ui.label(RichText::new(text).monospace().size(11.0).color(color));
-        });
-}
-
-/// A card heading: small monospace capitals in the secondary color, like a label on a status bar.
-pub(in crate::ui::settings) fn card_title(ui: &mut egui::Ui, text: &str) {
-    ui.label(
-        RichText::new(text.to_uppercase())
-            .monospace()
-            .size(11.5)
-            .color(MUTED),
+    let g = galley(ui, text, text_font(12.0, true), color);
+    let (rect, _) = ui.allocate_exact_size(
+        Vec2::new(g.size().x + 20.0, g.size().y + 8.0),
+        egui::Sense::hover(),
+    );
+    ui.painter().rect_filled(rect, PILL, wash(color, 0.12));
+    ui.painter().galley(
+        Pos2::new(rect.min.x + 10.0, rect.center().y - g.size().y / 2.0).round(),
+        g,
+        Color32::PLACEHOLDER,
     );
 }
 
-/// A titled card that fills the width it is given, followed by one [`GAP`].
-/// Every tab is a stack of these, so the spacing is the same everywhere.
+/// A status as a dot and a word: "Granted", "Running", "Not running".
+pub(in crate::ui::settings) fn status(ui: &mut egui::Ui, ok: bool, text: &str) {
+    let color = if ok { pal().good } else { pal().bad };
+    let g = galley(ui, text, text_font(13.0, true), color);
+    let (rect, _) = ui.allocate_exact_size(
+        Vec2::new(g.size().x + 32.0, g.size().y + 10.0),
+        egui::Sense::hover(),
+    );
+    ui.painter().rect_filled(rect, PILL, wash(color, 0.12));
+    ui.painter()
+        .circle_filled(Pos2::new(rect.min.x + 14.0, rect.center().y), 4.0, color);
+    ui.painter().galley(
+        Pos2::new(rect.min.x + 24.0, rect.center().y - g.size().y / 2.0).round(),
+        g,
+        Color32::PLACEHOLDER,
+    );
+}
+
+/// A line of secondary text.
+pub(in crate::ui::settings) fn muted(ui: &mut egui::Ui, text: &str) {
+    ui.label(RichText::new(text).color(pal().muted));
+}
+
+/// The title above a panel: small, in the title weight, in the secondary color.
+pub(in crate::ui::settings) fn section_title(ui: &mut egui::Ui, text: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(6.0);
+        ui.label(fonts::title(text, 13.0, pal().muted));
+    });
+    ui.add_space(6.0);
+}
+
+// ------------------------------------------------------------------ panels and rows
+
+/// Whether something was already added to `ui`, so the next row starts with a divider.
+fn started(ui: &egui::Ui) -> bool {
+    ui.cursor().min.y > ui.min_rect().min.y + 0.5
+}
+
+/// A pale line across the panel, between two rows.
+fn divider(ui: &mut egui::Ui) {
+    let (rect, _) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, pal().divider);
+}
+
+/// A titled panel that fills the width it is given, followed by one [`SECTION_GAP`].
+/// Every tab is a stack of these, so the spacing is the same everywhere. Its content is made of
+/// the rows below, which bring their own vertical room.
 pub(in crate::ui::settings) fn panel<R>(
     ui: &mut egui::Ui,
     title: &str,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
+    if !title.is_empty() {
+        section_title(ui, title);
+    }
     let out = card()
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            card_title(ui, title);
+            ui.spacing_mut().item_spacing.y = 0.0;
             add_contents(ui)
         })
         .inner;
-    ui.add_space(GAP);
+    ui.add_space(SECTION_GAP);
     out
 }
 
-/// A line of secondary text.
-pub(in crate::ui::settings) fn muted(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).color(MUTED));
+/// The geometry of a row once its text is laid out.
+struct RowLayout {
+    /// The whole row, padding included.
+    rect: Rect,
+    /// Where the control goes: [`CONTROL_H`] high, vertically centered.
+    control: Rect,
 }
 
-/// Square marker + label, the shared look of [`choice`] and [`toggle`]: a 14 px square with a
-/// hairline border (accent when on or hovered). A choice shows a small filled square, a toggle
-/// fills the whole marker and draws a check mark. The label keeps the primary text color so an
-/// option that is off never looks disabled.
-fn marker_row(
-    ui: &mut egui::Ui,
-    label: &str,
-    on: bool,
-    check: bool,
-    accent: Color32,
-) -> egui::Response {
-    const MARKER: f32 = 14.0;
-    let font = egui::TextStyle::Body.resolve(ui.style());
-    let wrap = (ui.available_width() - MARKER - GAP).max(40.0);
-    let galley = ui.painter().layout(label.to_string(), font, TEXT, wrap);
-    let size = Vec2::new(MARKER + GAP + galley.size().x, galley.size().y.max(MARKER));
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let marker = egui::Rect::from_min_size(
-        egui::pos2(
-            rect.min.x,
-            rect.min.y + (galley.size().y - MARKER).max(0.0) / 2.0 + 1.0,
+/// Lays out and paints the text of a row (`label` and an optional `hint`) and returns where the
+/// control goes. `control_w` is the width kept free at the right.
+fn row_text(ui: &mut egui::Ui, label: &str, hint: &str, control_w: f32) -> RowLayout {
+    if started(ui) {
+        divider(ui);
+    }
+    let width = ui.available_width();
+    let text_w = (width - control_w - GAP).max(80.0);
+    let painter = ui.painter().clone();
+    let name = painter.layout(
+        label.to_owned(),
+        FontId::proportional(14.5),
+        pal().text,
+        text_w,
+    );
+    let note = (!hint.is_empty()).then(|| {
+        painter.layout(
+            hint.to_owned(),
+            FontId::proportional(12.5),
+            pal().muted,
+            text_w,
+        )
+    });
+    let text_h = name.size().y + note.as_ref().map_or(0.0, |n| n.size().y + 2.0);
+    let inner_h = text_h.max(CONTROL_H);
+    let top = ui.cursor().min;
+    let rect = Rect::from_min_size(top, Vec2::new(width, inner_h + 2.0 * ROW_PAD));
+    let text_top = rect.min.y + ROW_PAD + (inner_h - text_h) / 2.0;
+    painter.galley(
+        Pos2::new(rect.min.x, text_top).round(),
+        name.clone(),
+        Color32::PLACEHOLDER,
+    );
+    if let Some(n) = note {
+        painter.galley(
+            Pos2::new(rect.min.x, text_top + name.size().y + 2.0).round(),
+            n,
+            Color32::PLACEHOLDER,
+        );
+    }
+    let control = Rect::from_min_size(
+        Pos2::new(
+            rect.max.x - control_w,
+            rect.min.y + ROW_PAD + (inner_h - CONTROL_H) / 2.0,
         ),
-        Vec2::splat(MARKER),
+        Vec2::new(control_w, CONTROL_H),
     );
-    let outline = if on || resp.hovered() { accent } else { BORDER };
-    let painter = ui.painter();
-    if on && check {
-        painter.rect_filled(marker, RADIUS, accent);
-        let at = |x: f32, y: f32| Pos2::new(marker.min.x + x, marker.min.y + y);
-        painter.add(egui::Shape::line(
-            vec![at(3.5, 7.5), at(6.0, 10.0), at(10.5, 4.5)],
-            Stroke::new(2.0, on_accent(accent)),
-        ));
-    } else {
-        painter.rect_filled(marker, RADIUS, INPUT);
-        if on {
-            painter.rect_filled(marker.shrink(4.0), RADIUS, accent);
-        }
-    }
-    painter.rect_stroke(
-        marker,
-        RADIUS,
-        Stroke::new(1.0, outline),
-        egui::StrokeKind::Inside,
-    );
-    painter.galley(egui::pos2(marker.right() + GAP, rect.min.y), galley, TEXT);
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+    RowLayout { rect, control }
 }
 
-/// A square "radio": picks `value` for `cur`.
-pub(in crate::ui::settings) fn choice<T: PartialEq>(
+/// Moves the cursor of `ui` to the bottom of `row`, whatever the control inside used.
+fn finish_row(ui: &mut egui::Ui, row: &RowLayout) {
+    let rest = row.rect.max.y - ui.cursor().min.y;
+    if rest > 0.0 {
+        ui.add_space(rest);
+    }
+}
+
+/// A row of a [`panel`]: `label` (and a smaller `hint` under it) on the left, a control of up to
+/// `control_w` points on the right, laid out right to left.
+pub(in crate::ui::settings) fn row_wide<R>(
     ui: &mut egui::Ui,
-    cur: &mut T,
-    value: T,
     label: &str,
-    accent: Color32,
-) -> egui::Response {
-    let on = *cur == value;
-    let mut resp = marker_row(ui, label, on, false, accent);
-    if resp.clicked() && !on {
-        *cur = value;
-        resp.mark_changed();
-    }
-    resp
+    hint: &str,
+    control_w: f32,
+    add_control: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let row = row_text(ui, label, hint, control_w);
+    let out = ui
+        .scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(row.control)
+                .layout(egui::Layout::right_to_left(egui::Align::Center)),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                add_control(ui)
+            },
+        )
+        .inner;
+    finish_row(ui, &row);
+    out
 }
 
-/// A square checkbox: flips `value`.
-pub(in crate::ui::settings) fn toggle(
+/// [`row_wide`] with the usual control width.
+pub(in crate::ui::settings) fn row<R>(
+    ui: &mut egui::Ui,
+    label: &str,
+    hint: &str,
+    add_control: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    row_wide(ui, label, hint, 220.0, add_control)
+}
+
+/// A row that is a switch: the whole row is the click target.
+pub(in crate::ui::settings) fn toggle_row(
     ui: &mut egui::Ui,
     value: &mut bool,
     label: &str,
+    hint: &str,
     accent: Color32,
 ) -> egui::Response {
-    let mut resp = marker_row(ui, label, *value, true, accent);
+    let row = row_text(ui, label, hint, SWITCH.x);
+    let mut resp = ui.interact(
+        row.rect,
+        ui.id().with(("toggle", label)),
+        egui::Sense::click(),
+    );
     if resp.clicked() {
         *value = !*value;
         resp.mark_changed();
     }
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *value, label)
+    });
+    let t = ui.ctx().animate_bool_responsive(resp.id, *value);
+    let track = Rect::from_center_size(
+        row.control.right_center() - Vec2::new(SWITCH.x / 2.0, 0.0),
+        SWITCH,
+    );
+    if resp.has_focus() {
+        focus_ring(ui, track, PILL, accent);
+    }
+    let dim = if ui.is_enabled() { 1.0 } else { 0.45 };
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(dim);
+    paint_switch(&painter, track, t, accent);
+    finish_row(ui, &row);
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A row that picks `value` for `cur`: a check mark at the right shows the chosen one.
+pub(in crate::ui::settings) fn choice_row<T: PartialEq>(
+    ui: &mut egui::Ui,
+    cur: &mut T,
+    value: T,
+    label: &str,
+    hint: &str,
+    accent: Color32,
+) -> egui::Response {
+    let on = *cur == value;
+    let row = row_text(ui, label, hint, 24.0);
+    let mut resp = ui.interact(
+        row.rect,
+        ui.id().with(("choice", label)),
+        egui::Sense::click(),
+    );
+    if resp.clicked() && !on {
+        *cur = value;
+        resp.mark_changed();
+    }
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::RadioButton, ui.is_enabled(), on, label)
+    });
+    if on {
+        fonts::paint_icon(
+            ui.painter(),
+            row.control.center(),
+            symbols::CHECK,
+            20.0,
+            accent,
+            false,
+        );
+    }
+    finish_row(ui, &row);
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A row with a slider under its label and the value at the right of the label.
+pub(in crate::ui::settings) fn slider_row<Num: egui::emath::Numeric>(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut Num,
+    range: RangeInclusive<Num>,
+    suffix: &str,
+    accent: Color32,
+) -> egui::Response {
+    if started(ui) {
+        divider(ui);
+    }
+    ui.add_space(ROW_PAD);
+    let shown = if Num::INTEGRAL {
+        format!("{}{suffix}", value.to_f64() as i64)
+    } else {
+        format!("{:.0}{suffix}", value.to_f64())
+    };
+    let name = galley(ui, label, FontId::proportional(14.5), pal().text);
+    let number = galley(ui, &shown, text_font(13.5, true), pal().muted);
+    let (line, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), name.size().y.max(number.size().y)),
+        egui::Sense::hover(),
+    );
+    ui.painter()
+        .galley(line.left_top(), name, Color32::PLACEHOLDER);
+    ui.painter().galley(
+        Pos2::new(line.right() - number.size().x, line.top()).round(),
+        number,
+        Color32::PLACEHOLDER,
+    );
+    ui.add_space(4.0);
+    let resp = slider(ui, value, range, accent);
+    ui.add_space(ROW_PAD - 4.0);
     resp
 }
 
-/// A single-line text field as high as every other control.
+/// A row of secondary text inside a panel, with the vertical room of a row.
+pub(in crate::ui::settings) fn note(ui: &mut egui::Ui, text: &str) {
+    if started(ui) {
+        divider(ui);
+    }
+    ui.add_space(ROW_PAD);
+    ui.add(egui::Label::new(RichText::new(text).size(13.0).color(pal().muted)).wrap());
+    ui.add_space(ROW_PAD);
+}
+
+/// A row of buttons inside a panel, wrapping onto more lines when it must.
+pub(in crate::ui::settings) fn actions<R>(
+    ui: &mut egui::Ui,
+    add_buttons: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    if started(ui) {
+        divider(ui);
+    }
+    ui.add_space(ROW_PAD);
+    let out = ui
+        .horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::splat(8.0);
+            add_buttons(ui)
+        })
+        .inner;
+    ui.add_space(ROW_PAD);
+    out
+}
+
+/// A row that shows a fact: a label and, at the right, whatever `add_value` draws.
+pub(in crate::ui::settings) fn info_row<R>(
+    ui: &mut egui::Ui,
+    label: &str,
+    add_value: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    row(ui, label, "", add_value)
+}
+
+/// A single-line text field as high as every other control, with room inside.
 pub(in crate::ui::settings) fn text_field(text: &mut String) -> egui::TextEdit<'_> {
     egui::TextEdit::singleline(text)
         .min_size(Vec2::new(0.0, CONTROL_H))
         .vertical_align(egui::Align::Center)
-        .margin(egui::Margin::symmetric(8, 4))
+        .margin(egui::Margin::symmetric(12, 4))
 }
 
-/// A row of plain text and links. Rows of text are 22 px high instead of [`CONTROL_H`], which is
-/// meant for things you click.
-pub(in crate::ui::settings) fn info_row<R>(
-    ui: &mut egui::Ui,
+// ------------------------------------------------------------------ floating things
+
+/// What a [`sheet`] or a [`popover`] asks for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(in crate::ui::settings) struct Floating {
+    /// The close button was pressed, or the dimmed area around the sheet was clicked.
+    pub close: bool,
+}
+
+/// A title row for a sheet or a popover: the title at the left, a close button at the right.
+/// Returns whether the close button was pressed.
+fn floating_header(ui: &mut egui::Ui, title: &str) -> bool {
+    let mut close = false;
+    ui.horizontal(|ui| {
+        ui.label(fonts::title(title, 17.0, pal().text));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            close = icon_button(ui, symbols::X, "Close", true).clicked();
+        });
+    });
+    ui.add_space(GAP);
+    close
+}
+
+/// A modal sheet centered over the window: the window dims, and the sheet floats above it. All
+/// the "add something" dialogs of Settings (a slice, an icon) use this, so they look and behave
+/// the same: a title, a close button, Esc to close, a click outside to close.
+///
+/// `bounds` is the window's rectangle (the dimmed area, which follows the window's rounded
+/// corners), `size` the sheet's size, shrunk to fit `bounds`.
+pub(in crate::ui::settings) fn sheet<R>(
+    ctx: &egui::Context,
+    id: &str,
+    bounds: Rect,
+    size: Vec2,
+    title: &str,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
-) -> R {
-    ui.scope(|ui| {
-        ui.spacing_mut().interact_size.y = 22.0;
-        ui.horizontal(add_contents).inner
-    })
-    .inner
+) -> (Floating, R) {
+    let mut out = Floating::default();
+    let size = Vec2::new(
+        size.x.min(bounds.width() - 2.0 * GAP),
+        size.y.min(bounds.height() - 4.0 * GAP),
+    );
+    let inner = egui::Area::new(egui::Id::new(("sheet", id)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(bounds.min)
+        .constrain(false)
+        .show(ctx, |ui| {
+            let scrim = ui.allocate_rect(bounds, egui::Sense::click());
+            ui.painter().rect_filled(bounds, CARD_RADIUS, pal().scrim);
+            let rect = Rect::from_center_size(bounds.center(), size);
+            let mut inner = None;
+            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                popup_frame().show(ui, |ui| {
+                    let inner_size = size - Vec2::splat(2.0 * f32::from(PANEL_PAD));
+                    ui.set_min_size(inner_size);
+                    ui.set_max_size(inner_size);
+                    out.close |= floating_header(ui, title);
+                    inner = Some(add_contents(ui));
+                });
+            });
+            if scrim.clicked()
+                && let Some(p) = scrim.interact_pointer_pos()
+                && !rect.contains(p)
+            {
+                out.close = true;
+            }
+            inner
+        })
+        .inner;
+    // the caller reads the closure's result; it is always Some after the closure ran
+    (out, inner.expect("the sheet closure ran"))
 }
 
-/// The CursorPie logo: a five-slice pie with one slice in the accent color and a cursor in the
-/// middle. Drawn with the same `ring_slice` as the real pie, so there is no image file to ship.
+/// A button that opens a small popup under it. Every popup of Settings that is not a dropdown
+/// list is one of these: a title, the content, a close button; it stays open while you click and
+/// type inside and closes on a click outside, on its button again, on Esc, or when `add_contents`
+/// calls `ui.close()`.
+pub(in crate::ui::settings) fn popover<R>(
+    trigger: &egui::Response,
+    title: &str,
+    width: f32,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> Option<R> {
+    egui::Popup::from_toggle_button_response(trigger)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .align(egui::RectAlign::BOTTOM_START)
+        .gap(6.0)
+        .width(width)
+        .frame(popup_frame())
+        .show(|ui| {
+            ui.set_width(width);
+            if floating_header(ui, title) {
+                ui.close();
+            }
+            add_contents(ui)
+        })
+        .map(|r| r.inner)
+}
+
+/// A drop-down list: a soft pill with the current choice and a caret, and under it a card with
+/// one line per choice (a check marks the current one). Returns the index the user picked.
+///
+/// It replaces `egui::ComboBox`, whose list is a plain menu that does not follow the look of the
+/// rest of Settings.
+pub(in crate::ui::settings) fn select(
+    ui: &mut egui::Ui,
+    width: f32,
+    current: &str,
+    labels: &[&str],
+    selected: usize,
+) -> Option<usize> {
+    let items: Vec<(Option<char>, &str)> = labels.iter().map(|&l| (None, l)).collect();
+    select_with(ui, width, None, current, &items, selected)
+}
+
+/// [`select`] whose choices have an icon each: the icon of the current one shows on the pill, and
+/// every line of the list starts with its own.
+pub(in crate::ui::settings) fn select_icons(
+    ui: &mut egui::Ui,
+    width: f32,
+    items: &[(Option<char>, &str)],
+    selected: usize,
+) -> Option<usize> {
+    let (icon, label) = items.get(selected).copied().unwrap_or((None, ""));
+    select_with(ui, width, icon, label, items, selected)
+}
+
+fn select_with(
+    ui: &mut egui::Ui,
+    width: f32,
+    current_icon: Option<char>,
+    current: &str,
+    items: &[(Option<char>, &str)],
+    selected: usize,
+) -> Option<usize> {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, CONTROL_H), egui::Sense::click());
+    let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp));
+    let fill = if open || resp.hovered() {
+        pal().hot
+    } else {
+        pal().idle
+    };
+    ui.painter().rect_filled(rect, CONTROL_R, fill);
+    let mut text_x = rect.min.x + 14.0;
+    if let Some(icon) = current_icon {
+        fonts::paint_icon(
+            ui.painter(),
+            Pos2::new(rect.min.x + 25.0, rect.center().y),
+            icon,
+            17.0,
+            pal().muted,
+            false,
+        );
+        text_x = rect.min.x + 44.0;
+    }
+    let g = galley(ui, current, FontId::proportional(14.0), pal().text);
+    ui.painter().galley(
+        Pos2::new(text_x, rect.center().y - g.size().y / 2.0).round(),
+        g,
+        Color32::PLACEHOLDER,
+    );
+    fonts::paint_icon(
+        ui.painter(),
+        Pos2::new(rect.max.x - 18.0, rect.center().y),
+        if open {
+            symbols::CARET_UP
+        } else {
+            symbols::CARET_DOWN
+        },
+        14.0,
+        pal().muted,
+        false,
+    );
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let mut picked = None;
+    egui::Popup::from_toggle_button_response(&resp)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .align(egui::RectAlign::BOTTOM_START)
+        .gap(6.0)
+        .width(width)
+        .frame(popup_frame().inner_margin(egui::Margin::same(6)))
+        .show(|ui| {
+            ui.set_width(width - 12.0);
+            ui.spacing_mut().item_spacing.y = 2.0;
+            for (i, (icon, label)) in items.iter().enumerate() {
+                if select_item(ui, *icon, label, i == selected).clicked() {
+                    picked = Some(i);
+                }
+            }
+        });
+    picked
+}
+
+/// One line of a [`select`] list.
+fn select_item(ui: &mut egui::Ui, icon: Option<char>, label: &str, on: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), CONTROL_H),
+        egui::Sense::click(),
+    );
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, CONTROL_R, pal().idle);
+    }
+    let mut text_x = rect.min.x + 12.0;
+    if let Some(icon) = icon {
+        fonts::paint_icon(
+            ui.painter(),
+            Pos2::new(rect.min.x + 22.0, rect.center().y),
+            icon,
+            17.0,
+            if on { pal().text } else { pal().muted },
+            false,
+        );
+        text_x = rect.min.x + 42.0;
+    }
+    let g = galley(ui, label, text_font(14.0, on), pal().text);
+    ui.painter().galley(
+        Pos2::new(text_x, rect.center().y - g.size().y / 2.0).round(),
+        g,
+        Color32::PLACEHOLDER,
+    );
+    if on {
+        fonts::paint_icon(
+            ui.painter(),
+            Pos2::new(rect.max.x - 20.0, rect.center().y),
+            symbols::CHECK,
+            16.0,
+            pal().text,
+            false,
+        );
+    }
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A menu of actions under a button: no title, no close button, just [`menu_item`] lines on a
+/// card. It closes on any click inside (the item was chosen), a click outside, or Esc. For a choice
+/// that stays on screen use [`select`]; for a form use [`popover`].
+pub(in crate::ui::settings) fn menu_popup<R>(
+    trigger: &egui::Response,
+    width: f32,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> Option<R> {
+    egui::Popup::from_toggle_button_response(trigger)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .align(egui::RectAlign::BOTTOM_END)
+        .gap(6.0)
+        .width(width)
+        .frame(popup_frame().inner_margin(egui::Margin::same(6)))
+        .show(|ui| {
+            ui.set_width(width - 12.0);
+            ui.spacing_mut().item_spacing.y = 2.0;
+            add_contents(ui)
+        })
+        .map(|r| r.inner)
+}
+
+/// One entry of a menu-like popover: an icon and a label, the whole line clickable.
+pub(in crate::ui::settings) fn menu_item(
+    ui: &mut egui::Ui,
+    icon: char,
+    label: &str,
+) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), CONTROL_H),
+        egui::Sense::click(),
+    );
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, CONTROL_R, pal().idle);
+    }
+    fonts::paint_icon(
+        ui.painter(),
+        Pos2::new(rect.min.x + 20.0, rect.center().y),
+        icon,
+        18.0,
+        pal().muted,
+        false,
+    );
+    let g = galley(ui, label, FontId::proportional(14.0), pal().text);
+    ui.painter().galley(
+        Pos2::new(rect.min.x + 40.0, rect.center().y - g.size().y / 2.0).round(),
+        g,
+        Color32::PLACEHOLDER,
+    );
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+// ------------------------------------------------------------------ brand and shortcuts
+
+/// The CursorPie logo: a ring of four arcs around a diamond, as on the poster. Drawn with the
+/// same `ring_slice` as the real pie, so there is no image file to ship.
 pub(in crate::ui::settings) fn draw_logo(
     painter: &egui::Painter,
     center: Pos2,
     radius: f32,
     accent: Color32,
 ) {
-    use std::f32::consts::TAU;
-    const SLICES: usize = 5;
-    let step = TAU / SLICES as f32;
-    let gap = 0.12; // radians between slices
-    for i in 0..SLICES {
-        let a0 = -TAU / 4.0 + step * i as f32 + gap / 2.0;
-        let a1 = a0 + step - gap;
-        let color = if i == 0 {
-            accent
-        } else {
-            MUTED.gamma_multiply(0.4)
-        };
+    use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
+    let gap = 0.30; // radians cut out of the ring at each diagonal
+    for i in 0..4 {
+        let mid = FRAC_PI_2 * i as f32 - FRAC_PI_2;
+        let (a0, a1) = (mid - FRAC_PI_4 + gap / 2.0, mid + FRAC_PI_4 - gap / 2.0);
         painter.add(ring_slice(
             painter,
             center,
-            radius * 0.42,
+            radius * 0.74,
             radius,
             a0,
             a1,
-            color,
+            accent,
         ));
     }
-    // cursor arrow in the hub
-    let p = |x: f32, y: f32| center + Vec2::new(x, y) * radius;
+    let d = radius * 0.24;
     painter.add(egui::Shape::convex_polygon(
-        vec![p(-0.14, -0.24), p(-0.14, 0.2), p(0.18, 0.05)],
-        TEXT,
+        vec![
+            center + Vec2::new(0.0, -d),
+            center + Vec2::new(d, 0.0),
+            center + Vec2::new(0.0, d),
+            center + Vec2::new(-d, 0.0),
+        ],
+        accent,
         Stroke::NONE,
     ));
 }
 
-/// Button showing a shortcut (or the "press any key" prompt while recording).
+/// The keys of a shortcut label, one per keycap: `"Shift + Cmd + Z"` gives three.
+fn keycaps(label: &str) -> Vec<&str> {
+    label.split(" + ").filter(|k| !k.is_empty()).collect()
+}
+
+/// Button showing a shortcut as keycaps (or the "press any key" prompt while recording).
 pub(in crate::ui::settings) fn shortcut_button(
     ui: &mut egui::Ui,
     sc: &Shortcut,
     recording: bool,
     accent: Color32,
 ) -> egui::Response {
-    let btn = if recording {
-        egui::Button::new(
-            RichText::new("Press any key...  (Esc = cancel)").color(on_accent(accent)),
-        )
-        .fill(accent)
+    let label = sc.label();
+    let caps: Vec<_> = keycaps(&label)
+        .into_iter()
+        .map(|k| galley(ui, k, text_font(13.0, true), pal().text))
+        .collect();
+    let caps_w: f32 = caps.iter().map(|g| g.size().x + 16.0 + 4.0).sum::<f32>() - 4.0;
+    let prompt = galley(
+        ui,
+        "Press the keys…  (Esc cancels)",
+        text_font(13.5, true),
+        on_accent(accent),
+    );
+    let width = if recording {
+        prompt.size().x
     } else {
-        egui::Button::new(RichText::new(sc.label()).monospace())
+        caps_w.max(0.0)
+    } + 28.0;
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(width.max(150.0), CONTROL_H), egui::Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
+    let fill = match (recording, resp.hovered()) {
+        (true, _) => accent,
+        (false, true) => pal().hot,
+        (false, false) => pal().idle,
     };
-    ui.add(btn.min_size(Vec2::new(210.0, CONTROL_H)))
+    ui.painter().rect_filled(rect, CONTROL_R, fill);
+    if recording {
+        let at = Pos2::new(
+            rect.center().x - prompt.size().x / 2.0,
+            rect.center().y - prompt.size().y / 2.0,
+        );
+        ui.painter()
+            .galley(at.round(), prompt, Color32::PLACEHOLDER);
+    } else {
+        let mut x = rect.center().x - caps_w / 2.0;
+        for g in caps {
+            let w = g.size().x + 16.0;
+            let cap = Rect::from_min_size(Pos2::new(x, rect.center().y - 12.0), Vec2::new(w, 24.0));
+            ui.painter()
+                .rect_filled(cap, egui::CornerRadius::same(7), pal().keycap);
+            ui.painter().rect_stroke(
+                cap,
+                egui::CornerRadius::same(7),
+                Stroke::new(1.0, pal().border),
+                egui::StrokeKind::Inside,
+            );
+            ui.painter().galley(
+                Pos2::new(cap.min.x + 8.0, cap.center().y - g.size().y / 2.0).round(),
+                g,
+                Color32::PLACEHOLDER,
+            );
+            x += w + 4.0;
+        }
+    }
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// The accent swatches and, after them, the system color picker for any other color.
+pub(in crate::ui::settings) fn accent_picker(ui: &mut egui::Ui, color: &mut [u8; 3]) {
+    ui.spacing_mut().item_spacing.x = 8.0;
+    // added from the right edge, so the picker comes first and the swatches fill in toward the left
+    ui.color_edit_button_srgb(color).on_hover_text("Any color");
+    for (name, rgb) in ACCENTS.iter().rev() {
+        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(24.0), egui::Sense::click());
+        let c = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+        let on = *color == *rgb;
+        ui.painter().circle_filled(rect.center(), 10.0, c);
+        if on {
+            ui.painter()
+                .circle_stroke(rect.center(), 13.0, Stroke::new(2.0, c));
+            fonts::paint_icon(
+                ui.painter(),
+                rect.center(),
+                symbols::CHECK,
+                13.0,
+                on_accent(c),
+                false,
+            );
+        }
+        if resp
+            .on_hover_text(*name)
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .clicked()
+        {
+            *color = *rgb;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::draw::contrast;
+
+    #[test]
+    fn a_shortcut_label_splits_into_keycaps() {
+        assert_eq!(keycaps("Shift + Cmd + Z"), ["Shift", "Cmd", "Z"]);
+        assert_eq!(keycaps("F13"), ["F13"]);
+        assert!(keycaps("").is_empty());
+        // a plus key is a key too: it is the label's last part, not a separator
+        assert_eq!(keycaps("Cmd + +"), ["Cmd", "+"]);
+    }
+
+    #[test]
+    fn the_slider_maps_values_to_the_rail_and_back() {
+        let range = (150.0, 1500.0);
+        assert_eq!(slider_fraction(150.0, range), 0.0);
+        assert_eq!(slider_fraction(1500.0, range), 1.0);
+        assert_eq!(slider_fraction(9999.0, range), 1.0, "clamped");
+        assert_eq!(slider_fraction(5.0, (3.0, 3.0)), 0.0, "an empty range");
+        for v in [150.0, 500.0, 1200.0, 1500.0] {
+            let back = slider_value(slider_fraction(v, range), range, true);
+            assert_eq!(back, v, "{v} survives the round trip");
+        }
+        assert_eq!(
+            slider_value(0.5, (0.0, 3.0), true),
+            2.0,
+            "rounds to a whole number"
+        );
+        assert_eq!(slider_value(0.5, (0.0, 3.0), false), 1.5);
+        assert_eq!(slider_value(7.0, (0.0, 10.0), true), 10.0, "clamped");
+    }
+
+    #[test]
+    fn a_pressed_filled_button_is_darker_than_at_rest() {
+        let accent = Color32::from_rgb(88, 86, 214);
+        let (rest, hot, _) = Look::Primary(accent).colors();
+        assert_eq!(rest, accent);
+        assert!(crate::ui::draw::luminance(hot) < crate::ui::draw::luminance(rest));
+    }
+
+    #[test]
+    fn every_look_has_readable_text() {
+        let accent = Color32::from_rgb(88, 86, 214);
+        for p in [LIGHT, DARK] {
+            for look in [Look::Primary(accent), Look::Soft, Look::Plain, Look::Danger] {
+                let (rest, hot, fg) = look.colors_in(&p);
+                for bg in [rest, hot] {
+                    // translucent fills sit on a panel: compare against what the eye sees
+                    let under = if bg.a() == 255 {
+                        bg
+                    } else {
+                        let f = f32::from(bg.a()) / 255.0;
+                        let mix = |a: u8, b: u8| {
+                            (f32::from(a) * f + f32::from(b) * (1.0 - f)).round() as u8
+                        };
+                        Color32::from_rgb(
+                            mix(bg.r(), p.card.r()),
+                            mix(bg.g(), p.card.g()),
+                            mix(bg.b(), p.card.b()),
+                        )
+                    };
+                    assert!(
+                        contrast(fg, under) >= 4.5,
+                        "{look:?} (dark: {}): {fg:?} on {under:?} is {:.1}:1",
+                        p.dark,
+                        contrast(fg, under)
+                    );
+                }
+            }
+        }
+    }
 }

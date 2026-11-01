@@ -89,6 +89,8 @@ pub struct Ed {
     pub backups: Vec<Backup>,
     /// A scan of the mouse is running (General tab); dropping it ends the scan
     pub scan: Option<Scan>,
+    /// The window's rectangle of the last frame: sheets are centered over it and dim it
+    pub card: egui::Rect,
 }
 
 impl Default for Ed {
@@ -119,6 +121,7 @@ impl Ed {
             icons_not_listed: 0,
             backups: Vec::new(),
             scan: None,
+            card: egui::Rect::NOTHING,
         }
     }
 
@@ -127,6 +130,20 @@ impl Ed {
         let found = super::icon_catalog::scan_user_icons();
         self.user_icons = found.icons;
         self.icons_not_listed = found.not_listed;
+    }
+
+    /// Whether a sheet (the "Add a slice" panel or the icon picker) is open over the window.
+    pub fn sheet_open(&self) -> bool {
+        self.adding || self.picking_icon
+    }
+
+    /// Closes the open sheet. Returns whether there was one.
+    pub fn close_sheet(&mut self) -> bool {
+        let was = self.sheet_open();
+        self.adding = false;
+        self.add_catalog = None;
+        self.picking_icon = false;
+        was
     }
 
     /// Stops recording a shortcut (also disarms the event tap).
@@ -185,6 +202,15 @@ mod tests {
             tiles(&AddCatalog::new(true)),
             tiles(&AddCatalog::new(false)) + 1
         );
+    }
+
+    #[test]
+    fn closing_a_sheet_reports_whether_there_was_one() {
+        let mut ed = Ed::new();
+        assert!(!ed.sheet_open() && !ed.close_sheet());
+        ed.picking_icon = true;
+        assert!(ed.sheet_open());
+        assert!(ed.close_sheet() && !ed.sheet_open());
     }
 
     #[test]

@@ -1,22 +1,22 @@
 //! The settings window itself: open/close animation, window chrome, and its layout:
 //!
 //! ```text
-//! +----------------------------------------------------------------------+
-//! | logo CURSORPIE ⓘ                             UNDO REDO CANCEL SAVE   |  top bar
 //! +--------------+-------------------------------------------------------+
-//! | Menu         |                                                       |
-//! | Behavior     |   page of the selected section                        |
-//! | General      |                                                       |
-//! | About        |                                                       |
-//! |        v0.3  |                                                       |
+//! | logo  Cursor | Page title                      undo redo  Cancel Save |  top bar
+//! |       Pie    | one line about the page                                |
+//! |              +-------------------------------------------------------+
+//! |  Menu        |                                                       |
+//! |  Behavior    |   page of the selected section                        |
+//! |  General     |                                                       |
+//! |  About       |                                                       |
+//! |              +-------------------------------------------------------+
+//! |  v0.6  Quit  | status or hint                                        |  footer
 //! +--------------+-------------------------------------------------------+
-//! | status: warning, message or hint                          QUIT APP   |  footer
-//! +----------------------------------------------------------------------+
 //! ```
 //!
-//! The sidebar names the sections (title on the left, page on the right, like the settings of a
-//! large application). The top bar holds everything you confirm with, so those buttons never move.
-//! The four areas come from [`regions`], a pure function with its own tests.
+//! The sidebar holds the brand and names the sections (like the settings of the system apps), so
+//! it runs the full height of the window. The top bar holds everything you confirm with, so those
+//! buttons never move. The four areas come from [`regions`], a pure function with its own tests.
 
 use super::state::Tab;
 use super::tabs::about::about_tab;
@@ -26,26 +26,30 @@ use crate::platform;
 use crate::tap::TAP_ACTIVE;
 use crate::ui::app::App;
 use crate::ui::draw::*;
+use crate::ui::fonts;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
+use crate::ui::symbols;
 use eframe::egui::{self, RichText, Vec2};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-/// Height of the top bar (brand, tabs, Undo / Redo / Cancel / Save).
-const TOP_H: f32 = 52.0;
-/// Height of the footer (status line, Quit).
-const FOOT_H: f32 = 34.0;
+/// Height of the top bar (page title, Undo / Redo / Cancel / Save).
+const TOP_H: f32 = 76.0;
+/// Height of the footer (status line).
+const FOOT_H: f32 = 44.0;
 /// Width of the sidebar that lists the sections.
-const SIDE_W: f32 = 200.0;
+const SIDE_W: f32 = 232.0;
+/// Width of the sidebar when it is folded to icons.
+const RAIL_W: f32 = 76.0;
 /// Widest a page of panels grows. Wider than this, sliders and text lines become too long to
-/// follow, so the page stays at the left of the content area, as the settings of Windows do.
-const PAGE_W: f32 = 680.0;
-/// Space between the bands and the body, and the body's padding.
-const PAD: f32 = GAP * 2.0;
-/// Width kept free at the right end of the footer for the Quit cell, so a message never runs
-/// under it.
-const QUIT_W: f32 = 110.0;
+/// follow, so the page keeps this width and sits in the middle of the content area.
+const PAGE_W: f32 = 820.0;
+/// Whether the sidebar is folded to icons. It starts folded (compact is the default look), and is
+/// remembered while the app runs, not saved: it is a way of looking at the window, not a setting.
+static COMPACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// Space between the edge of the window and the page.
+const PAD: f32 = GAP * 2.0 + 4.0;
 
 /// The four areas of the window, as rectangles in screen points.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -56,19 +60,20 @@ struct Regions {
     foot: egui::Rect,
 }
 
-/// Cuts the `card` rectangle into the top bar, the sidebar, the body and the footer. The bar and
-/// the footer span the full width (they touch the window's outline); the sidebar fills the space
-/// between them on the left; the body is the rest, inset by [`PAD`].
-fn regions(card: egui::Rect) -> Regions {
-    let top = egui::Rect::from_min_size(card.min, Vec2::new(card.width(), TOP_H));
-    let foot = egui::Rect::from_min_max(egui::pos2(card.min.x, card.max.y - FOOT_H), card.max);
-    let side = egui::Rect::from_min_max(
-        egui::pos2(card.min.x, top.max.y),
-        egui::pos2(card.min.x + SIDE_W, foot.min.y),
+/// Cuts the `card` rectangle into the sidebar (`side_w` wide, the full height, on the left), and,
+/// in the column to its right, the top bar, the body and the footer. The body is inset by [`PAD`]
+/// at the sides.
+fn regions(card: egui::Rect, side_w: f32) -> Regions {
+    let side = egui::Rect::from_min_size(card.min, Vec2::new(side_w, card.height()));
+    let main_left = side.max.x;
+    let top = egui::Rect::from_min_max(
+        egui::pos2(main_left, card.min.y),
+        egui::pos2(card.max.x, card.min.y + TOP_H),
     );
+    let foot = egui::Rect::from_min_max(egui::pos2(main_left, card.max.y - FOOT_H), card.max);
     let body = egui::Rect::from_min_max(
-        egui::pos2(side.max.x + PAD, top.max.y + PAD),
-        egui::pos2(card.max.x - PAD, foot.min.y - PAD),
+        egui::pos2(main_left + PAD, top.max.y),
+        egui::pos2(card.max.x - PAD, foot.min.y),
     );
     Regions {
         top,
@@ -78,7 +83,7 @@ fn regions(card: egui::Rect) -> Regions {
     }
 }
 
-/// What the top bar and footer buttons asked for this frame.
+/// What the top bar and sidebar buttons asked for this frame.
 enum UiAction {
     None,
     Undo,
@@ -88,8 +93,31 @@ enum UiAction {
     Quit,
 }
 
+/// The icon, title and one-line description of a section.
+fn section_info(tab: Tab) -> (char, &'static str, &'static str) {
+    match tab {
+        Tab::Menu => (
+            symbols::CHART_PIE_SLICE,
+            "Menu",
+            "Profiles, slices and what each one does.",
+        ),
+        Tab::Behavior => (
+            symbols::SLIDERS_HORIZONTAL,
+            "Behavior",
+            "How the pie opens, how it looks and which pie each app gets.",
+        ),
+        Tab::General => (
+            symbols::GEAR_SIX,
+            "General",
+            "Input status, your mouse, your configuration and its backups.",
+        ),
+        Tab::About => (symbols::INFO, "About", "Version, credits and links."),
+    }
+}
+
 impl App {
-    /// Draws the Settings window (animation, top bar, body, footer) and applies Save / Cancel / Quit.
+    /// Draws the Settings window (animation, sidebar, top bar, body, footer) and applies Save /
+    /// Cancel / Quit.
     pub fn settings_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
 
@@ -111,12 +139,17 @@ impl App {
         let t = self.settings_anim.clamp(0.0, 1.0);
         let slide = (1.0 - t) * (1.0 - t) * 26.0;
 
-        // Esc (when not recording) = cancel
-        if self.closing.is_none()
-            && self.ed.recording.is_none()
-            && ctx.input(|i| i.key_pressed(egui::Key::Escape))
-        {
-            self.closing = Some(false);
+        // Esc closes what is on top: a sheet, then a popup (egui closes it itself), then the window
+        // (when not recording) = cancel
+        if self.closing.is_none() && self.ed.recording.is_none() {
+            let esc = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+            if esc {
+                if self.confirm_quit {
+                    self.confirm_quit = false; // "keep editing"
+                } else if !self.ed.close_sheet() && !egui::Popup::is_any_open(&ctx) {
+                    self.closing = Some(false);
+                }
+            }
         }
         self.history_keys(&ctx);
         if self
@@ -131,6 +164,16 @@ impl App {
         style_settings(ui, accent);
         ui.set_opacity(t);
 
+        // the sidebar folds to icons (the button in the top bar, or Ctrl / Cmd + B)
+        let fold = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::B);
+        if self.ed.recording.is_none() && ctx.input_mut(|i| i.consume_shortcut(&fold)) {
+            COMPACT.fetch_xor(true, Ordering::Relaxed);
+        }
+        let compact = COMPACT.load(Ordering::Relaxed);
+        let open = ctx.animate_bool_with_time(egui::Id::new("sidebar_open"), !compact, 0.16);
+        let side_w = RAIL_W + (SIDE_W - RAIL_W) * open;
+        let wide = open > 0.5;
+
         // The window, always centered. Its rectangle is snapped to whole pixels: a hairline that
         // sits between two pixels is smeared over both, which is what made the old card look soft.
         let full = ui.max_rect();
@@ -139,39 +182,37 @@ impl App {
                 .translate(Vec2::new(0.0, slide)),
             ctx.pixels_per_point(),
         );
+        self.ed.card = card_rect;
         let Regions {
             top,
             side,
             body,
             foot,
-        } = regions(card_rect);
+        } = regions(card_rect, side_w);
         let painter = ui.painter().clone();
         painter.add(window_shadow().as_shape(card_rect, CARD_RADIUS));
-        painter.rect_filled(card_rect, CARD_RADIUS, BG);
-        painter.rect_filled(top, TOP_RADIUS, CARD);
-        painter.rect_filled(foot, BOTTOM_RADIUS, INPUT);
-        painter.rect_filled(side, 0.0, CARD);
-        let hairline = |y: f32| {
-            painter.line_segment(
-                [
-                    egui::pos2(card_rect.min.x, y),
-                    egui::pos2(card_rect.max.x, y),
-                ],
-                egui::Stroke::new(1.0, BORDER),
-            );
-        };
-        hairline(top.max.y);
-        hairline(foot.min.y);
+        painter.rect_filled(card_rect, CARD_RADIUS, pal().bg);
+        painter.rect_filled(
+            side,
+            egui::CornerRadius {
+                nw: CARD_RADIUS_PT,
+                sw: CARD_RADIUS_PT,
+                ne: 0,
+                se: 0,
+            },
+            pal().sidebar,
+        );
         painter.line_segment(
             [side.right_top(), side.right_bottom()],
-            egui::Stroke::new(1.0, BORDER),
+            egui::Stroke::new(1.0, pal().border),
         );
         window_outline(&painter, card_rect, accent);
 
-        // dragging the empty part of the top bar moves the window; the buttons are added after
-        // it, so they sit on top and keep their clicks
+        // dragging the empty part of the top bar or the sidebar's head moves the window; the
+        // buttons are added after it, so they sit on top and keep their clicks
+        let drag_area = egui::Rect::from_min_max(side.min, egui::pos2(top.max.x, top.max.y));
         let drag = ui.interact(
-            top,
+            drag_area,
             egui::Id::new("settings_drag"),
             egui::Sense::click_and_drag(),
         );
@@ -183,92 +224,36 @@ impl App {
         let (can_undo, can_redo) = (self.history.can_undo(), self.history.can_redo());
         let primary = platform::OS.primary_name();
 
-        // ---------------------------------------------------------------- top bar
-        let bar_line = |ui: &egui::Ui, x: f32| {
-            ui.painter().line_segment(
-                [
-                    egui::pos2(x, top.min.y + 14.0),
-                    egui::pos2(x, top.max.y - 14.0),
-                ],
-                egui::Stroke::new(1.0, BORDER),
-            );
-        };
-        ui.scope_builder(
-            egui::UiBuilder::new()
-                .max_rect(top)
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-            |ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.add_space(PAD);
-                let (logo, _) = ui.allocate_exact_size(Vec2::splat(24.0), egui::Sense::hover());
-                draw_logo(ui.painter(), logo.center(), 11.5, accent);
-                ui.add_space(GAP + 2.0);
-                ui.label(
-                    RichText::new(APP_NAME.to_uppercase())
-                        .monospace()
-                        .size(14.0)
-                        .strong()
-                        .color(TEXT),
-                );
-                ui.add_space(GAP);
-                ui.label(RichText::new("ℹ").color(MUTED)).on_hover_text(
-                    "Hold the middle button for your main pie.\nDouble-click it for the pie of the app under the pointer.\nWhile the pie is open, right-click to switch which pie the side buttons follow.",
-                );
-            },
-        );
-        // Right side, added from the right edge inwards. Save is the primary (accent) cell at the
-        // corner. The cells float inside the bar instead of touching its edge, so none of them
-        // pokes out of the window's rounded corner.
-        ui.scope_builder(
-            egui::UiBuilder::new()
-                .max_rect(top.shrink2(Vec2::new(GAP + 2.0, 0.0)))
-                .layout(egui::Layout::right_to_left(egui::Align::Center)),
-            |ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                let on_save = on_accent(accent);
-                let save = bar_button(ui, "SAVE", true, Some(accent), on_save, CONTROL_H);
-                if save.on_hover_text("Apply every tab at once").clicked() {
-                    action = UiAction::Save;
-                }
-                let cancel = bar_button(ui, "CANCEL", true, None, TEXT, CONTROL_H);
-                if cancel.clicked() {
-                    action = UiAction::Cancel;
-                }
-                bar_line(&*ui, cancel.rect.left() - 2.0 - GAP);
-                ui.add_space(GAP * 2.0);
-                let redo = bar_button(ui, "REDO", can_redo, None, TEXT, CONTROL_H);
-                if redo
-                    .on_hover_text(format!("Redo ({primary}+Shift+Z)"))
-                    .clicked()
-                {
-                    action = UiAction::Redo;
-                }
-                let undo = bar_button(ui, "UNDO", can_undo, None, TEXT, CONTROL_H);
-                if undo
-                    .on_hover_text(format!("Undo the last change ({primary}+Z)"))
-                    .clicked()
-                {
-                    action = UiAction::Undo;
-                }
-            },
-        );
-
         // ---------------------------------------------------------------- sidebar
+        let brand_y = side.min.y + 30.0;
+        let logo_x = if wide {
+            side.min.x + PAD + 14.0
+        } else {
+            side.center().x
+        };
+        draw_logo(&painter, egui::pos2(logo_x, brand_y + 14.0), 14.0, accent);
+        if wide {
+            painter.text(
+                egui::pos2(side.min.x + PAD + 40.0, brand_y + 14.0),
+                egui::Align2::LEFT_CENTER,
+                APP_NAME,
+                egui::FontId::new(19.0, fonts::semibold()),
+                pal().text,
+            );
+        }
         ui.scope_builder(
-            egui::UiBuilder::new().max_rect(side.shrink2(Vec2::new(GAP + 4.0, PAD))),
+            egui::UiBuilder::new().max_rect(egui::Rect::from_min_max(
+                egui::pos2(side.min.x + GAP + 4.0, side.min.y + 92.0),
+                egui::pos2(side.max.x - GAP - 4.0, side.max.y - 90.0),
+            )),
             |ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
-                let sections = [
-                    (Tab::Menu, "Menu", "Profiles and slices"),
-                    (Tab::Behavior, "Behavior", "Trigger, timing, apps"),
-                    (Tab::General, "General", "Input, config, backups"),
-                    (Tab::About, "About", "Version and credits"),
-                ];
-                for (tab, title, hint) in sections {
-                    if nav_item(ui, title, hint, self.ed.tab == tab, accent).clicked() {
+                for tab in [Tab::Menu, Tab::Behavior, Tab::General, Tab::About] {
+                    let (icon, title, _) = section_info(tab);
+                    if nav_item(ui, icon, title, self.ed.tab == tab, accent, !wide).clicked() {
                         self.ed.tab = tab;
                         self.ed.scan = None; // a scan belongs to the General tab
-                        self.ed.picking_icon = false;
+                        self.ed.close_sheet();
                         if tab == Tab::General {
                             self.ed.backups = backups(); // read once, not on every frame
                         }
@@ -278,15 +263,110 @@ impl App {
         );
         ui.scope_builder(
             egui::UiBuilder::new()
-                .max_rect(side.shrink2(Vec2::new(PAD, PAD)))
+                .max_rect(side.shrink2(Vec2::new(GAP + 4.0, GAP + 4.0)))
                 .layout(egui::Layout::bottom_up(egui::Align::Min)),
             |ui| {
-                ui.label(
-                    RichText::new(format!("v{VERSION}"))
-                        .monospace()
-                        .size(11.0)
-                        .color(MUTED),
+                ui.spacing_mut().item_spacing.y = 4.0;
+                if wide {
+                    if button(ui, Look::Danger, Some(symbols::POWER), "Quit CursorPie").clicked() {
+                        action = UiAction::Quit;
+                    }
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new(format!("Version {VERSION}"))
+                                .size(12.0)
+                                .color(pal().muted),
+                        );
+                    });
+                } else {
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                        let quit = icon_button_look(
+                            ui,
+                            Look::Danger,
+                            symbols::POWER,
+                            "Quit CursorPie",
+                            true,
+                        );
+                        if quit.clicked() {
+                            action = UiAction::Quit;
+                        }
+                    });
+                }
+            },
+        );
+
+        // ---------------------------------------------------------------- top bar
+        let (_, title, subtitle) = section_info(self.ed.tab);
+        let title_x = top.min.x + PAD + 44.0;
+        ui.scope_builder(
+            egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
+                egui::pos2(top.min.x + PAD, top.min.y + 8.0),
+                Vec2::splat(CONTROL_H),
+            )),
+            |ui| {
+                let tip = if compact {
+                    format!("Show the sidebar ({primary}+B)")
+                } else {
+                    format!("Fold the sidebar to icons ({primary}+B)")
+                };
+                if icon_button(ui, symbols::SIDEBAR_SIMPLE, &tip, true).clicked() {
+                    COMPACT.fetch_xor(true, Ordering::Relaxed);
+                }
+            },
+        );
+        painter.text(
+            egui::pos2(title_x, top.min.y + 26.0),
+            egui::Align2::LEFT_CENTER,
+            title,
+            egui::FontId::new(24.0, fonts::semibold()),
+            pal().text,
+        );
+        painter.text(
+            egui::pos2(title_x, top.min.y + 54.0),
+            egui::Align2::LEFT_CENTER,
+            subtitle,
+            egui::FontId::proportional(13.0),
+            pal().muted,
+        );
+        // Right side, added from the right edge inwards. Save is the primary (accent) button at
+        // the corner.
+        ui.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(egui::Rect::from_min_max(
+                    egui::pos2(top.min.x + 300.0, top.min.y),
+                    egui::pos2(top.max.x - PAD, top.min.y + 52.0),
+                ))
+                .layout(egui::Layout::right_to_left(egui::Align::Center)),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                let save = button(ui, Look::Primary(accent), Some(symbols::CHECK), "Save");
+                if save.on_hover_text("Apply every tab at once").clicked() {
+                    action = UiAction::Save;
+                }
+                if button(ui, Look::Soft, None, "Cancel").clicked() {
+                    action = UiAction::Cancel;
+                }
+                ui.add_space(GAP);
+                let redo = icon_button(
+                    ui,
+                    symbols::ARROW_CLOCKWISE,
+                    &format!("Redo ({primary}+Shift+Z)"),
+                    can_redo,
                 );
+                if redo.clicked() {
+                    action = UiAction::Redo;
+                }
+                let undo = icon_button(
+                    ui,
+                    symbols::ARROW_COUNTER_CLOCKWISE,
+                    &format!("Undo the last change ({primary}+Z)"),
+                    can_undo,
+                );
+                if undo.clicked() {
+                    action = UiAction::Undo;
+                }
             },
         );
 
@@ -300,13 +380,22 @@ impl App {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.set_max_width(PAGE_W.min(ui.available_width()));
-                        match self.ed.tab {
-                            Tab::Behavior => self.behavior_tab(ui),
-                            Tab::General => self.general_tab(ui),
-                            Tab::About => about_tab(ui, accent),
-                            Tab::Menu => {}
-                        }
+                        // the page keeps a readable width and sits in the middle of the body
+                        let room = ui.available_rect_before_wrap();
+                        let width = PAGE_W.min(room.width());
+                        let page = egui::Rect::from_min_size(
+                            egui::pos2(room.min.x + (room.width() - width) / 2.0, room.min.y),
+                            Vec2::new(width, room.height()),
+                        );
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(page), |ui| {
+                            ui.add_space(4.0);
+                            match self.ed.tab {
+                                Tab::Behavior => self.behavior_tab(ui),
+                                Tab::General => self.general_tab(ui),
+                                Tab::About => about_tab(ui, accent),
+                                Tab::Menu => {}
+                            }
+                        });
                     });
             }
         });
@@ -316,43 +405,35 @@ impl App {
             egui::UiBuilder::new()
                 .max_rect(egui::Rect::from_min_max(
                     egui::pos2(foot.min.x + PAD, foot.min.y),
-                    egui::pos2(foot.max.x - QUIT_W, foot.max.y),
+                    egui::pos2(foot.max.x - PAD, foot.max.y),
                 ))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
             |ui| {
                 if !platform::is_trusted_cached() || !TAP_ACTIVE.load(Ordering::SeqCst) {
                     if platform::OS.needs_permission() {
-                        ui.label(RichText::new("⚠ Accessibility permission needed").color(BAD));
-                        if ui.small_button("Open System Settings").clicked() {
+                        status(ui, false, "Accessibility permission needed");
+                        if button(ui, Look::Soft, Some(symbols::ARROW_SQUARE_OUT), "Open System Settings").clicked() {
                             platform::open_accessibility_settings();
                         }
                     } else {
-                        ui.label(RichText::new("⚠ Mouse hook not running").color(BAD));
+                        status(ui, false, "Mouse hook not running");
                     }
                 } else if let Some((msg, _)) = &self.toast {
                     ui.label(RichText::new(msg).color(accent));
                 } else {
                     ui.label(
                         RichText::new(format!(
-                            "Esc cancels  ·  {primary}+Z undoes  ·  Save applies every tab at once"
+                            "Esc cancels  \u{b7}  {primary}+Z undoes  \u{b7}  Save applies every tab at once"
                         ))
-                        .monospace()
-                        .size(11.0)
-                        .color(MUTED),
+                        .size(12.0)
+                        .color(pal().muted),
                     );
                 }
             },
         );
-        ui.scope_builder(
-            egui::UiBuilder::new()
-                .max_rect(foot.shrink2(Vec2::new(GAP, 0.0)))
-                .layout(egui::Layout::right_to_left(egui::Align::Center)),
-            |ui| {
-                if bar_button(ui, "QUIT APP", true, None, BAD, FOOT_H - GAP).clicked() {
-                    action = UiAction::Quit;
-                }
-            },
-        );
+
+        // the sheet that asks again before quitting with unsaved changes (over everything else)
+        self.quit_dialog(&ctx, accent);
 
         match action {
             UiAction::Undo => self.undo_edit(&ctx),
@@ -365,7 +446,7 @@ impl App {
                 self.ed.stop_recording();
                 self.closing = Some(false);
             }
-            UiAction::Quit => self.quit(&ctx),
+            UiAction::Quit => self.request_quit(&ctx),
             UiAction::None => {}
         }
         self.history_observe(&ctx);
@@ -384,27 +465,34 @@ mod tests {
     #[test]
     fn areas_tile_the_window_without_overlap() {
         let c = card(CARD_SIZE[0], CARD_SIZE[1]);
-        let r = regions(c);
-        assert_eq!(r.top.min, c.min, "the bar starts at the window's corner");
-        assert_eq!(r.top.width(), c.width(), "the bar spans the window");
+        let r = regions(c, SIDE_W);
+        assert_eq!(
+            r.side.min, c.min,
+            "the sidebar starts at the window's corner"
+        );
+        assert_eq!(
+            r.side.height(),
+            c.height(),
+            "the sidebar is as high as the window"
+        );
+        assert_eq!(r.side.width(), SIDE_W);
+        assert_eq!(r.top.min.y, c.min.y, "the bar is at the top");
+        assert_eq!(
+            r.top.min.x, r.side.max.x,
+            "the bar starts where the sidebar ends"
+        );
+        assert_eq!(r.top.max.x, c.max.x);
         assert_eq!(r.foot.max, c.max, "the footer ends at the window's corner");
-        assert_eq!(r.foot.width(), c.width());
+        assert_eq!(r.foot.min.x, r.side.max.x);
         assert_eq!(r.top.height(), TOP_H);
         assert_eq!(r.foot.height(), FOOT_H);
-        assert_eq!(r.side.min.y, r.top.max.y, "the sidebar hangs from the bar");
-        assert_eq!(r.side.max.y, r.foot.min.y, "the sidebar ends at the footer");
-        assert_eq!(r.side.min.x, c.min.x);
-        assert_eq!(r.side.width(), SIDE_W);
         assert!(
             r.side.max.x + PAD <= r.body.min.x + 1e-3,
             "body clears the sidebar"
         );
+        assert!(r.top.max.y <= r.body.min.y + 1e-3, "body clears the bar");
         assert!(
-            r.top.max.y + PAD <= r.body.min.y + 1e-3,
-            "body clears the bar"
-        );
-        assert!(
-            r.body.max.y + PAD <= r.foot.min.y + 1e-3,
+            r.body.max.y <= r.foot.min.y + 1e-3,
             "body clears the footer"
         );
         assert!(c.contains_rect(r.body));
@@ -412,19 +500,42 @@ mod tests {
     }
 
     #[test]
+    fn a_folded_sidebar_gives_its_room_to_the_body() {
+        let c = card(CARD_SIZE[0], CARD_SIZE[1]);
+        let (open, folded) = (regions(c, SIDE_W), regions(c, RAIL_W));
+        assert_eq!(folded.side.width(), RAIL_W);
+        assert_eq!(folded.body.width() - open.body.width(), SIDE_W - RAIL_W);
+        const {
+            assert!(
+                RAIL_W >= CONTROL_H + 2.0 * GAP,
+                "an icon button fits the rail"
+            );
+        }
+    }
+
+    #[test]
+    fn the_page_fits_the_body_of_the_full_card() {
+        let r = regions(card(CARD_SIZE[0], CARD_SIZE[1]), SIDE_W);
+        assert!(
+            r.body.width() >= PAGE_W,
+            "the page is not squeezed on a full card"
+        );
+    }
+
+    #[test]
     fn the_body_is_inset_by_the_padding() {
-        let c = card(1120.0, 680.0);
-        let r = regions(c);
+        let c = card(1180.0, 740.0);
+        let r = regions(c, SIDE_W);
         assert_eq!(r.body.min.x - r.side.max.x, PAD);
         assert_eq!(c.max.x - r.body.max.x, PAD);
-        assert_eq!(r.body.min.y - r.top.max.y, PAD);
+        assert_eq!(r.body.min.y, r.top.max.y);
     }
 
     #[test]
     fn the_body_stays_usable_on_a_small_display() {
         // `card_size_for` never goes below this card
-        let r = regions(card(CARD_MIN_W, CARD_MIN_H));
-        assert!(r.body.height() >= 280.0, "body: {}", r.body.height());
+        let r = regions(card(CARD_MIN_W, CARD_MIN_H), SIDE_W);
+        assert!(r.body.height() >= 300.0, "body: {}", r.body.height());
         // the Menu tab needs a 320 point pie tile and an editor of at least 360 points beside it
         assert!(
             r.body.width() >= 320.0 + GAP + 360.0,
@@ -435,17 +546,18 @@ mod tests {
 
     #[test]
     fn the_full_card_gives_the_editor_as_much_room_as_before_the_sidebar() {
-        // the editor was 640 points wide in the 1000 point card without a sidebar
-        let r = regions(card(CARD_SIZE[0], CARD_SIZE[1]));
-        assert!(r.body.width() - 320.0 - GAP >= 540.0);
+        // the editor keeps the width it had before the sidebar grew
+        let r = regions(card(CARD_SIZE[0], CARD_SIZE[1]), SIDE_W);
+        assert!(r.body.width() - 320.0 - GAP >= 560.0);
     }
 
     #[test]
     fn the_areas_follow_the_card_when_it_moves() {
-        let a = regions(card(900.0, 600.0));
-        let moved = regions(card(900.0, 600.0).translate(Vec2::new(0.0, 13.0)));
+        let a = regions(card(900.0, 600.0), SIDE_W);
+        let moved = regions(card(900.0, 600.0).translate(Vec2::new(0.0, 13.0)), SIDE_W);
         assert_eq!(moved.top.min.y - a.top.min.y, 13.0);
         assert_eq!(moved.side.min.y - a.side.min.y, 13.0);
+        assert_eq!(moved.foot.max.y - a.foot.max.y, 13.0);
         assert_eq!(moved.body.height(), a.body.height());
     }
 
@@ -475,6 +587,7 @@ mod tests {
         app.settings_open = true;
         app.edit = crate::config::Config::default();
         let ctx = egui::Context::default();
+        crate::ui::fonts::install(&ctx);
         for tab in [Tab::Menu, Tab::Behavior, Tab::General, Tab::About] {
             app.ed.tab = tab;
             draw(&mut app, &ctx, 3);

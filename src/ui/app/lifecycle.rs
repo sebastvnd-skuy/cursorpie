@@ -47,6 +47,7 @@ impl App {
     /// closes and when the UI sleeps; `open_settings` makes a fresh copy of the live config.
     pub(super) fn release_editor(&mut self) {
         self.edit.profiles = Vec::new();
+        self.opened = None;
         self.history.reset(&self.edit);
         self.ed.reset_nav();
         self.ed.user_icons = Vec::new();

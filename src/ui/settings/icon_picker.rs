@@ -11,17 +11,16 @@
 
 use super::icon_catalog::{self, CATEGORIES, IconDef};
 use super::state::Ed;
-use super::widgets::{chip, tile};
 use crate::ui::draw::*;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
+use crate::ui::symbols;
 use eframe::egui::{self, Align2, Color32, FontId, Vec2};
 
 /// What happened in the picker this frame.
 pub(super) struct Picked {
     pub chosen: Option<String>,
     pub pick_file: bool,
-    pub back: bool,
 }
 
 /// Most image files decoded in one frame while the grid fills up. Tiles still waiting show "…"
@@ -47,79 +46,49 @@ pub(super) fn icon_picker(
     let mut out = Picked {
         chosen: None,
         pick_file: false,
-        back: false,
     };
     let mine = CATEGORIES.len() + 1;
 
-    // row 1: back + search
+    // row 1: search, and one "+" that opens a small menu for adding your own images
     ui.horizontal(|ui| {
-        if ui.button("‹ Back").clicked() {
-            out.back = true;
-        }
+        ui.spacing_mut().item_spacing.x = 8.0;
         ui.add(
             text_field(&mut ed.icon_query)
-                .desired_width((w - 84.0).max(80.0))
-                .hint_text("Search"),
+                .desired_width(w - CONTROL_H - 8.0)
+                .hint_text("Search icons"),
         );
-    });
-
-    // row 2: categories, one square chip each with its name (they wrap onto more rows if needed)
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::splat(4.0);
-        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-        if chip(ui, "", "All", ed.icon_cat == 0, accent).clicked() {
-            ed.icon_cat = 0;
-        }
-        for (k, c) in CATEGORIES.iter().enumerate() {
-            let on = ed.icon_cat == k + 1;
-            if chip(ui, "", c.title, on, accent)
-                .on_hover_text(format!("{} {}", c.glyph, c.title))
-                .clicked()
-            {
-                ed.icon_cat = k + 1;
+        let add = icon_button_look(ui, Look::Soft, symbols::PLUS, "Add your own icons", true);
+        menu_popup(&add, 232.0, |ui| {
+            if menu_item(ui, symbols::IMAGE, "Choose an image\u{2026}").clicked() {
+                out.pick_file = true;
             }
-        }
-        let on = ed.icon_cat == mine;
-        if chip(ui, "", "Mine", on, accent)
-            .on_hover_text("My icons (icons folder)")
-            .clicked()
-        {
-            ed.icon_cat = mine;
-            ed.reload_user_icons();
-        }
+            if menu_item(ui, symbols::FOLDER_OPEN, "Open the icons folder").clicked() {
+                icon_catalog::open_icons_folder();
+            }
+            if menu_item(ui, symbols::ARROW_CLOCKWISE, "Reload the icons folder").clicked() {
+                ed.reload_user_icons();
+            }
+        });
     });
 
-    // row 3: image / folder / reload
-    ui.horizontal(|ui| {
-        if ui
-            .button("Image…")
-            .on_hover_text("Choose an image file")
-            .clicked()
-        {
-            out.pick_file = true;
-        }
-        if ui
-            .button("Folder")
-            .on_hover_text("Open the icons folder. Drop PNG / JPG / WebP files in it.")
-            .clicked()
-        {
-            icon_catalog::open_icons_folder();
-        }
-        if ui
-            .button("Reload")
-            .on_hover_text("Reload the icons folder")
-            .clicked()
-        {
+    // row 2: the groups, as icons sharing the width (the name of each is its tooltip)
+    let mut groups: Vec<(char, &str)> = vec![(symbols::SQUARES_FOUR, "All")];
+    groups.extend(CATEGORIES.iter().map(|c| (c.icon, c.title)));
+    groups.push((symbols::IMAGE, "Mine (icons folder)"));
+    if let Some(k) = icon_tabs(ui, &groups, ed.icon_cat, accent, w) {
+        ed.icon_cat = k;
+        if k == mine {
             ed.reload_user_icons();
         }
-    });
+    }
 
     // row 4: free text
     ui.add(
         text_field(icon)
-            .desired_width((w - 20.0).max(60.0))
-            .hint_text("or type text / emoji"),
+            .desired_width(w)
+            .hint_text("The icon, or type text / emoji"),
     );
+    ui.add_space(GAP / 2.0);
 
     // grid content
     let q = ed.icon_query.trim().to_lowercase();
@@ -162,8 +131,8 @@ pub(super) fn icon_picker(
         return out;
     }
 
-    let (tile_w, gap) = (42.0_f32, GAP);
-    let cols = (((w - 10.0) + gap) / (tile_w + gap)).floor().max(1.0) as usize;
+    let (tile_w, gap) = (54.0_f32, 10.0_f32);
+    let cols = (((w - 12.0) + gap) / (tile_w + gap)).floor().max(1.0) as usize;
     let total_rows = cells.len().div_ceil(cols);
     let h = ui.available_height().max(80.0);
     let mut loads_left = LOADS_PER_FRAME;
@@ -188,23 +157,19 @@ pub(super) fn icon_picker(
                                     let (rect, resp) = tile(
                                         ui,
                                         Vec2::splat(tile_w),
-                                        icon.as_str() == def.glyph,
+                                        icon.as_str() == def.icon,
                                         accent,
                                     );
-                                    let fs = if def.glyph.chars().count() > 2 {
-                                        12.0
-                                    } else {
-                                        22.0
-                                    };
-                                    ui.painter().text(
+                                    draw_icon(
+                                        ui.painter(),
+                                        None,
+                                        def.icon,
                                         rect.center(),
-                                        Align2::CENTER_CENTER,
-                                        def.glyph,
-                                        FontId::proportional(fs),
-                                        Color32::from_white_alpha(235),
+                                        26.0,
+                                        pie_colors().ink,
                                     );
                                     if resp.on_hover_text(def.name).clicked() {
-                                        out.chosen = Some(def.glyph.to_string());
+                                        out.chosen = Some(def.icon.to_string());
                                     }
                                 }
                                 Cell::Mine(i) => {
@@ -228,9 +193,9 @@ pub(super) fn icon_picker(
                                         ui.painter().text(
                                             rect.center(),
                                             Align2::CENTER_CENTER,
-                                            "…",
+                                            "\u{2026}",
                                             FontId::proportional(18.0),
-                                            Color32::from_white_alpha(90),
+                                            pal().muted,
                                         );
                                     } else {
                                         draw_icon(
@@ -238,8 +203,8 @@ pub(super) fn icon_picker(
                                             tex.as_ref(),
                                             &path,
                                             rect.center(),
-                                            30.0,
-                                            255,
+                                            34.0,
+                                            pal().text,
                                         );
                                     }
                                     if resp.on_hover_text(file).clicked() {

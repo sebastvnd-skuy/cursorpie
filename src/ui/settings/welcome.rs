@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! +--------------------------------------------------------+
-//! | logo CURSORPIE                                    SKIP |  top bar
+//! | logo CursorPie                                    Skip |  top bar
 //! +--------------------------------------------------------+
 //! |                                                        |
 //! |   page 1  How it works    (hold - flick - release)     |
@@ -16,7 +16,7 @@
 //! |   page 3  All set         (launch at login, tips)      |
 //! |                                                        |
 //! +--------------------------------------------------------+
-//! | o o o                                  BACK    NEXT    |  footer
+//! | o o o                                  Back    Next    |  footer
 //! +--------------------------------------------------------+
 //! ```
 //!
@@ -31,7 +31,9 @@ use crate::platform::{self, Os};
 use crate::tap::TAP_ACTIVE;
 use crate::ui::app::App;
 use crate::ui::draw::*;
-use eframe::egui::{self, RichText, Vec2};
+use crate::ui::fonts;
+use crate::ui::symbols;
+use eframe::egui::{self, Vec2};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -39,9 +41,9 @@ use std::time::Duration;
 pub const PAGES: usize = 3;
 
 /// Height of the top bar.
-const TOP_H: f32 = 52.0;
+const TOP_H: f32 = 68.0;
 /// Height of the footer (page dots and buttons).
-const FOOT_H: f32 = 60.0;
+const FOOT_H: f32 = 76.0;
 /// Space between the bands and the page, and the page's padding.
 const PAD: f32 = GAP * 3.0;
 
@@ -116,18 +118,18 @@ pub fn setup_lead(os: Os) -> &'static str {
 pub fn gesture_steps(hold_ms: u64) -> [(&'static str, String); 3] {
     [
         (
-            "HOLD",
+            "Hold",
             format!(
                 "Press and hold the middle mouse button for {}.",
                 seconds(hold_ms)
             ),
         ),
         (
-            "FLICK",
+            "Flick",
             "The pie opens under the pointer. Move toward the slice you want.".into(),
         ),
         (
-            "RELEASE",
+            "Release",
             "Let go over a slice and CursorPie runs it: a shortcut, an app, a link.".into(),
         ),
     ]
@@ -203,24 +205,13 @@ impl App {
             card_rect.max,
         );
         let body = egui::Rect::from_min_max(
-            egui::pos2(card_rect.min.x + PAD, top.max.y + PAD),
-            egui::pos2(card_rect.max.x - PAD, foot.min.y - PAD),
+            egui::pos2(card_rect.min.x + PAD, top.max.y + GAP),
+            egui::pos2(card_rect.max.x - PAD, foot.min.y - GAP / 2.0),
         );
 
         let painter = ui.painter().clone();
         painter.add(window_shadow().as_shape(card_rect, CARD_RADIUS));
-        painter.rect_filled(card_rect, CARD_RADIUS, BG);
-        painter.rect_filled(top, TOP_RADIUS, CARD);
-        painter.rect_filled(foot, BOTTOM_RADIUS, CARD);
-        for y in [top.max.y, foot.min.y] {
-            painter.line_segment(
-                [
-                    egui::pos2(card_rect.min.x, y),
-                    egui::pos2(card_rect.max.x, y),
-                ],
-                egui::Stroke::new(1.0, BORDER),
-            );
-        }
+        painter.rect_filled(card_rect, CARD_RADIUS, pal().bg);
         window_outline(&painter, card_rect, accent);
 
         // dragging the empty part of the top bar moves the window
@@ -236,32 +227,26 @@ impl App {
         let mut step = Step::None;
 
         // ---------------------------------------------------------------- top bar
-        ui.scope_builder(
-            egui::UiBuilder::new()
-                .max_rect(top)
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-            |ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.add_space(PAD);
-                let (logo, _) = ui.allocate_exact_size(Vec2::splat(24.0), egui::Sense::hover());
-                draw_logo(ui.painter(), logo.center(), 11.5, accent);
-                ui.add_space(GAP + 2.0);
-                ui.label(
-                    RichText::new(APP_NAME.to_uppercase())
-                        .monospace()
-                        .size(14.0)
-                        .strong()
-                        .color(TEXT),
-                );
-            },
+        draw_logo(
+            &painter,
+            egui::pos2(top.min.x + PAD + 14.0, top.center().y),
+            14.0,
+            accent,
+        );
+        painter.text(
+            egui::pos2(top.min.x + PAD + 40.0, top.center().y),
+            egui::Align2::LEFT_CENTER,
+            APP_NAME,
+            egui::FontId::new(19.0, fonts::semibold()),
+            pal().text,
         );
         ui.scope_builder(
             egui::UiBuilder::new()
-                .max_rect(top.shrink2(Vec2::new(GAP + 2.0, 0.0)))
+                .max_rect(top.shrink2(Vec2::new(PAD, 0.0)))
                 .layout(egui::Layout::right_to_left(egui::Align::Center)),
             |ui| {
                 if page + 1 < PAGES
-                    && bar_button(ui, "SKIP", true, None, MUTED, CONTROL_H)
+                    && button(ui, Look::Plain, None, "Skip")
                         .on_hover_text("Close this guide. You can reopen it from the tray menu.")
                         .clicked()
                 {
@@ -295,12 +280,13 @@ impl App {
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
             |ui| {
                 // page dots
+                ui.spacing_mut().item_spacing.x = 4.0;
                 for i in 0..PAGES {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
                     let (r, color) = if i == page {
-                        (4.0, accent)
+                        (5.0, accent)
                     } else {
-                        (3.0, BORDER)
+                        (3.5, pal().border)
                     };
                     ui.painter().circle_filled(rect.center(), r, color);
                 }
@@ -311,20 +297,31 @@ impl App {
                 .max_rect(foot.shrink2(Vec2::new(PAD, 0.0)))
                 .layout(egui::Layout::right_to_left(egui::Align::Center)),
             |ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                let on_primary = on_accent(accent);
+                ui.spacing_mut().item_spacing.x = 8.0;
                 if page + 1 < PAGES {
-                    if bar_button(ui, "NEXT", true, Some(accent), on_primary, CONTROL_H).clicked() {
+                    if button(
+                        ui,
+                        Look::Primary(accent),
+                        Some(symbols::CARET_RIGHT),
+                        "Next",
+                    )
+                    .clicked()
+                    {
                         step = Step::Next;
                     }
-                } else if bar_button(ui, "GET STARTED", true, Some(accent), on_primary, CONTROL_H)
-                    .clicked()
+                } else if button(
+                    ui,
+                    Look::Primary(accent),
+                    Some(symbols::CHECK),
+                    "Get started",
+                )
+                .clicked()
                 {
                     step = Step::Finish {
                         open_settings: false,
                     };
                 }
-                if page > 0 && bar_button(ui, "BACK", true, None, TEXT, CONTROL_H).clicked() {
+                if page > 0 && button(ui, Look::Soft, None, "Back").clicked() {
                     step = Step::Back;
                 }
             },
@@ -362,7 +359,7 @@ impl App {
 
 /// A big heading with a line of secondary text under it.
 fn heading(ui: &mut egui::Ui, title: &str) {
-    ui.label(RichText::new(title).size(26.0).strong().color(TEXT));
+    ui.label(fonts::title(title, 28.0, pal().text));
     ui.add_space(GAP);
 }
 
@@ -374,40 +371,47 @@ fn intro_page(ui: &mut egui::Ui, accent: egui::Color32) {
         ui.add_space(GAP);
         ui.vertical(|ui| {
             ui.add_space(14.0);
-            ui.label(
-                RichText::new(format!("Welcome to {APP_NAME}"))
-                    .size(26.0)
-                    .strong()
-                    .color(TEXT),
-            );
+            ui.label(fonts::title(
+                format!("Welcome to {APP_NAME}"),
+                28.0,
+                pal().text,
+            ));
             muted(ui, TAGLINE);
             ui.add_space(GAP / 2.0);
-            badge(ui, &format!("V{VERSION}"), accent);
+            badge(ui, &format!("Version {VERSION}"), accent);
         });
     });
-    ui.add_space(PAD);
+    ui.add_space(GAP * 2.0);
     muted(
         ui,
         "Three moves open anything. Try them once you finish this guide:",
     );
     ui.add_space(GAP);
     let steps = gesture_steps(cfg().pie_hold_ms);
+    let icons = [
+        symbols::CURSOR_CLICK,
+        symbols::ARROWS_OUT,
+        symbols::CHECK_CIRCLE,
+    ];
     ui.columns(3, |cols| {
-        for (i, (col, (label, text))) in cols.iter_mut().zip(steps).enumerate() {
+        for (col, (icon, (label, text))) in cols.iter_mut().zip(icons.into_iter().zip(steps)) {
+            // columns lay out justified, which would stretch the words of the text
+            let left = egui::Layout::top_down(egui::Align::Min);
             card().show(col, |ui| {
-                ui.set_width(ui.available_width());
-                ui.set_min_height(120.0);
-                badge(ui, &format!("{}", i + 1), accent);
-                ui.add_space(GAP / 2.0);
-                ui.label(
-                    RichText::new(label)
-                        .monospace()
-                        .size(15.0)
-                        .strong()
-                        .color(TEXT),
-                );
-                ui.add_space(GAP / 2.0);
-                muted(ui, &text);
+                ui.with_layout(left, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.set_min_height(190.0);
+                    ui.add_space(GAP);
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(44.0), egui::Sense::hover());
+                    ui.painter()
+                        .circle_filled(rect.center(), 22.0, wash(accent, 0.12));
+                    fonts::paint_icon(ui.painter(), rect.center(), icon, 24.0, accent, true);
+                    ui.add_space(GAP);
+                    ui.label(fonts::title(label, 17.0, pal().text));
+                    ui.add_space(4.0);
+                    muted(ui, &text);
+                    ui.add_space(GAP);
+                })
             });
         }
     });
@@ -429,47 +433,62 @@ fn setup_page(ui: &mut egui::Ui) {
     };
     panel(ui, "Status", |ui| {
         if os.needs_permission() {
-            info_row(ui, |ui| {
-                muted(ui, "Accessibility");
-                if platform::is_trusted_cached() {
-                    ui.label(RichText::new("Granted").color(GOOD));
-                } else {
-                    ui.label(RichText::new("Not granted yet").color(BAD));
-                }
+            let granted = platform::is_trusted_cached();
+            info_row(ui, "Accessibility", |ui| {
+                status(
+                    ui,
+                    granted,
+                    if granted {
+                        "Granted"
+                    } else {
+                        "Not granted yet"
+                    },
+                );
             });
         }
-        info_row(ui, |ui| {
-            muted(
+        let name = if os.needs_permission() {
+            "Event tap"
+        } else {
+            "Mouse hook"
+        };
+        info_row(ui, name, |ui| {
+            status(
                 ui,
-                if os.needs_permission() {
-                    "Event tap"
+                running,
+                if running {
+                    "Running"
                 } else {
-                    "Mouse hook"
+                    "Not running (retrying every 2 s)"
                 },
             );
-            if running {
-                ui.label(RichText::new("Running").color(GOOD));
-            } else {
-                ui.label(RichText::new("Not running (retrying every 2 s)").color(BAD));
-            }
         });
     });
     if os.needs_permission() && !ready {
         ui.horizontal(|ui| {
-            let b = egui::Button::new("Open Accessibility settings")
-                .min_size(Vec2::new(0.0, CONTROL_H));
-            if ui.add(b).clicked() {
+            if button(
+                ui,
+                Look::Soft,
+                Some(symbols::ARROW_SQUARE_OUT),
+                "Accessibility settings",
+            )
+            .clicked()
+            {
                 platform::open_accessibility_settings();
             }
-            let b = egui::Button::new("Open Input Monitoring settings")
-                .min_size(Vec2::new(0.0, CONTROL_H));
-            if ui.add(b).clicked() {
+            if button(
+                ui,
+                Look::Soft,
+                Some(symbols::ARROW_SQUARE_OUT),
+                "Input Monitoring settings",
+            )
+            .clicked()
+            {
                 platform::open_input_monitoring_settings();
             }
         });
     } else if ready {
         ui.horizontal(|ui| {
-            badge(ui, "READY", GOOD);
+            status(ui, true, "Ready");
             muted(ui, "CursorPie can see your mouse. Continue when you like.");
         });
     }
@@ -483,22 +502,25 @@ fn ready_page(ui: &mut egui::Ui, w: &mut Welcome, accent: egui::Color32) -> bool
     let hold = cfg().settings_hold_ms;
     panel(ui, "Good to know", |ui| {
         for tip in tips(os, hold) {
-            ui.label(RichText::new(format!("-  {tip}")).color(MUTED));
-            ui.add_space(2.0);
+            note(ui, &tip);
         }
     });
     panel(ui, "Startup", |ui| {
-        toggle(
+        toggle_row(
             ui,
             &mut w.launch_at_login,
             "Launch CursorPie at login",
+            os.startup_hint(),
             accent,
         );
-        ui.add_space(2.0);
-        muted(ui, os.startup_hint());
     });
-    let b = egui::Button::new("Open Settings now").min_size(Vec2::new(0.0, CONTROL_H));
-    ui.add(b).clicked()
+    button(
+        ui,
+        Look::Soft,
+        Some(symbols::SLIDERS_HORIZONTAL),
+        "Open Settings now",
+    )
+    .clicked()
 }
 
 #[cfg(test)]
@@ -550,6 +572,7 @@ mod tests {
     #[test]
     fn every_page_draws_without_panicking() {
         let ctx = egui::Context::default();
+        crate::ui::fonts::install(&ctx);
         let accent = egui::Color32::from_rgb(64, 156, 255);
         let mut w = Welcome::new(false);
         for page in 0..PAGES {

@@ -1,5 +1,6 @@
 //! Drawing of the pie menu (one ring at a time; submenus re-center the same window).
 
+pub mod glass;
 mod view;
 
 use crate::config::{MAX_ITEMS, cfg};
@@ -15,8 +16,10 @@ use view::PieView;
 const OPEN_SECS: f32 = 0.22;
 /// Seconds the pie takes to fade away. Closing is quicker than opening: the action already ran.
 const CLOSE_SECS: f32 = 0.12;
-/// Slice color at rest (dark glass); the hovered slice blends toward the accent.
-const SLICE_REST: [u8; 3] = [22, 24, 30];
+/// Center disc while the side buttons follow the other pie: the same white with a pink cast.
+const CORE_INACTIVE: Color32 = Color32::from_rgb(255, 238, 238);
+/// The same in the dark appearance.
+const CORE_INACTIVE_DARK: Color32 = Color32::from_rgb(52, 30, 32);
 /// Points the ring may grow past [`pie_outer`] while it overshoots, so it is never cut off by the
 /// edge of the window (the window leaves 10 points of margin).
 const OVERSHOOT_ROOM: f32 = 8.0;
@@ -37,6 +40,7 @@ impl App {
             PieView::new(&c, self.profile, &self.path)
         };
         let total = view.items.len().max(1);
+        let glass = glass::Glass::of(&cfg());
 
         let (anim, mut moving) = step_linear(
             self.anim,
@@ -103,16 +107,24 @@ impl App {
                 let live = !view.side.shown || view.side.owner;
                 let a = |v: f32, f: f32| (v * f).clamp(0.0, 255.0) as u8;
 
-                // soft shadow behind the ring: a few stacked discs fall off smoothly, which
-                // looks like a blur without needing one
-                for k in 0..5 {
-                    let grow = 1.5 + 1.6 * (4 - k) as f32;
-                    painter.circle_filled(
-                        c + Vec2::new(0.0, 2.0),
-                        r + grow,
-                        Color32::from_black_alpha(a(15.0, fade)),
-                    );
-                }
+                // soft shadow behind the ring: one blurred shape, so it falls off smoothly (a stack
+                // of discs leaves a visible step at the edge of each). A white ring needs it to
+                // stand off a white page; glass needs less, it is see-through.
+                painter.add(
+                    egui::Shadow {
+                        offset: [0, 3],
+                        blur: 8,
+                        spread: 0,
+                        color: Color32::from_black_alpha(a(
+                            if glass.is_some() { 26.0 } else { 40.0 },
+                            fade,
+                        )),
+                    }
+                    .as_shape(
+                        egui::Rect::from_center_size(c, Vec2::splat(r * 2.0)),
+                        egui::CornerRadius::same(u8::MAX),
+                    ),
+                );
 
                 let sl = TAU / total as f32;
                 let gap = if total > 1 { 0.05 } else { 0.0 };
@@ -129,27 +141,51 @@ impl App {
                     let rr = (inner + (r + 5.0 * h - inner) * lpe).min(room);
 
                     let t = (h * 0.95 + m * 0.4).min(1.0);
+                    let rest = pie_colors().slice;
                     let col = if live {
-                        mix(SLICE_REST, view.accent, t)
+                        mix(rest, view.accent, t)
                     } else {
                         // the active mode is tinted with the inactive color, hovering still uses the accent
                         mix(
-                            mix(SLICE_REST, view.inactive, (m * 0.4).min(1.0)),
+                            mix(rest, view.inactive, (m * 0.4).min(1.0)),
                             view.accent,
                             (h * 0.95).min(1.0),
                         )
                     };
-                    let fill =
-                        Color32::from_rgba_unmultiplied(col[0], col[1], col[2], a(232.0, lf));
+                    // icon and name: dark on a light slice, the readable color on the accent
+                    let ink = pie_colors()
+                        .ink
+                        .lerp_to_gamma(on_accent(accent), (h * 0.95).min(1.0));
                     let (s0, s1) = (start + gap / 2.0, start + sl - gap / 2.0);
-                    painter.add(ring_slice(&painter, c, inner, rr, s0, s1, fill));
-                    // A hairline around the slice keeps its shape readable on any background. A
-                    // lone slice is a full ring: its outline would draw the seam as a line.
-                    if total > 1 {
-                        painter.add(Shape::closed_line(
-                            ring_slice_outline(c, inner, rr, s0, s1),
-                            Stroke::new(1.0, Color32::from_white_alpha(a(20.0 + 40.0 * h, lf))),
-                        ));
+                    if let Some(g) = glass {
+                        glass::slice(
+                            &painter,
+                            c,
+                            (inner, rr),
+                            (s0, s1),
+                            col,
+                            h,
+                            lf,
+                            g,
+                            total == 1,
+                        );
+                    } else {
+                        let fill =
+                            Color32::from_rgba_unmultiplied(col[0], col[1], col[2], a(242.0, lf));
+                        painter.add(ring_slice(&painter, c, inner, rr, s0, s1, fill));
+                        // A hairline around the slice keeps its shape readable on any background.
+                        // A lone slice is a full ring: its outline would draw the seam as a line.
+                        if total > 1 {
+                            let edge = if dark() {
+                                Color32::from_white_alpha(a(22.0 + 24.0 * h, lf))
+                            } else {
+                                Color32::from_black_alpha(a(16.0 + 20.0 * h, lf))
+                            };
+                            painter.add(Shape::closed_line(
+                                ring_slice_outline(c, inner, rr, s0, s1),
+                                Stroke::new(1.0, edge),
+                            ));
+                        }
                     }
                     // a bright bar grows along the rim of the hovered slice
                     if h > 0.02 && sl > 0.2 {
@@ -160,7 +196,7 @@ impl App {
                             rr,
                             s0 + 0.05,
                             s1 - 0.05,
-                            Color32::from_white_alpha(a(120.0 * h, lf)),
+                            on_accent(accent).gamma_multiply(0.55 * h * lf),
                         ));
                     }
 
@@ -173,21 +209,21 @@ impl App {
                         icon,
                         tp - Vec2::new(0.0, r * 0.04),
                         r * 0.30 * (1.0 + 0.15 * h),
-                        a(255.0, lf),
+                        ink.gamma_multiply(lf),
                     );
                     painter.text(
                         tp + Vec2::new(0.0, r * 0.17),
                         Align2::CENTER_CENTER,
                         name,
                         FontId::proportional((r * 0.09).max(9.0)),
-                        Color32::from_white_alpha(a(170.0 + 60.0 * h, lf)),
+                        ink.gamma_multiply(lf * (0.78 + 0.22 * h)),
                     );
                     if *is_sub {
                         // dot on the rim: drag outward across it to open the submenu
                         painter.circle_filled(
                             c + dir * (rr - 7.0),
                             2.5,
-                            Color32::from_white_alpha(a(210.0, lf)),
+                            ink.gamma_multiply(lf * 0.8),
                         );
                     }
                 }
@@ -203,36 +239,36 @@ impl App {
                 } else if view.is_app {
                     (accent, 2.5)
                 } else {
-                    (Color32::from_white_alpha(a(28.0, fade)), 1.0)
+                    (Color32::from_black_alpha(a(14.0, fade)), 1.0)
                 };
                 painter.circle_stroke(c, r, Stroke::new(ring_w, ring_col));
 
                 // center disc: active mode (or the parent submenu icon) + "hold for settings" progress
                 let core = inner * 0.86;
-                painter.circle_filled(
-                    c,
-                    core,
-                    if live {
-                        Color32::from_rgba_unmultiplied(14, 15, 18, a(235.0, fade))
+                let disc = if live {
+                    pie_colors().core
+                } else if dark() {
+                    CORE_INACTIVE_DARK
+                } else {
+                    CORE_INACTIVE
+                };
+                if let Some(g) = glass {
+                    glass::core(&painter, c, core, fade, Some(disc), g);
+                } else {
+                    painter.circle_filled(c, core, disc.gamma_multiply(fade));
+                    let edge = if dark() {
+                        Color32::from_white_alpha(a(22.0, fade))
                     } else {
-                        Color32::from_rgba_unmultiplied(36, 14, 14, a(235.0, fade))
-                    },
-                );
-                painter.circle_stroke(
-                    c,
-                    core,
-                    Stroke::new(1.0, Color32::from_white_alpha(a(26.0, fade))),
-                );
+                        Color32::from_black_alpha(a(16.0, fade))
+                    };
+                    painter.circle_stroke(c, core, Stroke::new(1.0, edge));
+                }
                 if let Some(t) = app_tex.as_ref() {
-                    // the app's icon as a white glyph
-                    draw_icon(
-                        &painter,
-                        Some(t),
-                        "",
-                        c,
-                        core * 1.3,
-                        a(if live { 215.0 } else { 110.0 }, fade),
-                    );
+                    // the app's icon, a white glyph, tinted dark
+                    let tint = pie_colors()
+                        .ink
+                        .gamma_multiply(fade * if live { 0.85 } else { 0.45 });
+                    draw_texture(&painter, t, c, core * 1.3, tint);
                 } else {
                     draw_icon(
                         &painter,
@@ -240,7 +276,9 @@ impl App {
                         &view.center_icon,
                         c,
                         core * 1.0,
-                        a(if live { 150.0 } else { 80.0 }, fade),
+                        pie_colors()
+                            .ink
+                            .gamma_multiply(fade * if live { 0.6 } else { 0.3 }),
                     );
                 }
                 if self.pie_open

@@ -129,6 +129,7 @@ pub fn run() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             // runs on the main thread inside the running event loop
+            ui::fonts::install(&cc.egui_ctx); // Inter and the icon font, before the first frame
             platform::set_accessory_policy(); // no Dock icon
             // no OS frame: on Windows the DWM would draw a white box and a border around the pie
             if let Some(handle) = ui::app::native_handle(cc) {

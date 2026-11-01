@@ -66,7 +66,7 @@
 //! 3. `tap/resolve.rs`: decide in `select` what releasing over it does.
 //! 4. `ui/pie/view.rs` and `ui/pie/mod.rs`: how it is drawn; `ui/settings/pie_designer.rs`
 //!    for the designer.
-//! 5. `ui/settings/inspector.rs`: the kind chips and the editor body.
+//! 5. `ui/settings/inspector.rs`: the kind control (segmented) and the editor body.
 //!
 //! ## Add a Settings tab
 //!
@@ -115,34 +115,36 @@
 //!
 //! ## Keep the Settings look consistent
 //!
-//! The Settings window is a dense, quiet "tool" UI: a graphite window with rounded corners, hairline
-//! borders and almost square controls (see `docs/UI_DESIGN.md`). When you add or change a widget:
+//! The Settings window is modern flat: light, roomy, with large rounded cards, pill chips and one
+//! icon set (see `docs/UI_DESIGN.md`). When you add or change a widget:
 //!
-//! 1. Take colors, radius, spacing and height from `ui/settings/theme.rs` (`BG`, `CARD`, `IDLE`,
-//!    `HOT`, `BORDER`, `RADIUS`, `GAP`, `CONTROL_H`). Do not write `Color32::from_rgb(..)`, a corner
-//!    radius or a pixel height in an editor. Text on the accent color uses `on_accent(accent)`,
-//!    because the user picks the accent and it can be light.
-//! 2. Every button, chip, input and list row is `CONTROL_H` (32) high, and there is one gap, `GAP`
-//!    (8), between panels and between controls. Do not add your own spacing numbers.
-//! 3. A tab is a stack of `panel(ui, "Title", ..)` cards (two columns with `ui.columns(2, ..)` when
-//!    it is long). Use the widgets in `ui/settings/widgets.rs` (`chip`, `tile`, `choice`, `toggle`,
-//!    `text_field`, `badge`, `info_row`) instead of egui's defaults (`radio_value`, `checkbox`,
-//!    `TextEdit::singleline`): they share one marker style and one height. Rows of plain text and
-//!    links go in `info_row` (22 px), not in a bare `ui.horizontal` (32 px).
+//! 1. Take colors from `pal()` (`pal().bg`, `.card`, `.idle`, `.hot`, ...: Settings is light or
+//!    dark, so never keep a color in a `const`), and radius, spacing and height from
+//!    `ui/settings/theme.rs` (`CONTROL_R`, `PANEL_R`, `GAP`, `CONTROL_H`). Do not write `Color32::from_rgb(..)`, a
+//!    corner radius or a pixel height in an editor. Text on the accent color uses
+//!    `on_accent(accent)`, because the user picks the accent and it can be light.
+//! 2. Every button, chip, input and list row is `CONTROL_H` (36) high, and spacing is `GAP` (12) or
+//!    `SECTION_GAP` (24). Do not add your own spacing numbers.
+//! 3. A tab is a stack of `panel(ui, "Title", ..)` cards. Use the widgets in
+//!    `ui/settings/widgets.rs` (`button`, `segmented`, `icon_tabs`, `select`, `menu_popup`, `tile`, `switch`, `slider_row`, `toggle_row`,
+//!    `choice_row`, `text_field`, `badge`, `info_row`) instead of egui's defaults (`radio_value`,
+//!    `checkbox`, `Slider`, `TextEdit::singleline`): they share one shape and one height.
 //! 4. Navigation lives in the sidebar and the Undo / Redo / Cancel / Save buttons in the top bar
-//!    (`window.rs`), Quit and messages in the footer. A new tab is one more entry in the `sections`
-//!    array of the sidebar (a title and a one-line hint) and one more arm in the body `match`.
-//!    Start a page with `page_header`, and keep it to one column of `panel`s: the body is capped at
-//!    680 pt wide.
+//!    (`window.rs`), Quit at the bottom of the sidebar and messages in the footer. A new tab is one
+//!    more entry in the `sections` array and `section_info`, and one more arm in the body `match`.
+//!    Keep a page to one column of `panel`s: the body is capped at 720 pt wide.
 //! 5. Text is `TEXT` (primary) or `MUTED` (secondary, for labels and hints). An option that is off
-//!    keeps `TEXT`: dim text reads as disabled. Do not rely on `.strong()` for a color, egui takes
-//!    it from `widgets.active.fg_stroke`; set the color explicitly.
-//! 6. Use words, not emoji, on buttons and chips. Single glyphs are only for tiny icon buttons
-//!    (`+`, `✖`, `◀`, `▶`); give those a tooltip.
-//! 7. Focus is the accent color: a 2 px border for the selected tile, a 1 px outline for the
-//!    hovered one. Do not add shadows or gradients inside panels.
-//! 8. Chrome labels (panel titles, badges) are small monospace capitals; text you read or edit, sidebar entries included,
-//!    is the normal proportional font in sentence case. `card_title` and `badge` do this for you.
+//!    keeps `TEXT`: dim text reads as disabled. Set colors explicitly rather than with `.strong()`.
+//! 6. **Icons are the icon set, never letters or emoji.** Name an icon in `ui/symbols.rs` and draw it
+//!    with `fonts::paint_icon` or `widgets::icon_button`; give an icon-only button a tooltip. A
+//!    button with words may carry an icon beside them.
+//! 7. **A popup is a sheet or a popover.** Use `widgets::sheet` for something that needs the whole
+//!    window's attention (a picker, a long form, a confirmation such as the question
+//!    before quitting, see `ui/settings/quit_dialog.rs`) and `widgets::popover` for a few choices under the
+//!    button that opened it. A list of choices is `widgets::select`, never `egui::ComboBox` (its list ignores the look). Do not open a bare `egui::Area` or `Window` for
+//!    anything else.
+//! 8. Titles use the semibold family (`fonts::title`); everything else is the normal font in
+//!    sentence case.
 //! 9. Anything with an edge that you draw by hand goes through `ui::draw` (`ring_slice`,
 //!    `arc_points`, `snap_rect`); a raw `egui::Mesh` is not anti-aliased.
 //!

@@ -6,8 +6,10 @@
 
 use crate::mouse::{self, MouseProfile, Recognition};
 use crate::ui::app::App;
+use crate::ui::draw::rgb;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
+use crate::ui::symbols;
 use eframe::egui::{self, RichText};
 use std::time::Duration;
 
@@ -58,75 +60,89 @@ impl App {
         let mut want = Wanted::default();
         let scanning = self.ed.scan.is_some();
         let pressed = self.ed.scan.as_ref().map(mouse::Scan::pressed);
+        let accent = rgb(self.edit.accent);
 
         panel(ui, "Mouse", |ui| {
             match book.active_profile() {
                 Some(p) => {
-                    info_row(ui, |ui| {
-                        muted(ui, "In use");
-                        ui.label(RichText::new(&p.name).color(TEXT));
+                    info_row(ui, "In use", |ui| {
+                        ui.label(RichText::new(&p.name).color(pal().text));
                     });
-                    info_row(ui, |ui| {
-                        muted(ui, "Extra buttons");
-                        ui.label(RichText::new(p.buttons().len().to_string()).color(TEXT));
+                    info_row(ui, "Extra buttons", |ui| {
                         if p.is_scanned() {
-                            ui.label(RichText::new("scanned").color(GOOD));
+                            status(ui, true, "scanned");
                         } else {
-                            ui.label(RichText::new("reported by the system").color(MUTED));
+                            ui.label(RichText::new("reported by the system").color(pal().muted));
                         }
+                        ui.label(RichText::new(p.buttons().len().to_string()).color(pal().text));
                     });
-                    muted(ui, &names_of(&p.buttons()));
+                    note(ui, &names_of(&p.buttons()));
                 }
-                None => muted(
+                None => note(
                     ui,
                     "No mouse found yet. Scan it to tell CursorPie which buttons it has.",
                 ),
             }
 
             if let Some(list) = &pressed {
-                ui.add_space(4.0);
-                ui.label(RichText::new("Press every extra button of your mouse once.").color(TEXT));
-                muted(
+                note(
                     ui,
                     &format!(
-                        "Heard so far: {}. The buttons do nothing else while the scan runs.",
+                        "Press every extra button of your mouse once. Heard so far: {}. The buttons do nothing else while the scan runs.",
                         names_of(list)
                     ),
                 );
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(!list.is_empty(), egui::Button::new("Done"))
-                        .clicked()
+                actions(ui, |ui| {
+                    if button_if(
+                        ui,
+                        !list.is_empty(),
+                        Look::Primary(accent),
+                        Some(symbols::CHECK),
+                        "Done",
+                    )
+                    .clicked()
                     {
                         want.done = true;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if button(ui, Look::Soft, None, "Cancel").clicked() {
                         want.cancel = true;
                     }
                 });
             } else {
-                ui.horizontal(|ui| {
-                    if ui.button("Scan this mouse").clicked() {
+                actions(ui, |ui| {
+                    if button(
+                        ui,
+                        Look::Soft,
+                        Some(symbols::MOUSE_SIMPLE),
+                        "Scan this mouse",
+                    )
+                    .clicked()
+                    {
                         want.start_scan = true;
                     }
-                    if ui.button("Detect again").clicked() {
+                    if button(
+                        ui,
+                        Look::Soft,
+                        Some(symbols::ARROW_CLOCKWISE),
+                        "Detect again",
+                    )
+                    .clicked()
+                    {
                         want.detect = true;
                     }
                 });
-                muted(
+                note(
                     ui,
                     "Detect again asks the system which mice are connected. Scan finds the buttons by pressing them: use it when the list is wrong or empty.",
                 );
             }
 
             if book.mice.len() > 1 || (book.mice.len() == 1 && book.active_profile().is_none()) {
-                ui.add_space(4.0);
-                muted(ui, "Mice CursorPie knows");
                 for p in &book.mice {
                     mouse_row(ui, p, p.id == book.active, now, &mut want);
                 }
             }
-            muted(
+            note(
                 ui,
                 "Saved at once, not with Save. Slices set to 'Side buttons' can then use every button listed here.",
             );
@@ -167,18 +183,18 @@ impl App {
 
 /// One line of the list of known mice.
 fn mouse_row(ui: &mut egui::Ui, p: &MouseProfile, in_use: bool, now: u64, want: &mut Wanted) {
-    info_row(ui, |ui| {
-        let color = if in_use { TEXT } else { MUTED };
-        ui.label(RichText::new(&p.name).color(color));
-        ui.label(
-            RichText::new(format!(
-                "{} extra · {}",
-                p.buttons().len(),
-                ago(now.saturating_sub(p.last_seen))
-            ))
-            .color(MUTED),
-        );
-        if ui.small_button("Forget").clicked() {
+    let detail = format!(
+        "{} extra \u{b7} {}",
+        p.buttons().len(),
+        ago(now.saturating_sub(p.last_seen))
+    );
+    let name = if in_use {
+        format!("{} (in use)", p.name)
+    } else {
+        p.name.clone()
+    };
+    row(ui, &name, &detail, |ui| {
+        if button(ui, Look::Plain, Some(symbols::TRASH), "Forget").clicked() {
             want.forget = Some(p.id.clone());
         }
     });

@@ -40,6 +40,12 @@ pub const INSPIRED_BY: (&str, &str) = ("Kando", "https://github.com/kando-menu/k
 
 /// (name, url, license) of the main open-source building blocks.
 pub const CREDITS: &[(&str, &str, &str)] = &[
+    ("Inter (font)", "https://rsms.me/inter/", "SIL OFL 1.1"),
+    (
+        "Phosphor Icons",
+        "https://github.com/phosphor-icons/core",
+        "MIT",
+    ),
     (
         "egui / eframe",
         "https://github.com/emilk/egui",

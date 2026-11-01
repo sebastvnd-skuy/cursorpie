@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## 0.7.0
+- **Quit asks before it quits.** Pressing **Quit CursorPie** while Settings is open (sidebar, General, or the
+  tray / menu bar icon) opens a sheet instead of quitting at once. With nothing unsaved it asks "Do you really
+  want to quit?" (**Cancel** / **Quit CursorPie**). With unsaved changes it says so and offers **Keep editing**,
+  **Save and quit** and **Quit without saving**. Esc, the close button and a click outside mean "not yet". A
+  quit from the tray while Settings is open brings the window to the front to ask; with Settings closed there
+  is no window, so it quits at once. Cancel, Esc and the window's close button still discard edits without
+  asking, as before.
+- **Pressing the trigger while Settings is open now shows it.** The pie is off while Settings is open, and a
+  Settings window hidden behind other windows made the press look like it did nothing. The press now brings
+  Settings to the front (also from minimized), asks the system to draw attention to it and says in its footer
+  why the pie did not open.
+- **A new look: modern flat, light and roomy.** Settings, the welcome guide and the pie are redrawn with large
+  rounded cards, pill buttons, more space, a full-height sidebar with icons and a calmer palette. The default
+  accent is indigo, the color of the logo (an existing `config.json` keeps the accent it has).
+- **One kind of popup.** Adding a slice and choosing an icon are sheets over a dimmed window; New, Rename,
+  All apps and Share are popovers under their button. All close with Esc or a click outside.
+- **Inter and Phosphor.** The interface uses the Inter font and one icon set everywhere, both embedded in the
+  binary (about 340 KB, MIT and OFL licenses, see About). Slice icons are named `ico:<name>` in `config.json`;
+  the letter icons of older files (`C/V`, `Tab`, `>_`...) are shown as the matching picture.
+- **The pie is light** to match Settings; the hovered slice and its icon follow the accent.
+- **Light and dark.** Settings and the pie have a dark appearance. Behavior, Look & feel offers System (the
+  default), Light and Dark, and the window changes as soon as you choose.
+- **Glass pie.** Behavior, Pie material: the slices can be frosted glass, with sliders for Clearness, Frost and
+  Shine and a preview. The frost is drawn, not a blur of the desktop behind the pie.
+- **Settings layout.** The page is centered instead of leaving an empty strip on the right, and the sidebar
+  folds to icons (button next to the title, or Ctrl / Cmd + B). Settings now opens folded (compact) by default.
+- **Calmer choices.** The pills are gone: a choice between a few options (Appearance, Pie material, slice kind)
+  is a segmented control, the kind of an action is a drop-down with icons, the icon picker's groups are icon
+  tabs sharing one line, and its Image / Folder / Reload buttons are one "+" menu.
+- **Smoother glass.** The glass pie is painted as continuous gradients instead of five flat bands and a
+  polygon outline: the frost, the sheen and the rim are one smooth field, and the rim catches a light from the
+  top left like Apple's Liquid Glass. The pie's shadow is a single blurred shape.
+- **Drop-down lists and popups** share the look of the rest of Settings (they were drawn in egui's dark style,
+  with black text fields).
+
 ## 0.6.1
 
 - **macOS: "Open app" now opens the app on the screen you clicked.** With two screens, an app that already had

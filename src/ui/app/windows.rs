@@ -19,6 +19,7 @@ impl App {
         let _t = diag::timed!("ui", "close_settings", save = save);
         self.ed.stop_recording();
         self.ed.scan = None;
+        self.confirm_quit = false;
         if save {
             let new = self.edit.clone().sanitize();
             let login = new.launch_at_login;
@@ -82,6 +83,7 @@ impl App {
         self.edit = cfg().clone();
         self.edit.launch_at_login = platform::launch_at_login_enabled();
         self.history.reset(&self.edit); // undo starts from what Settings opened with
+        self.opened = Some(self.edit.clone()); // what "unsaved" is measured against
 
         let size = self.place_card_window(ctx, at, card_size_for);
         self.card_size = size;
@@ -193,6 +195,14 @@ impl App {
                 x = x,
                 y = y
             );
+            // Settings may be behind other windows or minimized: without a sign the press looks
+            // like it did nothing. Bring the window forward and say why the pie did not open.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
+                egui::UserAttentionType::Informational,
+            ));
+            self.say("Settings is open, so the pie is off. Save or Cancel to use the pie again.");
             return;
         }
         self.win = cfg().pie_size;
@@ -352,7 +362,7 @@ impl App {
                     eprintln!("CursorPie: could not update launch-at-login: {e}");
                 }
             }
-            "quit" => self.quit(ctx),
+            "quit" => self.request_quit(ctx),
             _ => {}
         }
     }

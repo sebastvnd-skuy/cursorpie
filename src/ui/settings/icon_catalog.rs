@@ -1,186 +1,203 @@
 //! Built-in icon catalog plus the user's own icons.
 //!
-//! - `CATEGORIES`: glyphs (emoji / symbols / short text) usable as slice icons. To add one,
-//!   append a line `ic("glyph", "Name", "search keywords")`.
+//! - `CATEGORIES`: icons of the built-in set ([`symbols`]) usable as slice icons, each stored in
+//!   the config as `ico:<name>`. To add one, append a line `ic("ico:name", "Name", "search keywords")`
+//!   (the name must exist in `symbols.rs`; a test checks it).
 //! - `scan_user_icons()`: images (.png .jpg .jpeg .webp) found in the folder
 //!   `~/Library/Application Support/CursorPie/icons/`.
 //!
-//! Note: glyphs are drawn with egui's bundled fonts (monochrome Noto Emoji + emoji-icon-font).
-//! If a glyph shows up as an empty box, remove its line or use an image from the icons folder instead.
+//! Any other text or emoji can still be typed into the picker's text field; it is drawn with the
+//! text font.
 
 use crate::config::{icons_dir, tilde};
 use crate::platform;
+use crate::ui::symbols;
 use std::fs;
 use std::path::PathBuf;
 
 /// One catalog icon.
 pub struct IconDef {
-    pub glyph: &'static str,
+    /// The slice icon string, `ico:<name>`.
+    pub icon: &'static str,
     pub name: &'static str,
-    /// kata kunci huruf kecil, dipisah spasi
+    /// lower-case search keywords, separated by spaces
     pub tags: &'static str,
 }
 
-/// A named group of icons shown as a chip in the picker.
+/// A named group of icons shown as a tab in the picker.
 pub struct Category {
     pub title: &'static str,
-    pub glyph: &'static str,
+    /// The icon on its tab.
+    pub icon: char,
     pub icons: &'static [IconDef],
 }
 
-/// Shorthand used to write the catalog.
-const fn ic(glyph: &'static str, name: &'static str, tags: &'static str) -> IconDef {
-    IconDef { glyph, name, tags }
+/// Shorthand used to write the catalog: the icon's name in the icon set, a title and keywords.
+const fn ic(icon: &'static str, name: &'static str, tags: &'static str) -> IconDef {
+    IconDef { icon, name, tags }
 }
 
 /// The built-in catalog. Add icons here.
 pub const CATEGORIES: &[Category] = &[
     Category {
         title: "Edit",
-        glyph: "✏",
+        icon: symbols::PENCIL_SIMPLE,
         icons: &[
-            ic("✂", "Cut", "cut scissors"),
-            ic("📄", "Copy", "copy duplicate page"),
-            ic("📋", "Paste", "paste clipboard"),
-            ic("↩", "Undo", "undo back"),
-            ic("↪", "Redo", "redo forward"),
-            ic("🔍", "Find", "search find spotlight"),
-            ic("✏", "Edit", "pencil write edit"),
-            ic("💾", "Save", "save disk"),
-            ic("🗑", "Delete", "trash delete remove"),
-            ic("📌", "Pin", "pin"),
-            ic("🔗", "Link", "link url chain"),
-            ic("📎", "Attach", "clip attach"),
-            ic("✔", "Done", "check ok yes tick"),
-            ic("✖", "Close", "close cancel x"),
-            ic("🔖", "Bookmark", "bookmark"),
-            ic("🏷", "Tag", "tag label"),
+            ic("ico:scissors", "Cut", "cut scissors"),
+            ic("ico:copy", "Copy", "copy duplicate"),
+            ic("ico:clipboard-text", "Paste", "paste clipboard"),
+            ic("ico:arrow-u-up-left", "Undo", "undo back"),
+            ic("ico:arrow-u-up-right", "Redo", "redo forward"),
+            ic("ico:pencil-simple", "Edit", "pencil write edit"),
+            ic("ico:trash", "Delete", "trash delete remove"),
+            ic("ico:push-pin", "Pin", "pin"),
+            ic("ico:link", "Link", "link url chain"),
+            ic("ico:paperclip", "Attach", "clip attach"),
+            ic("ico:check", "Done", "check ok yes tick"),
+            ic("ico:x", "Close", "close cancel x"),
+            ic("ico:bookmark-simple", "Bookmark", "bookmark"),
+            ic("ico:selection-all", "Select all", "select all"),
+            ic("ico:eraser", "Erase", "erase clear"),
         ],
     },
     Category {
         title: "Navigate",
-        glyph: "➡",
+        icon: symbols::ARROW_RIGHT,
         icons: &[
-            ic("⬅", "Left", "left arrow back"),
-            ic("➡", "Right", "right arrow forward"),
-            ic("⬆", "Up", "up arrow"),
-            ic("⬇", "Down", "down arrow"),
-            ic("↔", "Horizontal", "horizontal sides"),
-            ic("↕", "Vertical", "vertical scroll"),
-            ic("🏠", "Home", "home"),
-            ic("🔙", "Back", "back"),
-            ic("🔄", "Refresh", "reload refresh sync"),
-            ic("⏪", "Rewind", "rewind fast back"),
-            ic("⏩", "Fast forward", "fast forward"),
-            ic("➕", "Add / zoom in", "plus add zoom in"),
-            ic("➖", "Zoom out", "minus zoom out"),
-            ic("🔎", "Zoom", "magnifier zoom"),
-            ic("🔝", "Top", "top up"),
+            ic("ico:arrow-left", "Left", "left arrow back"),
+            ic("ico:arrow-right", "Right", "right arrow forward"),
+            ic("ico:arrow-up", "Up", "up arrow"),
+            ic("ico:arrow-down", "Down", "down arrow"),
+            ic("ico:arrows-left-right", "Horizontal", "horizontal sides"),
+            ic("ico:arrows-down-up", "Vertical", "vertical scroll page"),
+            ic("ico:house", "Home", "home"),
+            ic("ico:arrows-clockwise", "Refresh", "reload refresh sync"),
+            ic("ico:rewind", "Rewind", "rewind fast back"),
+            ic("ico:fast-forward", "Fast forward", "fast forward"),
+            ic("ico:magnifying-glass-plus", "Zoom in", "plus add zoom in"),
+            ic("ico:magnifying-glass-minus", "Zoom out", "minus zoom out"),
+            ic("ico:arrows-out", "Expand", "full screen expand"),
+            ic("ico:arrows-in", "Collapse", "collapse shrink"),
+            ic("ico:arrow-line-right", "Tab", "tab next"),
+            ic("ico:swap", "Swap", "swap switch"),
         ],
     },
     Category {
         title: "Media",
-        glyph: "▶",
+        icon: symbols::PLAY,
         icons: &[
-            ic("▶", "Play", "play"),
-            ic("⏸", "Pause", "pause"),
-            ic("⏹", "Stop", "stop"),
-            ic("⏮", "Previous", "previous track"),
-            ic("⏭", "Next", "next track"),
-            ic("🔊", "Volume up", "volume loud sound"),
-            ic("🔉", "Volume down", "volume quiet"),
-            ic("🔇", "Mute", "mute silent"),
-            ic("🎵", "Music", "music note"),
-            ic("🎧", "Headphones", "headphones audio"),
-            ic("🎤", "Microphone", "mic microphone record"),
-            ic("📷", "Camera", "camera photo"),
-            ic("📸", "Screenshot", "screenshot capture"),
-            ic("🎬", "Video", "video film clapper"),
-            ic("🖼", "Image", "image picture"),
+            ic("ico:play", "Play", "play"),
+            ic("ico:pause", "Pause", "pause"),
+            ic("ico:stop", "Stop", "stop"),
+            ic("ico:skip-back", "Previous", "previous track"),
+            ic("ico:skip-forward", "Next", "next track"),
+            ic("ico:speaker-high", "Volume", "volume sound"),
+            ic("ico:speaker-slash", "Mute", "mute silent"),
+            ic("ico:microphone", "Microphone", "microphone record"),
+            ic("ico:camera", "Camera", "camera photo"),
+            ic("ico:crop", "Screenshot", "screenshot capture crop"),
+            ic("ico:video-camera", "Video", "video record"),
+            ic("ico:music-notes", "Music", "music notes"),
         ],
     },
     Category {
         title: "System",
-        glyph: "⚙",
+        icon: symbols::GEAR_SIX,
         icons: &[
-            ic("⚙", "Settings", "settings gear preferences"),
-            ic("🔒", "Lock", "lock secure"),
-            ic("🔓", "Unlock", "unlock"),
-            ic("🔋", "Battery", "battery power"),
-            ic("📶", "Wi-Fi", "wifi network signal"),
-            ic("💡", "Brightness", "brightness light bulb"),
-            ic("🌙", "Night", "moon night dark focus"),
-            ic("☀", "Light", "sun light day"),
-            ic("🔌", "Plug", "plug power"),
-            ic("⌨", "Keyboard", "keyboard keys"),
-            ic("🖥", "Display", "display screen monitor desktop"),
-            ic("🖱", "Mouse", "mouse cursor"),
-            ic("🖨", "Print", "print printer"),
-            ic("🔔", "Notifications", "bell notification"),
-            ic("🕐", "Clock", "clock time"),
-            ic("📅", "Calendar", "calendar date"),
-            ic("💻", "Laptop", "laptop computer"),
-            ic("📱", "Phone", "phone mobile"),
+            ic("ico:gear-six", "Settings", "settings gear preferences"),
+            ic("ico:lock-simple", "Lock", "lock"),
+            ic("ico:lock-simple-open", "Unlock", "unlock"),
+            ic("ico:wifi-high", "Wi-Fi", "wifi network signal"),
+            ic("ico:bluetooth", "Bluetooth", "bluetooth"),
+            ic("ico:sun", "Light", "sun light day brightness"),
+            ic("ico:moon", "Dark", "moon night dark"),
+            ic("ico:battery-full", "Battery", "battery power"),
+            ic("ico:keyboard", "Keyboard", "keyboard keys"),
+            ic("ico:monitor", "Display", "display screen monitor desktop"),
+            ic("ico:laptop", "Laptop", "laptop computer"),
+            ic("ico:mouse-simple", "Mouse", "mouse cursor"),
+            ic("ico:printer", "Print", "print printer"),
+            ic("ico:calendar-blank", "Calendar", "calendar date"),
+            ic("ico:clock", "Clock", "clock time"),
+            ic("ico:device-mobile", "Phone", "phone mobile"),
+            ic("ico:bell", "Notifications", "bell notifications"),
+            ic("ico:globe", "Web", "globe web internet browser"),
+            ic("ico:cpu", "Processor", "cpu chip"),
+            ic("ico:headphones", "Headphones", "headphones audio"),
         ],
     },
     Category {
-        title: "Apps",
-        glyph: "📁",
+        title: "Files",
+        icon: symbols::FOLDER_SIMPLE,
         icons: &[
-            ic("📁", "Folder", "folder finder"),
-            ic("📂", "Open folder", "open folder"),
-            ic("🗂", "Files", "files archive"),
-            ic("📝", "Notes", "notes memo text"),
-            ic("✉", "Mail", "mail email envelope"),
-            ic("💬", "Chat", "chat message talk"),
-            ic("🌐", "Web", "web browser globe internet"),
-            ic("🎮", "Games", "game controller"),
-            ic("🎨", "Design", "design art palette paint"),
-            ic("📦", "Package", "package box"),
-            ic("🔧", "Tools", "tools wrench"),
-            ic("🔨", "Build", "build hammer"),
-            ic("☁", "Cloud", "cloud sync"),
-            ic("🚀", "Launch", "launch rocket start"),
-            ic("📖", "Book", "book read"),
-            ic("📊", "Chart", "chart stats data"),
+            ic("ico:folder-simple", "Folder", "folder finder"),
+            ic("ico:folder-open", "Open folder", "open folder"),
+            ic("ico:files", "Files", "files archive"),
+            ic("ico:note-pencil", "Notes", "notes memo text"),
+            ic("ico:envelope-simple", "Mail", "mail email envelope"),
+            ic("ico:archive", "Archive", "archive box"),
+            ic("ico:package", "Package", "package box"),
+            ic("ico:cloud", "Cloud", "cloud sync"),
+            ic("ico:rocket-launch", "Launch", "launch rocket start"),
+            ic("ico:book-open", "Book", "book read"),
+            ic("ico:chart-bar", "Chart", "chart stats data"),
+            ic("ico:file-text", "Document", "document file text"),
+            ic("ico:browser", "Browser", "browser window"),
+            ic("ico:columns", "Columns", "columns tabs split"),
+            ic("ico:squares-four", "Apps", "apps grid launcher"),
+            ic("ico:sidebar-simple", "Sidebar", "sidebar panel"),
         ],
     },
     Category {
-        title: "Fun",
-        glyph: "⭐",
+        title: "Symbols",
+        icon: symbols::STAR,
         icons: &[
-            ic("🐛", "Bug", "bug debug"),
-            ic("⚡", "Quick", "zap quick fast lightning"),
-            ic("🔥", "Fire", "fire hot"),
-            ic("✅", "Success", "success check done"),
-            ic("❌", "Error", "error cross no"),
-            ic("❓", "Help", "help question"),
-            ic("❗", "Alert", "alert important"),
-            ic("⭐", "Star", "star favorite"),
-            ic("❤", "Heart", "heart love like"),
-            ic("🏁", "Flag", "flag finish"),
-            ic("🎯", "Target", "target goal"),
-            ic("💎", "Gem", "gem diamond"),
-            ic("🎁", "Gift", "gift present"),
-            ic("👍", "Like", "like thumbs up"),
+            ic("ico:bug", "Bug", "bug debug"),
+            ic("ico:lightning", "Quick", "zap quick fast lightning"),
+            ic("ico:fire", "Fire", "fire hot"),
+            ic("ico:check-circle", "Success", "success check done"),
+            ic("ico:x-circle", "Error", "error cross no"),
+            ic("ico:question", "Help", "help question"),
+            ic("ico:warning", "Alert", "alert important warning"),
+            ic("ico:star", "Star", "star favorite"),
+            ic("ico:heart", "Heart", "heart love like"),
+            ic("ico:flag", "Flag", "flag finish"),
+            ic("ico:target", "Target", "target goal"),
+            ic("ico:diamond", "Gem", "gem diamond"),
+            ic("ico:gift", "Gift", "gift present"),
+            ic("ico:thumbs-up", "Like", "like thumbs up"),
+            ic("ico:eye", "Show", "eye show visible"),
+            ic("ico:eye-slash", "Hide", "eye hide hidden"),
+            ic("ico:tag", "Tag", "tag label"),
+            ic("ico:lightbulb", "Idea", "idea light bulb"),
+            ic("ico:key", "Key", "key password"),
+            ic("ico:paint-brush", "Paint", "paint brush draw"),
+            ic("ico:eyedropper", "Pick color", "eyedropper color pick"),
+            ic("ico:magic-wand", "Magic", "magic wand"),
         ],
     },
     Category {
-        title: "Text",
-        glyph: "Aa",
+        title: "Code",
+        icon: symbols::TERMINAL_WINDOW,
         icons: &[
-            ic("<>", "History", "history undo redo"),
-            ic("< >", "Browser", "browser back forward"),
-            ic("[ ]", "Brackets", "brackets"),
-            ic("{ }", "Braces", "braces code"),
-            ic("C/V", "Clipboard", "copy paste clipboard"),
-            ic("+/-", "Zoom", "zoom plus minus"),
-            ic(">_", "Terminal", "terminal command shell"),
-            ic("Tab", "Tab", "tab tabs"),
-            ic("Esc", "Escape", "escape"),
-            ic("Ret", "Return", "return enter"),
-            ic("Pg", "Page", "page scroll"),
-            ic("...", "More", "more menu dots"),
+            ic(
+                "ico:brackets-angle",
+                "Angle brackets",
+                "brackets angle html",
+            ),
+            ic("ico:brackets-curly", "Braces", "braces code curly"),
+            ic("ico:brackets-square", "Brackets", "brackets square"),
+            ic("ico:terminal-window", "Terminal", "terminal command shell"),
+            ic("ico:terminal", "Console", "console prompt"),
+            ic("ico:command", "Command", "command cmd key"),
+            ic("ico:option", "Option", "option alt key"),
+            ic("ico:arrow-elbow-down-left", "Return", "return enter"),
+            ic("ico:text-aa", "Text", "text font type"),
+            ic("ico:hash", "Hash", "hash number tag"),
+            ic("ico:at", "At", "at mention email"),
+            ic("ico:code", "Code", "code develop"),
+            ic("ico:translate", "Translate", "translate language"),
+            ic("ico:scan", "Scan", "scan qr"),
         ],
     },
 ];
@@ -262,4 +279,47 @@ pub fn scan_user_icons() -> UserIcons {
 /// Opens the icons folder in the file manager.
 pub fn open_icons_folder() {
     platform::open_path(&user_icons_dir());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_catalog_icon_exists_in_the_icon_set() {
+        for c in CATEGORIES {
+            for d in c.icons {
+                assert!(
+                    symbols::slice_icon(d.icon).is_some(),
+                    "{} is not in symbols.rs",
+                    d.icon
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_icon_is_listed_twice_within_a_category() {
+        for c in CATEGORIES {
+            for (i, d) in c.icons.iter().enumerate() {
+                assert!(
+                    !c.icons[..i].iter().any(|o| o.icon == d.icon),
+                    "{} twice in {}",
+                    d.icon,
+                    c.title
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn search_finds_by_name_and_by_keyword() {
+        assert!(filtered("copy", 0).iter().any(|d| d.icon == "ico:copy"));
+        assert!(filtered("scissors", 0).iter().any(|d| d.name == "Cut"));
+        assert!(filtered("zzzz", 0).is_empty());
+        assert!(
+            filtered("", 2).iter().all(|d| d.icon != "ico:copy"),
+            "category 2 is Navigate"
+        );
+    }
 }

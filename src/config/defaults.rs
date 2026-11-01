@@ -7,7 +7,8 @@
 //! parameter in its `_for` form (so tests cover both); the plain form uses the OS the build runs on.
 
 use super::{
-    Action, AppGesture, CONFIG_VERSION, Config, DesktopMode, Item, Profile, SideTarget, TargetApp,
+    Action, AppGesture, Appearance, CONFIG_VERSION, Config, DesktopMode, Item, PieStyle, Profile,
+    SideTarget, TargetApp,
 };
 use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT, Shortcut, key};
 use crate::platform::Os;
@@ -56,31 +57,36 @@ pub fn presets_for(os: Os) -> Vec<Item> {
         ),
     };
     vec![
-        Item::mode("History", "<>", Shortcut::ch('z', p), redo),
+        Item::mode("History", "ico:arrow-u-up-left", Shortcut::ch('z', p), redo),
         Item::mode(
             "Brackets",
-            "[ ]",
+            "ico:brackets-square",
             Shortcut::ch('[', 0),
             Shortcut::ch(']', 0),
         ),
         Item::mode(
             "Clipboard",
-            "C/V",
+            "ico:clipboard-text",
             Shortcut::ch('c', p),
             Shortcut::ch('v', p),
         ),
-        Item::mode("Browser", "< >", browser.0, browser.1),
-        Item::mode("Tabs", "Tab", tabs.0, tabs.1),
-        Item::mode("Zoom", "+/-", Shortcut::ch('-', p), Shortcut::ch('=', p)),
+        Item::mode("Browser", "ico:browser", browser.0, browser.1),
+        Item::mode("Tabs", "ico:columns", tabs.0, tabs.1),
+        Item::mode(
+            "Zoom",
+            "ico:magnifying-glass-plus",
+            Shortcut::ch('-', p),
+            Shortcut::ch('=', p),
+        ),
         Item::mode(
             "Scroll",
-            "Pg",
+            "ico:arrows-down-up",
             Shortcut::new(key::PAGE_UP, 0),
             Shortcut::new(key::PAGE_DOWN, 0),
         ),
         Item::mode(
             "Edit",
-            "Ret",
+            "ico:arrow-elbow-down-left",
             Shortcut::new(key::RETURN, 0),
             Shortcut::new(key::DELETE, 0),
         ),
@@ -97,33 +103,69 @@ pub fn quick_actions_for(os: Os) -> Vec<Item> {
     let key_item = |name: &str, icon: &str, sc: Shortcut| Item::run(name, icon, Action::Key(sc));
     match os {
         Os::Mac => vec![
-            key_item("Screenshot", "Shot", Shortcut::ch('4', MOD_CMD | MOD_SHIFT)),
-            key_item("Mission Ctrl", "MC", Shortcut::new(key::UP, MOD_CTRL)),
-            key_item("Spotlight", "Find", Shortcut::new(key::SPACE, MOD_CMD)),
-            key_item("Emoji", ":)", Shortcut::new(key::SPACE, MOD_CMD | MOD_CTRL)),
-            key_item("Lock", "Lock", Shortcut::ch('q', MOD_CMD | MOD_CTRL)),
+            key_item(
+                "Screenshot",
+                "ico:crop",
+                Shortcut::ch('4', MOD_CMD | MOD_SHIFT),
+            ),
+            key_item(
+                "Mission Ctrl",
+                "ico:squares-four",
+                Shortcut::new(key::UP, MOD_CTRL),
+            ),
+            key_item(
+                "Spotlight",
+                "ico:magnifying-glass",
+                Shortcut::new(key::SPACE, MOD_CMD),
+            ),
+            key_item(
+                "Emoji",
+                "ico:smiley",
+                Shortcut::new(key::SPACE, MOD_CMD | MOD_CTRL),
+            ),
+            key_item(
+                "Lock",
+                "ico:lock-simple",
+                Shortcut::ch('q', MOD_CMD | MOD_CTRL),
+            ),
         ],
         // MOD_CMD is the Windows key here
         Os::Windows => vec![
-            key_item("Screenshot", "Shot", Shortcut::ch('s', MOD_CMD | MOD_SHIFT)),
-            key_item("Task view", "TV", Shortcut::new(key::TAB, MOD_CMD)),
-            key_item("Search", "Find", Shortcut::ch('s', MOD_CMD)),
-            key_item("Emoji", ":)", Shortcut::ch('.', MOD_CMD)),
-            key_item("Lock", "Lock", Shortcut::ch('l', MOD_CMD)),
+            key_item(
+                "Screenshot",
+                "ico:crop",
+                Shortcut::ch('s', MOD_CMD | MOD_SHIFT),
+            ),
+            key_item(
+                "Task view",
+                "ico:squares-four",
+                Shortcut::new(key::TAB, MOD_CMD),
+            ),
+            key_item("Search", "ico:magnifying-glass", Shortcut::ch('s', MOD_CMD)),
+            key_item("Emoji", "ico:smiley", Shortcut::ch('.', MOD_CMD)),
+            key_item("Lock", "ico:lock-simple", Shortcut::ch('l', MOD_CMD)),
         ],
         // MOD_CMD is the Super key here; the rest are shell commands that work on every desktop
         Os::Linux => vec![
             Item::run(
                 "Screenshot",
-                "Shot",
+                "ico:crop",
                 Action::Command(LINUX_SCREENSHOT.into()),
             ),
-            Item::run("Files", "F", Action::Command(LINUX_FILES.into())),
-            Item::run("Terminal", ">_", Action::Command(LINUX_TERMINAL.into())),
-            key_item("Emoji", ":)", Shortcut::ch('.', MOD_CMD)),
+            Item::run(
+                "Files",
+                "ico:folder-simple",
+                Action::Command(LINUX_FILES.into()),
+            ),
+            Item::run(
+                "Terminal",
+                "ico:terminal-window",
+                Action::Command(LINUX_TERMINAL.into()),
+            ),
+            key_item("Emoji", "ico:smiley", Shortcut::ch('.', MOD_CMD)),
             Item::run(
                 "Lock",
-                "Lock",
+                "ico:lock-simple",
                 Action::Command("loginctl lock-session".into()),
             ),
         ],
@@ -153,13 +195,21 @@ gtk-launch \"$b\" 2>/dev/null || gio launch \"/usr/share/applications/$b\" 2>/de
 /// Blank slices for the "+ Add item" menu.
 pub fn blank_items(allow_submenu: bool) -> Vec<Item> {
     let mut v = vec![
-        Item::run("Shortcut", "Key", Action::Key(Shortcut::new(key::F13, 0))),
-        Item::run("Open app", "App", Action::OpenApp(String::new())),
-        Item::run("Open URL", "URL", Action::OpenUrl(String::new())),
-        Item::run("Command", ">_", Action::Command(String::new())),
+        Item::run(
+            "Shortcut",
+            "ico:keyboard",
+            Action::Key(Shortcut::new(key::F13, 0)),
+        ),
+        Item::run("Open app", "ico:app-window", Action::OpenApp(String::new())),
+        Item::run("Open URL", "ico:link", Action::OpenUrl(String::new())),
+        Item::run(
+            "Command",
+            "ico:terminal-window",
+            Action::Command(String::new()),
+        ),
     ];
     if allow_submenu {
-        v.push(Item::submenu("Submenu", "...", Vec::new()));
+        v.push(Item::submenu("Submenu", "ico:dots-three", Vec::new()));
     }
     v
 }
@@ -181,9 +231,9 @@ impl Config {
         let (launchers, browsers, code, shot) = match os {
             Os::Mac => (
                 [
-                    ("Finder", "F", open("Finder")),
-                    ("Terminal", ">_", open("Terminal")),
-                    ("Safari", "S", open("Safari")),
+                    ("Finder", "ico:folder-simple", open("Finder")),
+                    ("Terminal", "ico:terminal-window", open("Terminal")),
+                    ("Safari", "ico:globe", open("Safari")),
                 ],
                 s(&[
                     "com.apple.Safari",
@@ -198,9 +248,9 @@ impl Config {
             ),
             Os::Windows => (
                 [
-                    ("Explorer", "F", open("explorer")),
-                    ("Terminal", ">_", open("wt")),
-                    ("Edge", "S", open("msedge")),
+                    ("Explorer", "ico:folder-simple", open("explorer")),
+                    ("Terminal", "ico:terminal-window", open("wt")),
+                    ("Edge", "ico:globe", open("msedge")),
                 ],
                 s(&[
                     "msedge.exe",
@@ -216,9 +266,21 @@ impl Config {
             // app ids are lower-case desktop-entry ids; a browser has several (native, Flatpak)
             Os::Linux => (
                 [
-                    ("Files", "F", Action::Command(LINUX_FILES.into())),
-                    ("Terminal", ">_", Action::Command(LINUX_TERMINAL.into())),
-                    ("Browser", "S", Action::Command(LINUX_BROWSER.into())),
+                    (
+                        "Files",
+                        "ico:folder-simple",
+                        Action::Command(LINUX_FILES.into()),
+                    ),
+                    (
+                        "Terminal",
+                        "ico:terminal-window",
+                        Action::Command(LINUX_TERMINAL.into()),
+                    ),
+                    (
+                        "Browser",
+                        "ico:globe",
+                        Action::Command(LINUX_BROWSER.into()),
+                    ),
                 ],
                 s(&[
                     "firefox",
@@ -248,8 +310,8 @@ impl Config {
             .iter()
             .map(|(name, icon, action)| Item::run(name, icon, action.clone()))
             .collect();
-        launch_items.push(Item::run("Shot", "Shot", shot));
-        let launch = Item::submenu("Launch", "Go", launch_items);
+        launch_items.push(Item::run("Shot", "ico:crop", shot));
+        let launch = Item::submenu("Launch", "ico:rocket-launch", launch_items);
         Config {
             version: CONFIG_VERSION,
             profiles: vec![
@@ -275,7 +337,7 @@ impl Config {
             pie_hold_ms: 500,
             settings_hold_ms: 1200,
             pie_size: 200.0,
-            accent: [64, 156, 255],
+            accent: [88, 86, 214],
             trigger_button: 2,
             flick: false,
             sound: false,
@@ -294,6 +356,11 @@ impl Config {
             preview_ms: 900,
             center_app_icon: true,
             sleep_after_s: 60,
+            appearance: Appearance::System,
+            pie_style: PieStyle::Solid,
+            glass_clear: 60,
+            glass_frost: 45,
+            glass_shine: 60,
         }
     }
 }
@@ -354,7 +421,7 @@ mod tests {
         assert_eq!(keys_of(&p[5]), ((27, cmd), (24, cmd)));
         assert_eq!(keys_of(&p[6]), ((116, 0), (121, 0)));
         assert_eq!(keys_of(&p[7]), ((36, 0), (51, 0)));
-        assert_eq!(p[0].icon, "<>");
+        assert_eq!(p[0].icon, "ico:arrow-u-up-left");
     }
 
     #[test]
@@ -405,7 +472,7 @@ mod tests {
         assert_eq!(c.pie_hold_ms, 500);
         assert_eq!(c.settings_hold_ms, 1200);
         assert_eq!(c.pie_size, 200.0);
-        assert_eq!(c.accent, [64, 156, 255]);
+        assert_eq!(c.accent, [88, 86, 214]);
         assert_eq!(c.trigger_button, 2);
         assert_eq!(c.double_click_ms, 260);
         assert_eq!(c.sleep_after_s, 60);

@@ -1,3 +1,6 @@
 # Scripts that run under sh must keep Unix line endings, also in a Windows checkout.
 .githooks/* text eol=lf
 *.sh text eol=lf
+
+# Fonts are binary: never rewrite line endings.
+*.ttf binary

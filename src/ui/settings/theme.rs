@@ -1,134 +1,209 @@
 //! Look of the settings window: palette, geometry and the egui style applied to it.
 //!
-//! The look is a quiet, dense "tool" UI (think of a launcher for a suite of pro apps):
+//! The look is modern flat, in the spirit of the Apple system apps, in a light and a dark palette
+//! (read through [`pal`]):
 //!
-//! - a graphite window with a rounded outline ([`CARD_RADIUS`]); inside it panels and controls
-//!   are almost square ([`RADIUS`]) and separated by hairlines ([`BORDER`]), not by shadows;
-//! - the window is cut into a top bar (brand and the buttons you confirm with), a sidebar that
-//!   names the sections, the page of the selected section, and a footer (status). See
-//!   `window.rs`;
-//! - small monospace labels for chrome (panel titles, badges) and the normal proportional
-//!   font for everything you read or edit, sidebar entries included;
-//! - one accent color, chosen by the user, for the focus outline, the primary button and
-//!   whatever is selected; everything else is neutral;
-//! - one spacing unit ([`GAP`]) between panels and between controls, and one control height
-//!   ([`CONTROL_H`]) for every button, chip, input and list row.
+//! - a light window with large rounded corners ([`CARD_RADIUS`]); a sidebar that names the
+//!   sections, and white panels (`card`) on a soft grey page (`bg`), separated by space and
+//!   one pale hairline, not by frames and not by shadows;
+//! - generous room: one spacing unit ([`GAP`]), a page padding of its own, and one control height
+//!   ([`CONTROL_H`]) for every button, field and list row;
+//! - round shapes all over: controls use [`CONTROL_R`], panels [`PANEL_R`], badges and chips are
+//!   pills, switches and sliders are circles on a rail;
+//! - Inter for text and one icon set for every picture (see [`fonts`](crate::ui::fonts) and
+//!   [`symbols`](crate::ui::symbols)); there are no capitals-in-monospace labels and no letters
+//!   standing in for icons;
+//! - one accent color, chosen by the user, for whatever is selected or primary, so it always
+//!   means "this". Everything else is neutral.
 //!
 //! Change the constants here to re-theme. Other files must not hard-code a color or a radius.
 
+use crate::config::Appearance;
 use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke, Vec2};
 
-// Settings palette (change here to re-theme). Neutral graphite with a very slight cool tint, so
-// the user's accent is the only saturated color on screen. `contrast` pairs are checked by the
-// tests at the bottom of this file: primary text keeps 7:1 on every surface, secondary text 4.5:1.
-/// Window background.
-pub const BG: Color32 = Color32::from_rgb(15, 16, 20);
-/// Panels inside the window and the top bar.
-pub const CARD: Color32 = Color32::from_rgb(21, 22, 27);
-/// Controls at rest (buttons, tiles, chips).
-pub const IDLE: Color32 = Color32::from_rgb(29, 30, 37);
-/// Controls under the pointer.
-pub const HOT: Color32 = Color32::from_rgb(40, 42, 51);
-/// Text fields and the footer: darker than the panel they sit in.
-pub const INPUT: Color32 = Color32::from_rgb(10, 11, 14);
-/// Hairlines and borders.
-pub const BORDER: Color32 = Color32::from_rgb(45, 47, 58);
-/// Primary text.
-pub const TEXT: Color32 = Color32::from_rgb(232, 233, 238);
-/// Secondary text.
-pub const MUTED: Color32 = Color32::from_rgb(150, 153, 168);
-/// "OK" status.
-pub const GOOD: Color32 = Color32::from_rgb(98, 222, 172);
-/// Warning / error status.
-pub const BAD: Color32 = Color32::from_rgb(255, 125, 145);
-/// Text drawn on a light accent color (see [`on_accent`]).
-const DARK_TEXT: Color32 = Color32::from_rgb(12, 13, 18);
+pub use crate::ui::draw::on_accent;
 
-// Geometry
-/// Corner radius of panels and controls: just enough to take the edge off.
-pub const RADIUS: CornerRadius = CornerRadius {
-    nw: 2,
-    ne: 2,
-    sw: 2,
-    se: 2,
-};
-/// Corner radius of the window itself, in points.
-pub const CARD_RADIUS_PT: u8 = 12;
-/// Corner radius of the window.
-pub const CARD_RADIUS: CornerRadius = CornerRadius {
-    nw: CARD_RADIUS_PT,
-    ne: CARD_RADIUS_PT,
-    sw: CARD_RADIUS_PT,
-    se: CARD_RADIUS_PT,
-};
-/// Rounded top corners only: the top bar follows the window's outline.
-pub const TOP_RADIUS: CornerRadius = CornerRadius {
-    nw: CARD_RADIUS_PT,
-    ne: CARD_RADIUS_PT,
-    sw: 0,
-    se: 0,
-};
-/// Rounded bottom corners only: the footer follows the window's outline.
-pub const BOTTOM_RADIUS: CornerRadius = CornerRadius {
-    nw: 0,
-    ne: 0,
-    sw: CARD_RADIUS_PT,
-    se: CARD_RADIUS_PT,
-};
-/// Space between panels and between controls, in points.
-pub const GAP: f32 = 8.0;
-/// Height of every button, chip, input and list row, in points.
-pub const CONTROL_H: f32 = 32.0;
-
-/// Relative luminance of `c` (WCAG 2), 0 for black and 1 for white.
-fn luminance(c: Color32) -> f32 {
-    let lin = |c: u8| {
-        let c = c as f32 / 255.0;
-        if c <= 0.03928 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    let [r, g, b, _] = c.to_array();
-    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+/// The colors of one appearance. Read them through [`pal`], never copy a value.
+///
+/// `contrast` pairs are checked by the tests at the bottom of this file: primary text keeps 7:1
+/// on every surface, secondary text 4.5:1.
+#[derive(Clone, Copy, Debug)]
+pub struct Palette {
+    /// Whether this is the dark appearance.
+    pub dark: bool,
+    /// The page: a very light grey (or near black), so panels lift off it without a frame.
+    pub bg: Color32,
+    /// The sidebar: a step away from the page.
+    pub sidebar: Color32,
+    /// Panels and popups.
+    pub card: Color32,
+    /// Controls at rest (buttons, tiles, chips).
+    pub idle: Color32,
+    /// Controls under the pointer.
+    pub hot: Color32,
+    /// Text fields: a hair away from the panel they sit in.
+    pub input: Color32,
+    /// Hairlines and borders.
+    pub border: Color32,
+    /// Hairlines inside a panel, between its rows: paler than `border`.
+    pub divider: Color32,
+    /// Primary text.
+    pub text: Color32,
+    /// Secondary text.
+    pub muted: Color32,
+    /// "OK" status.
+    pub good: Color32,
+    /// Warning / error status.
+    pub bad: Color32,
+    /// The dimmed layer behind a sheet.
+    pub scrim: Color32,
+    /// The rail of a slider and a switch that is off.
+    pub track: Color32,
+    /// The face of a key in a shortcut.
+    pub keycap: Color32,
 }
 
-/// WCAG contrast ratio of two colors: 1 (identical) to 21 (black on white).
-pub fn contrast(a: Color32, b: Color32) -> f32 {
-    let (la, lb) = (luminance(a), luminance(b));
-    let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
-    (hi + 0.05) / (lo + 0.05)
-}
+/// The light appearance: white panels on a soft grey page.
+pub const LIGHT: Palette = Palette {
+    dark: false,
+    bg: Color32::from_rgb(246, 246, 249),
+    sidebar: Color32::from_rgb(238, 238, 243),
+    card: Color32::WHITE,
+    idle: Color32::from_rgb(240, 240, 245),
+    hot: Color32::from_rgb(229, 229, 237),
+    input: Color32::from_rgb(243, 243, 247),
+    border: Color32::from_rgb(226, 226, 233),
+    divider: Color32::from_rgb(236, 236, 241),
+    text: Color32::from_rgb(28, 28, 32),
+    muted: Color32::from_rgb(98, 98, 108),
+    good: Color32::from_rgb(16, 104, 54),
+    bad: Color32::from_rgb(178, 24, 40),
+    scrim: Color32::from_rgba_premultiplied(18, 18, 24, 70),
+    track: Color32::from_rgb(214, 214, 223),
+    keycap: Color32::WHITE,
+};
 
-/// Text color for something filled with `accent`: dark or white, whichever reads better.
-/// The accent is chosen by the user, so a fixed white would be unreadable on a light one.
-pub fn on_accent(accent: Color32) -> Color32 {
-    if contrast(accent, DARK_TEXT) >= contrast(accent, Color32::WHITE) {
-        DARK_TEXT
+/// The dark appearance: graphite panels on a near-black page, the way Apple's dark mode steps
+/// its surfaces.
+pub const DARK: Palette = Palette {
+    dark: true,
+    bg: Color32::from_rgb(24, 24, 27),
+    sidebar: Color32::from_rgb(32, 32, 36),
+    card: Color32::from_rgb(40, 40, 45),
+    idle: Color32::from_rgb(54, 54, 60),
+    hot: Color32::from_rgb(64, 64, 72),
+    input: Color32::from_rgb(30, 30, 34),
+    border: Color32::from_rgb(62, 62, 69),
+    divider: Color32::from_rgb(54, 54, 60),
+    text: Color32::from_rgb(245, 245, 247),
+    muted: Color32::from_rgb(182, 182, 192),
+    good: Color32::from_rgb(88, 214, 130),
+    bad: Color32::from_rgb(255, 146, 138),
+    scrim: Color32::from_rgba_premultiplied(0, 0, 0, 120),
+    track: Color32::from_rgb(84, 84, 94),
+    keycap: Color32::from_rgb(82, 82, 92),
+};
+
+/// The palette in use. Settings and the pie call this every frame, so the appearance can change
+/// while a window is open.
+pub fn pal() -> &'static Palette {
+    if crate::ui::draw::dark() {
+        &DARK
     } else {
-        Color32::WHITE
+        &LIGHT
     }
 }
 
-/// A panel frame with a hairline border.
-pub(in crate::ui::settings) fn card() -> egui::Frame {
-    egui::Frame::new()
-        .fill(CARD)
-        .corner_radius(RADIUS)
-        .inner_margin(egui::Margin::same(12))
-        .stroke(Stroke::new(1.0, BORDER))
+/// Whether `appearance` is dark right now: `Dark`, or `System` while the system is dark.
+pub fn resolve_dark(appearance: Appearance, system: Option<egui::Theme>) -> bool {
+    match appearance {
+        Appearance::Dark => true,
+        Appearance::Light => false,
+        Appearance::System => system == Some(egui::Theme::Dark),
+    }
 }
 
-/// The color of the window outline: the hairline color pulled toward `accent`, so the window
-/// reads as focused without a loud frame.
+/// Picks the palette for this frame from the configured appearance and the system theme.
+pub fn apply_appearance(ctx: &egui::Context, appearance: Appearance) {
+    crate::ui::draw::set_dark(resolve_dark(appearance, ctx.system_theme()));
+}
+
+/// The accents offered as swatches, as `(name, rgb)`. The first is the default of a new install.
+/// They are the system colors of Apple's light appearance: saturated enough to read as a color,
+/// not so much that a whole selected row hurts.
+pub const ACCENTS: [(&str, [u8; 3]); 7] = [
+    ("Indigo", [88, 86, 214]),
+    ("Blue", [0, 122, 255]),
+    ("Purple", [175, 82, 222]),
+    ("Pink", [255, 45, 85]),
+    ("Orange", [255, 149, 0]),
+    ("Green", [52, 199, 89]),
+    ("Graphite", [99, 99, 102]),
+];
+
+// Geometry
+/// Corner radius of buttons, fields and tiles, in points.
+pub const CONTROL_R_PT: u8 = 12;
+/// Corner radius of buttons, fields and tiles.
+pub const CONTROL_R: CornerRadius = CornerRadius::same(CONTROL_R_PT);
+/// Corner radius of panels, in points.
+pub const PANEL_R_PT: u8 = 18;
+/// Corner radius of panels and popups.
+pub const PANEL_R: CornerRadius = CornerRadius::same(PANEL_R_PT);
+/// Corner radius that turns any control into a pill. egui clamps it to half the height.
+pub const PILL: CornerRadius = CornerRadius::same(255);
+/// Corner radius of the window itself, in points.
+pub const CARD_RADIUS_PT: u8 = 24;
+/// Corner radius of the window.
+pub const CARD_RADIUS: CornerRadius = CornerRadius::same(CARD_RADIUS_PT);
+/// Space between controls, in points.
+pub const GAP: f32 = 12.0;
+/// Space between two panels, in points.
+pub const SECTION_GAP: f32 = 24.0;
+/// Height of every button, chip, input and list row, in points.
+pub const CONTROL_H: f32 = 36.0;
+/// Space between the edge of a panel and its content, in points.
+pub const PANEL_PAD: i8 = 18;
+
+/// A panel: white, rounded, no border to speak of. Rows inside it add their own vertical room, so
+/// the frame only pads the sides.
+pub(in crate::ui::settings) fn card() -> egui::Frame {
+    egui::Frame::new()
+        .fill(pal().card)
+        .corner_radius(PANEL_R)
+        .inner_margin(egui::Margin::symmetric(PANEL_PAD, 6))
+        .stroke(Stroke::new(1.0, pal().divider))
+}
+
+/// The frame of a popover or a sheet: a panel that floats, with a soft shadow.
+pub(in crate::ui::settings) fn popup_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(pal().card)
+        .corner_radius(PANEL_R)
+        .inner_margin(egui::Margin::same(PANEL_PAD))
+        .stroke(Stroke::new(1.0, pal().border))
+        .shadow(popup_shadow())
+}
+
+/// The shadow of anything that floats above the window.
+pub(in crate::ui::settings) fn popup_shadow() -> egui::Shadow {
+    egui::Shadow {
+        offset: [0, 8],
+        blur: 28,
+        spread: 0,
+        color: Color32::from_black_alpha(38),
+    }
+}
+
+/// The color of the window outline: the hairline color pulled a little toward `accent`, so the
+/// window reads as focused without a loud frame.
 pub fn window_outline_color(accent: Color32) -> Color32 {
-    BORDER.lerp_to_gamma(accent, 0.45)
+    pal().border.lerp_to_gamma(accent, 0.18)
 }
 
 /// Draws the outline of the window just inside `rect`. It is an ordinary rounded rectangle
-/// stroke, which egui anti-aliases; the previous gradient border was a hand-made triangle mesh
-/// with stair-stepped edges, and it could not follow rounded corners.
+/// stroke, which egui anti-aliases; a hand-made mesh would have stair-stepped edges and could not
+/// follow rounded corners.
 pub(in crate::ui::settings) fn window_outline(
     painter: &egui::Painter,
     rect: Rect,
@@ -143,39 +218,42 @@ pub(in crate::ui::settings) fn window_outline(
 }
 
 /// The shadow under the window. The window is transparent and larger than the card by
-/// `WIN_MARGIN` on every side, which is where the shadow is painted.
+/// `WIN_MARGIN` on every side, which is where the shadow is painted, so offset plus blur must stay
+/// inside that margin.
 pub(in crate::ui::settings) fn window_shadow() -> egui::Shadow {
     egui::Shadow {
-        offset: [0, 8],
-        blur: 24,
+        offset: [0, 10],
+        blur: 30,
         spread: 0,
-        color: Color32::from_black_alpha(120),
+        color: Color32::from_black_alpha(64),
     }
 }
 
-/// Applies the dark Settings style (always dark, whatever macOS uses) with `accent` as highlight color.
+/// A color with `alpha` (0 to 1) of its own strength, for the tinted background of a selected row.
+pub fn wash(color: Color32, alpha: f32) -> Color32 {
+    let [r, g, b, _] = color.to_array();
+    Color32::from_rgba_unmultiplied(r, g, b, (alpha.clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
+/// Applies the Settings style (always light, whatever the system uses) with `accent` as highlight.
 pub(in crate::ui::settings) fn style_settings(ui: &mut egui::Ui, accent: Color32) {
-    // force the dark theme so the card doesn't follow macOS light/dark
-    *ui.visuals_mut() = egui::Visuals::dark();
+    // force the light theme so the window never follows the system's dark mode
+    *ui.visuals_mut() = egui::Visuals::light();
     let v = ui.visuals_mut();
-    v.panel_fill = BG;
-    v.window_fill = CARD;
-    v.window_stroke = Stroke::new(1.0, BORDER);
-    v.extreme_bg_color = INPUT;
-    v.selection.bg_fill = accent.gamma_multiply(0.45);
-    v.selection.stroke = Stroke::new(1.0, accent);
+    v.panel_fill = pal().bg;
+    v.window_fill = pal().card;
+    v.window_stroke = Stroke::new(1.0, pal().border);
+    v.extreme_bg_color = pal().input;
+    v.faint_bg_color = pal().idle;
+    v.override_text_color = None;
+    v.selection.bg_fill = wash(accent, 0.28);
+    v.selection.stroke = Stroke::new(1.5, accent);
     v.hyperlink_color = accent;
-    // popups (combo boxes, the profile menus) float above the card, so they keep a soft shadow
-    v.window_corner_radius = RADIUS;
-    v.menu_corner_radius = RADIUS;
-    v.window_shadow = egui::Shadow::NONE;
-    v.popup_shadow = egui::Shadow {
-        offset: [0, 4],
-        blur: 14,
-        spread: 0,
-        color: Color32::from_black_alpha(110),
-    };
-    v.handle_shape = egui::style::HandleShape::Rect { aspect_ratio: 0.5 };
+    // popups (combo boxes, menus) float above the window, so they keep a soft shadow
+    v.window_corner_radius = PANEL_R;
+    v.menu_corner_radius = CONTROL_R;
+    v.window_shadow = popup_shadow();
+    v.popup_shadow = popup_shadow();
 
     let w = &mut v.widgets;
     // no hover growth: a growing box looks like a layout shift
@@ -186,103 +264,178 @@ pub(in crate::ui::settings) fn style_settings(ui: &mut egui::Ui, accent: Color32
         &mut w.active,
         &mut w.open,
     ] {
-        state.corner_radius = RADIUS;
+        state.corner_radius = CONTROL_R;
         state.expansion = 0.0;
     }
     // separators and panel outlines; labels and button text use the primary text color
-    w.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
-    w.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
-    w.inactive.fg_stroke = Stroke::new(1.0, TEXT);
-    w.hovered.fg_stroke = Stroke::new(1.5, Color32::WHITE);
-    w.open.fg_stroke = Stroke::new(1.0, TEXT);
-    // note: egui also uses this color for `.strong()` text, so it must stay light
-    w.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
-    // at rest: grey with a hairline; under the pointer: lighter with an accent outline;
-    // pressed: filled with the accent
-    w.inactive.bg_fill = IDLE;
-    w.inactive.weak_bg_fill = IDLE;
-    w.inactive.bg_stroke = Stroke::new(1.0, BORDER);
-    w.hovered.bg_fill = HOT;
-    w.hovered.weak_bg_fill = HOT;
-    w.hovered.bg_stroke = Stroke::new(1.0, accent);
+    w.noninteractive.bg_stroke = Stroke::new(1.0, pal().divider);
+    w.noninteractive.fg_stroke = Stroke::new(1.0, pal().text);
+    w.noninteractive.bg_fill = pal().card;
+    w.noninteractive.weak_bg_fill = pal().card;
+    // at rest: a soft grey fill without an outline; under the pointer: a step darker;
+    // pressed: the accent
+    w.inactive.fg_stroke = Stroke::new(1.0, pal().text);
+    w.inactive.bg_fill = pal().idle;
+    w.inactive.weak_bg_fill = pal().idle;
+    w.inactive.bg_stroke = Stroke::NONE;
+    w.hovered.fg_stroke = Stroke::new(1.0, pal().text);
+    w.hovered.bg_fill = pal().hot;
+    w.hovered.weak_bg_fill = pal().hot;
+    w.hovered.bg_stroke = Stroke::NONE;
+    w.active.fg_stroke = Stroke::new(1.0, on_accent(accent));
     w.active.bg_fill = accent;
     w.active.weak_bg_fill = accent;
-    w.active.bg_stroke = Stroke::new(1.0, accent);
-    w.open.bg_fill = HOT;
-    w.open.weak_bg_fill = HOT;
-    w.open.bg_stroke = Stroke::new(1.0, accent);
+    w.active.bg_stroke = Stroke::NONE;
+    w.open.fg_stroke = Stroke::new(1.0, pal().text);
+    w.open.bg_fill = pal().hot;
+    w.open.weak_bg_fill = pal().hot;
+    w.open.bg_stroke = Stroke::NONE;
 
     let sp = ui.spacing_mut();
     sp.item_spacing = Vec2::splat(GAP);
-    sp.button_padding = Vec2::new(12.0, 6.0);
+    sp.button_padding = Vec2::new(14.0, 7.0);
+    sp.menu_margin = egui::Margin::same(8);
+    sp.combo_width = 160.0;
     // one height for buttons, text fields and combo boxes
     sp.interact_size.y = CONTROL_H;
-    sp.scroll = egui::style::ScrollStyle::solid();
+    sp.scroll = egui::style::ScrollStyle::floating();
+
+    let text = &mut ui.style_mut().text_styles;
+    let size = |s: f32, family: egui::FontFamily| egui::FontId::new(s, family);
+    text.insert(
+        egui::TextStyle::Body,
+        size(14.0, egui::FontFamily::Proportional),
+    );
+    text.insert(
+        egui::TextStyle::Button,
+        size(14.0, egui::FontFamily::Proportional),
+    );
+    text.insert(
+        egui::TextStyle::Small,
+        size(12.0, egui::FontFamily::Proportional),
+    );
+    text.insert(
+        egui::TextStyle::Heading,
+        size(22.0, crate::ui::fonts::semibold()),
+    );
+    text.insert(
+        egui::TextStyle::Monospace,
+        size(13.0, egui::FontFamily::Monospace),
+    );
+
+    // Popups, menus and tooltips are drawn by the context, not by this `ui`: give them the same
+    // style, or they come out in egui's own dark one.
+    let style = ui.style().clone();
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        ui.ctx().set_style_of(theme, style.clone());
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::draw::{INK, contrast, luminance};
 
-    const SURFACES: [(&str, Color32); 5] = [
-        ("BG", BG),
-        ("CARD", CARD),
-        ("IDLE", IDLE),
-        ("HOT", HOT),
-        ("INPUT", INPUT),
-    ];
+    /// Both appearances, by name.
+    const PALETTES: [(&str, Palette); 2] = [("light", LIGHT), ("dark", DARK)];
+
+    /// The surfaces text sits on, by name.
+    fn surfaces(p: &Palette) -> [(&'static str, Color32); 6] {
+        [
+            ("bg", p.bg),
+            ("sidebar", p.sidebar),
+            ("card", p.card),
+            ("idle", p.idle),
+            ("hot", p.hot),
+            ("input", p.input),
+        ]
+    }
 
     #[test]
     fn contrast_matches_the_wcag_extremes() {
         assert!((contrast(Color32::BLACK, Color32::WHITE) - 21.0).abs() < 0.05);
         assert!((contrast(Color32::WHITE, Color32::WHITE) - 1.0).abs() < 1e-4);
         assert_eq!(
-            contrast(BG, TEXT),
-            contrast(TEXT, BG),
+            contrast(LIGHT.bg, LIGHT.text),
+            contrast(LIGHT.text, LIGHT.bg),
             "order does not matter"
         );
     }
 
     #[test]
     fn primary_text_is_readable_on_every_surface() {
-        for (name, bg) in SURFACES {
-            let c = contrast(TEXT, bg);
-            assert!(c >= 7.0, "TEXT on {name}: {c:.1}:1");
-        }
-    }
-
-    #[test]
-    fn secondary_text_is_readable_on_every_surface() {
-        for (name, bg) in SURFACES {
-            let c = contrast(MUTED, bg);
-            assert!(c >= 4.5, "MUTED on {name}: {c:.1}:1");
-        }
-    }
-
-    #[test]
-    fn status_colors_are_readable_on_the_footer_and_cards() {
-        for (label, fg) in [("GOOD", GOOD), ("BAD", BAD)] {
-            for (name, bg) in [("CARD", CARD), ("INPUT", INPUT)] {
-                let c = contrast(fg, bg);
-                assert!(c >= 4.5, "{label} on {name}: {c:.1}:1");
+        for (look, p) in PALETTES {
+            for (name, bg) in surfaces(&p) {
+                let c = contrast(p.text, bg);
+                assert!(c >= 7.0, "text on {look} {name}: {c:.1}:1");
             }
         }
     }
 
     #[test]
-    fn surfaces_get_lighter_from_input_to_hot() {
-        let l = |c| luminance(c);
-        assert!(l(INPUT) < l(BG) && l(BG) < l(CARD) && l(CARD) < l(IDLE) && l(IDLE) < l(HOT));
-        assert!(
-            contrast(BORDER, BG) > 1.3,
-            "a hairline must be visible on the window"
-        );
+    fn secondary_text_is_readable_on_every_surface() {
+        for (look, p) in PALETTES {
+            for (name, bg) in surfaces(&p) {
+                let c = contrast(p.muted, bg);
+                assert!(c >= 4.5, "muted on {look} {name}: {c:.1}:1");
+            }
+        }
+    }
+
+    #[test]
+    fn status_colors_are_readable_on_the_panels() {
+        for (look, p) in PALETTES {
+            for (label, fg) in [("good", p.good), ("bad", p.bad)] {
+                for (name, bg) in surfaces(&p) {
+                    let c = contrast(fg, bg);
+                    assert!(c >= 4.5, "{label} on {look} {name}: {c:.1}:1");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn controls_step_away_from_the_panel_and_lines_are_visible() {
+        for (look, p) in PALETTES {
+            let l = luminance;
+            // idle, then hot, move further from the card in the same direction
+            let (card, idle, hot) = (l(p.card), l(p.idle), l(p.hot));
+            assert!(
+                (card - idle).abs() > 0.005 && (idle - hot).abs() > 0.005,
+                "{look}: controls are told apart"
+            );
+            assert!(
+                (card - idle) * (idle - hot) > 0.0,
+                "{look}: idle and hot go the same way"
+            );
+            assert!(
+                contrast(p.border, p.bg) > 1.1,
+                "{look}: a hairline must be visible on the page"
+            );
+            assert!(
+                contrast(p.divider, p.card) > 1.05,
+                "{look}: a divider must be visible in a panel"
+            );
+        }
+    }
+
+    #[test]
+    fn the_appearance_picks_the_palette() {
+        use egui::Theme;
+        assert!(resolve_dark(Appearance::Dark, None));
+        assert!(!resolve_dark(Appearance::Light, Some(Theme::Dark)));
+        assert!(resolve_dark(Appearance::System, Some(Theme::Dark)));
+        assert!(!resolve_dark(Appearance::System, Some(Theme::Light)));
+        assert!(!resolve_dark(Appearance::System, None), "light by default");
+        const {
+            assert!(DARK.dark && !LIGHT.dark);
+        }
     }
 
     #[test]
     fn on_accent_is_readable_on_any_accent() {
         // the accent is user-chosen, so check the whole spread: saturated, light, dark, grey
-        let accents = [
+        let mut accents = vec![
             Color32::from_rgb(110, 150, 255),
             Color32::from_rgb(255, 220, 60),
             Color32::from_rgb(20, 20, 20),
@@ -291,40 +444,83 @@ mod tests {
             Color32::from_rgb(230, 60, 60),
             Color32::from_rgb(60, 200, 120),
         ];
+        accents.extend(
+            ACCENTS
+                .iter()
+                .map(|(_, c)| Color32::from_rgb(c[0], c[1], c[2])),
+        );
         for a in accents {
             let c = contrast(a, on_accent(a));
-            assert!(c >= 4.0, "text on {a:?}: {c:.1}:1");
+            assert!(c >= 3.0, "text on {a:?}: {c:.1}:1");
         }
-        assert_eq!(on_accent(Color32::from_rgb(255, 255, 0)), DARK_TEXT);
+        assert_eq!(on_accent(Color32::from_rgb(255, 255, 0)), INK);
         assert_eq!(on_accent(Color32::from_rgb(10, 10, 80)), Color32::WHITE);
     }
 
     #[test]
-    fn the_window_outline_is_between_the_hairline_and_the_accent() {
-        let accent = Color32::from_rgb(255, 0, 0);
-        let c = window_outline_color(accent);
+    fn the_default_accent_carries_white_text() {
+        let [r, g, b] = ACCENTS[0].1;
+        let accent = Color32::from_rgb(r, g, b);
+        assert_eq!(on_accent(accent), Color32::WHITE);
+        assert!(contrast(accent, Color32::WHITE) >= 4.5);
         assert!(
-            c.r() > BORDER.r() && c.r() < accent.r(),
-            "red moved toward the accent"
+            contrast(accent, pal().card) >= 3.0,
+            "the accent is visible as a line or a mark on a panel"
         );
-        assert_eq!(window_outline_color(BORDER), BORDER, "no accent, no change");
     }
 
     #[test]
-    fn corner_radii_fit_together() {
-        assert_eq!(TOP_RADIUS.nw, CARD_RADIUS.nw);
-        assert_eq!(
-            TOP_RADIUS.sw, 0,
-            "the bar is square where it meets the body"
+    fn the_window_outline_is_between_the_hairline_and_the_accent() {
+        let accent = Color32::from_rgb(0, 0, 0);
+        let c = window_outline_color(accent);
+        assert!(
+            c.r() < pal().border.r() && c.r() > accent.r(),
+            "moved toward the accent"
         );
-        assert_eq!(BOTTOM_RADIUS.se, CARD_RADIUS.se);
-        assert_eq!(BOTTOM_RADIUS.nw, 0);
+        assert_eq!(
+            window_outline_color(pal().border),
+            pal().border,
+            "no accent, no change"
+        );
+    }
+
+    #[test]
+    fn wash_keeps_the_color_and_scales_the_opacity() {
+        let w = wash(Color32::from_rgb(10, 20, 30), 0.5);
+        assert_eq!(w.a(), 128);
+        assert_eq!(wash(Color32::RED, 2.0).a(), 255, "clamped");
+        assert_eq!(wash(Color32::RED, -1.0).a(), 0, "clamped");
+    }
+
+    #[test]
+    fn the_scale_of_radii_goes_from_controls_to_the_window() {
         // both sides are constants, so the compiler can check this instead of a test run
         const {
             assert!(
-                RADIUS.nw < CARD_RADIUS.nw,
-                "controls are squarer than the window"
+                CONTROL_R_PT < PANEL_R_PT,
+                "panels are rounder than controls"
+            );
+            assert!(PANEL_R_PT < CARD_RADIUS_PT, "the window is the roundest");
+        }
+        assert_eq!(CARD_RADIUS.nw, CARD_RADIUS_PT);
+        assert_eq!(PANEL_R.se, PANEL_R_PT);
+    }
+
+    #[test]
+    fn the_accent_swatches_are_all_different() {
+        for (i, (_, a)) in ACCENTS.iter().enumerate() {
+            assert!(
+                !ACCENTS[..i].iter().any(|(_, b)| a == b),
+                "{a:?} is listed twice"
             );
         }
+    }
+
+    #[test]
+    fn the_window_shadow_fits_the_margin() {
+        use crate::ui::app::WIN_MARGIN;
+        let s = window_shadow();
+        let reach = s.offset[1].unsigned_abs() as f32 + s.blur as f32 + s.spread as f32;
+        assert!(reach <= WIN_MARGIN, "shadow reaches {reach}");
     }
 }

@@ -4,6 +4,9 @@ use crate::config::*;
 use crate::geometry::Point;
 use crate::geometry::*;
 use crate::ui::draw::*;
+use crate::ui::fonts;
+use crate::ui::settings::theme::pal;
+use crate::ui::symbols;
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Vec2};
 use std::f32::consts::TAU;
 
@@ -14,6 +17,11 @@ pub(super) enum Designer {
     Up,
     AddClicked,
 }
+/// `[r, g, b]` of a palette color.
+fn rgb3(c: Color32) -> [u8; 3] {
+    [c.r(), c.g(), c.b()]
+}
+
 /// What the pointer is over.
 enum Hit {
     Out,
@@ -61,18 +69,26 @@ pub(super) fn pie_designer(
 
     // ---- draw ----
     let sl = TAU / total.max(1) as f32;
+    let accent_c = rgb(accent);
     for i in 0..total {
         let item = items.get(i); // None for the trailing "+" slice
         let ghost = i == n;
         let selected = ed.sel == Some(i);
         let hovered = matches!(hov, Hit::Slice(h) if h == i);
-        let base = if ghost { [30, 32, 40] } else { [27, 29, 35] };
+        // a slice at rest is a control; the "+" slice is lighter, so it reads as a place, not a thing
+        let base = rgb3(if ghost { pal().input } else { pal().idle });
         let t = if selected {
-            0.9
+            1.0
         } else if hovered {
-            0.45
+            0.16
         } else {
             0.0
+        };
+        // text on the slice: dark, or whatever reads on the accent while it is selected
+        let ink = if selected {
+            on_accent(accent_c)
+        } else {
+            pie_colors().ink
         };
         let a0 = slice_start(i, total);
         painter.add(ring_slice(
@@ -88,13 +104,7 @@ pub(super) fn pie_designer(
         let am = a0 + sl / 2.0;
         let tp = c + Vec2::new(am.cos(), am.sin()) * ((inner + outer) / 2.0);
         if ghost {
-            painter.text(
-                tp,
-                Align2::CENTER_CENTER,
-                "+",
-                FontId::proportional(30.0),
-                Color32::from_white_alpha(130),
-            );
+            fonts::paint_icon(&painter, tp, symbols::PLUS, 26.0, pal().muted, false);
         } else if let Some(it) = item {
             let tex = ed.icon_for(ctx, &it.icon);
             draw_icon(
@@ -102,23 +112,24 @@ pub(super) fn pie_designer(
                 tex.as_ref(),
                 &it.icon,
                 tp - Vec2::new(0.0, 8.0),
-                32.0,
-                255,
+                30.0,
+                ink,
             );
             painter.text(
                 tp + Vec2::new(0.0, 18.0),
                 Align2::CENTER_CENTER,
                 &it.name,
-                FontId::proportional(11.0),
-                Color32::from_white_alpha(190),
+                FontId::proportional(11.5),
+                ink.gamma_multiply(0.85),
             );
             if matches!(it.kind, ItemKind::Submenu(_)) {
-                painter.text(
-                    tp + Vec2::new(0.0, 31.0),
-                    Align2::CENTER_CENTER,
-                    "›",
-                    FontId::proportional(14.0),
-                    rgb(accent),
+                fonts::paint_icon(
+                    &painter,
+                    tp + Vec2::new(0.0, 33.0),
+                    symbols::CARET_DOWN,
+                    13.0,
+                    if selected { ink } else { accent_c },
+                    false,
                 );
             }
         }
@@ -126,23 +137,33 @@ pub(super) fn pie_designer(
     // center: "Back" while inside a submenu
     let core = inner * 0.86;
     let center_hot = matches!(hov, Hit::Center) && !ed.nav.is_empty();
-    painter.circle_filled(
-        c,
-        core,
-        if center_hot {
-            Color32::from_rgb(40, 44, 54)
-        } else {
-            Color32::from_rgb(14, 15, 18)
-        },
-    );
-    let label = if ed.nav.is_empty() { "Pie" } else { "‹ Back" };
-    painter.text(
-        c,
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(13.0),
-        Color32::from_white_alpha(170),
-    );
+    painter.circle_filled(c, core, if center_hot { pal().hot } else { pal().bg });
+    if ed.nav.is_empty() {
+        fonts::paint_icon(
+            &painter,
+            c,
+            symbols::CHART_PIE_SLICE,
+            26.0,
+            pal().muted,
+            false,
+        );
+    } else {
+        fonts::paint_icon(
+            &painter,
+            c - Vec2::new(0.0, 9.0),
+            symbols::CARET_LEFT,
+            18.0,
+            pal().text,
+            false,
+        );
+        painter.text(
+            c + Vec2::new(0.0, 10.0),
+            Align2::CENTER_CENTER,
+            "Back",
+            FontId::proportional(12.5),
+            pal().text,
+        );
+    }
 
     // ---- clicks ----
     if resp.clicked()
