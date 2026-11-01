@@ -2,9 +2,9 @@
 //!
 //! Defaults depend on the OS: macOS uses Cmd shortcuts, bundle ids and Finder/Safari; Windows uses
 //! Ctrl/Alt/Win shortcuts, executable names and Explorer/Edge; Linux uses Ctrl shortcuts, lower-case
-//! desktop-entry ids and portable shell commands (there is no neutral app name for "the file
-//! manager"). Every function takes the OS as a
-//! parameter in its `_for` form (so tests cover both); the plain form uses the OS the build runs on.
+//! desktop-entry ids and roles (`@files`, `@browser`, `@terminal`: there is no neutral app name for
+//! "the file manager", so the system is asked which app fills the role). Every function takes the OS
+//! as a parameter in its `_for` form (so tests cover both); the plain form uses the OS the build runs on.
 
 use super::{
     Action, AppGesture, Appearance, CONFIG_VERSION, Config, DesktopMode, Item, PieStyle, Profile,
@@ -12,6 +12,7 @@ use super::{
 };
 use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT, Shortcut, key};
 use crate::platform::Os;
+use crate::platform::linux::roles::Role;
 
 /// Side-button mode presets (the original eight) for this OS.
 pub fn presets() -> Vec<Item> {
@@ -155,12 +156,12 @@ pub fn quick_actions_for(os: Os) -> Vec<Item> {
             Item::run(
                 "Files",
                 "ico:folder-simple",
-                Action::Command(LINUX_FILES.into()),
+                Action::OpenApp(Role::Files.text().into()),
             ),
             Item::run(
                 "Terminal",
                 "ico:terminal-window",
-                Action::Command(LINUX_TERMINAL.into()),
+                Action::OpenApp(Role::Terminal.text().into()),
             ),
             key_item("Emoji", "ico:smiley", Shortcut::ch('.', MOD_CMD)),
             Item::run(
@@ -178,19 +179,6 @@ elif command -v gnome-screenshot >/dev/null; then gnome-screenshot -i; \
 elif command -v xfce4-screenshooter >/dev/null; then xfce4-screenshooter -r; \
 elif command -v flameshot >/dev/null; then flameshot gui; \
 elif command -v grim >/dev/null; then grim -g \"$(slurp)\" - | wl-copy; fi";
-
-/// Opens the home folder in the default file manager.
-const LINUX_FILES: &str = "xdg-open \"$HOME\"";
-
-/// Starts the user's terminal: the desktop's default, else the first of a list that is installed.
-const LINUX_TERMINAL: &str = "if command -v xdg-terminal-exec >/dev/null; then exec xdg-terminal-exec; \
-elif command -v x-terminal-emulator >/dev/null; then exec x-terminal-emulator; \
-else for t in kgx gnome-terminal konsole xfce4-terminal alacritty kitty foot xterm; do \
-command -v \"$t\" >/dev/null && exec \"$t\"; done; fi";
-
-/// Starts the default web browser.
-const LINUX_BROWSER: &str = "b=$(xdg-settings get default-web-browser); \
-gtk-launch \"$b\" 2>/dev/null || gio launch \"/usr/share/applications/$b\" 2>/dev/null || xdg-open about:blank";
 
 /// Blank slices for the "+ Add item" menu.
 pub fn blank_items(allow_submenu: bool) -> Vec<Item> {
@@ -269,17 +257,17 @@ impl Config {
                     (
                         "Files",
                         "ico:folder-simple",
-                        Action::Command(LINUX_FILES.into()),
+                        Action::OpenApp(Role::Files.text().into()),
                     ),
                     (
                         "Terminal",
                         "ico:terminal-window",
-                        Action::Command(LINUX_TERMINAL.into()),
+                        Action::OpenApp(Role::Terminal.text().into()),
                     ),
                     (
                         "Browser",
                         "ico:globe",
-                        Action::Command(LINUX_BROWSER.into()),
+                        Action::OpenApp(Role::Browser.text().into()),
                     ),
                 ],
                 s(&[
@@ -682,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn linux_quick_actions_are_commands_that_exist_everywhere() {
+    fn linux_quick_actions_use_roles_and_commands_that_exist_everywhere() {
         let q = quick_actions_for(Os::Linux);
         assert_eq!(q.len(), 5);
         let names: Vec<&str> = q.iter().map(|i| i.name.as_str()).collect();
@@ -691,9 +679,13 @@ mod tests {
             ItemKind::Run(Action::Command(c)) => c.clone(),
             other => panic!("not a command: {other:?}"),
         };
+        let app = |i: usize| match &q[i].kind {
+            ItemKind::Run(Action::OpenApp(a)) => a.clone(),
+            other => panic!("not an app: {other:?}"),
+        };
         assert!(command(0).contains("command -v spectacle"));
-        assert_eq!(command(1), "xdg-open \"$HOME\"");
-        assert!(command(2).contains("xdg-terminal-exec"));
+        assert_eq!(app(1), "@files", "an app, so its window is raised");
+        assert_eq!(app(2), "@terminal");
         assert_eq!(command(4), "loginctl lock-session");
         assert_eq!(
             q[3].kind,
@@ -716,16 +708,20 @@ mod tests {
             assert_eq!(&Os::Linux.normalize_app_id(app), app);
         }
         assert_eq!(c.trigger_button, 2);
-        // the launch submenu: three launchers and the screenshot item, all runnable commands
+        // the launch submenu: three launchers that open an app by role, then the screenshot command
         let launch = c.profiles[0].items.last().unwrap();
         let ItemKind::Submenu(items) = &launch.kind else {
             panic!("Launch is a submenu");
         };
         assert_eq!(items.len(), 4);
-        assert!(
-            items
-                .iter()
-                .all(|i| matches!(&i.kind, ItemKind::Run(Action::Command(_))))
-        );
+        let roles: Vec<_> = items[..3]
+            .iter()
+            .map(|i| match &i.kind {
+                ItemKind::Run(Action::OpenApp(a)) => a.as_str(),
+                other => panic!("not an app: {other:?}"),
+            })
+            .collect();
+        assert_eq!(roles, ["@files", "@terminal", "@browser"]);
+        assert!(matches!(&items[3].kind, ItemKind::Run(Action::Command(_))));
     }
 }

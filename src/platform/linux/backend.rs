@@ -7,6 +7,7 @@
 
 use super::desktop_entry::Index;
 use super::launch::{self, Chooser, Launch};
+use super::roles::{self, Role};
 use super::{autostart, inputdev, x11, xdg, xlib};
 use crate::config::DesktopMode;
 use crate::geometry::Point;
@@ -178,13 +179,44 @@ fn started(cmd: &mut Command) -> bool {
     }
 }
 
-/// Opens an app: a desktop id, a `.desktop` file, a program on `PATH` or a path.
+/// The app a role stands for on this machine right now, if it is installed. The system is asked
+/// each time: the user may change the default browser at any moment.
+fn role_app(role: Role, index: &Index) -> Option<String> {
+    let id = match role.query() {
+        Some((program, args)) => {
+            let out = Command::new(program)
+                .args(args)
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            roles::app_from_query(&String::from_utf8_lossy(&out.stdout))?
+        }
+        // `xdg-terminal-exec` knows the user's choice better than a list does
+        None if on_path("xdg-terminal-exec") => return None,
+        None => roles::terminal_app(index)?,
+    };
+    index.find(&id).map(|e| e.id.clone())
+}
+
+/// Opens an app: a desktop id, a `.desktop` file, a program on `PATH`, a path or a role such as
+/// `@browser`.
 pub fn open_app(app: &str) {
     let a = app.trim();
     if a.is_empty() {
         return;
     }
     let index = x11::index().unwrap_or_else(|| std::sync::Arc::new(Index::default()));
+    if let Some(role) = Role::parse(a) {
+        match role_app(role, &index) {
+            Some(id) => open_app(&id),
+            None => run_shell(role.command()),
+        }
+        return;
+    }
     let how = if a.ends_with(".desktop") && a.contains('/') {
         Launch::Desktop(a.to_string())
     } else {
@@ -206,11 +238,26 @@ pub fn open_app(app: &str) {
 /// does the switching when it is asked to activate a window, so this raises the app's window if it
 /// has one and starts the app otherwise. `mode` is `SwitchToApp` here: `DoNothing` never gets this far
 /// and `BringToCurrent` is turned into `SwitchToApp` for Linux (`DesktopMode::effective`).
+///
+/// A role (`@browser`) is first turned into the app that fills it, so its window is found too.
 pub fn reveal_app(app: &str, _mode: DesktopMode) {
     let a = app.trim();
     if a.is_empty() {
         return;
     }
+    if let Some(role) = Role::parse(a) {
+        let index = x11::index().unwrap_or_else(|| std::sync::Arc::new(Index::default()));
+        match role_app(role, &index) {
+            Some(id) => raise_or_open(&id),
+            None => run_shell(role.command()),
+        }
+        return;
+    }
+    raise_or_open(a);
+}
+
+/// Raises the window of the app `a` if it has one, otherwise starts it.
+fn raise_or_open(a: &str) {
     if let Some(c) = x11::conn()
         && c.raise(a)
     {

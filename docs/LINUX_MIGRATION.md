@@ -464,6 +464,18 @@ user where the controls are, which is the Windows page 2 idea ("where the tray i
 - *Open app*: a desktop-entry id launches through `gio launch`; a name found on `PATH` or an absolute
   path is spawned directly in its own session; the resolution is a pure function over a desktop-entry
   index and a `PATH` list.
+- *Open app, already running*: the text of the slice (an id, a program name or a path) is expanded by
+  `Index::aliases` into every name the app may go by: the id of the entry it names, found by id, by
+  window class, by a unique `.<name>` suffix or by the program of its `Exec` line, plus that entry's
+  `StartupWMClass` and program. A window belongs to the app when its class, its instance or its canonical
+  id is one of them (`toplevels::belongs_to`). Only when no window matches is the app started.
+- *Roles*: the default Files, Terminal and Browser slices are "Open app" slices with the text `@files`,
+  `@terminal` and `@browser` (`platform/linux/roles.rs`). `backend::role_app` asks `xdg-mime query default
+  inode/directory` or `xdg-settings get default-web-browser` (a terminal comes from `xdg-terminal-exec` if it
+  exists, else the first installed one of a list) and then continues as for any app id, so a window that is
+  open is raised. A shell command in the same file runs when the system names nothing installed. Configs of
+  0.7.0 and earlier hold these three as shell commands: `Config::sanitize` turns the unchanged ones into roles
+  on Linux.
 - *Open URL / file*: `xdg-open`. *Shell command*: `/bin/sh -c`, as on macOS. Processes are reaped by
   `spawn_reaped`, no zombies.
 - *File chooser*: the FileChooser portal over D-Bus; `zenity` or `kdialog` if no portal answers.

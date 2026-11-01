@@ -13,6 +13,9 @@ pub struct Entry {
     pub name: String,
     /// `StartupWMClass`: the window class the app says it uses.
     pub wm_class: Option<String>,
+    /// The program the `Exec` line starts, lower case, without its directory (see
+    /// [`exec_program`]). Many windows are named after it when the entry has no `StartupWMClass`.
+    pub exec_name: Option<String>,
     /// Path of the `.desktop` file (what `gio launch` takes).
     pub path: String,
 }
@@ -26,6 +29,50 @@ pub fn id_key(s: &str) -> String {
     }
 }
 
+/// The app id of what the user typed or picked: a path is cut down to its file name (the `.desktop`
+/// file or the program), then [`id_key`] applies.
+pub fn name_key(s: &str) -> String {
+    let t = s.trim();
+    if t.contains('/') {
+        return Path::new(t)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(id_key)
+            .unwrap_or_default();
+    }
+    id_key(t)
+}
+
+/// The program an `Exec` line starts: lower case, without its directory (`firefox` for
+/// `/usr/bin/firefox %u`). `env VAR=1 app` is looked through. A launcher that names nothing about
+/// the window (`sh`, `flatpak`, `snap`...) gives `None`.
+pub fn exec_program(exec: &str) -> Option<String> {
+    let exec = exec.trim();
+    // a quoted program may hold spaces: it ends at the closing quote
+    let (mut first, rest) = match exec.strip_prefix('"') {
+        Some(quoted) => quoted.split_once('"').unwrap_or((quoted, "")),
+        None => exec.split_once(char::is_whitespace).unwrap_or((exec, "")),
+    };
+    if first == "env" {
+        first = rest
+            .split_whitespace()
+            .map(|w| w.trim_matches('"'))
+            .find(|w| !w.contains('='))?;
+    }
+    let file = Path::new(first).file_name()?.to_str()?;
+    let name = file.to_ascii_lowercase();
+    if name.is_empty()
+        || matches!(
+            name.as_str(),
+            "env" | "sh" | "bash" | "flatpak" | "snap" | "gio" | "xdg-open"
+        )
+    {
+        None
+    } else {
+        Some(name)
+    }
+}
+
 /// Parses the text of a desktop file. `file_name` is its name (`firefox.desktop`), `path` where it
 /// is. Only applications that are not `Hidden` are returned.
 pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
@@ -33,6 +80,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
     let mut kind: Option<String> = None;
     let mut name: Option<String> = None;
     let mut wm_class: Option<String> = None;
+    let mut exec: Option<String> = None;
     let mut hidden = false;
     for line in text.lines() {
         let line = line.trim();
@@ -54,6 +102,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
             "Type" => kind = Some(value.to_string()),
             "Name" => name = Some(value.to_string()),
             "StartupWMClass" if !value.is_empty() => wm_class = Some(value.to_string()),
+            "Exec" => exec = Some(value.to_string()),
             "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
             _ => {}
         }
@@ -69,6 +118,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
         name: name.unwrap_or_else(|| id.clone()),
         id,
         wm_class,
+        exec_name: exec.as_deref().and_then(exec_program),
         path: path.to_string(),
     })
 }
@@ -124,6 +174,38 @@ impl Index {
         }
         None
     }
+
+    /// Every name a window of the app `app` may report, lower case. `app` is what the user typed or
+    /// picked: an app id, a program name or a path. The result holds that name, and, when it names
+    /// an installed entry, the entry's id, window class and program. The window manager's name for
+    /// a window often differs from what was typed (`firefox` for `org.mozilla.firefox`,
+    /// `gnome-terminal` for `org.gnome.terminal`), so "is this app running" compares sets of names.
+    pub fn aliases(&self, app: &str) -> Vec<String> {
+        let key = name_key(app);
+        if key.is_empty() {
+            return Vec::new();
+        }
+        let entry = self
+            .find(&key)
+            .or_else(|| {
+                self.canonical(&[key.as_str()])
+                    .and_then(|id| self.find(&id))
+            })
+            .or_else(|| {
+                self.entries
+                    .iter()
+                    .find(|e| e.exec_name.as_deref() == Some(key.as_str()))
+            });
+        let mut out = vec![key.clone()];
+        if let Some(e) = entry {
+            out.push(e.id.clone());
+            out.extend(e.wm_class.iter().map(|w| w.to_ascii_lowercase()));
+            out.extend(e.exec_name.iter().cloned());
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
 }
 
 /// Reads the `*.desktop` files of the given `applications` directories (not recursively). A
@@ -174,6 +256,7 @@ mod tests {
             id: id.into(),
             name: id.into(),
             wm_class: wm.map(str::to_string),
+            exec_name: None,
             path: format!("/usr/share/applications/{id}.desktop"),
         }
     }
@@ -267,6 +350,66 @@ mod tests {
         assert!(idx.find("FIREFOX").is_some());
         assert!(idx.find("chrome").is_none());
         assert_eq!(idx.len(), 1);
+    }
+
+    #[test]
+    fn typed_names_and_paths_are_cut_down_to_an_id() {
+        assert_eq!(name_key(" Firefox.desktop "), "firefox");
+        assert_eq!(name_key("/usr/share/applications/A.desktop"), "a");
+        assert_eq!(name_key("/opt/App/Run"), "run");
+        assert_eq!(name_key("/"), "");
+        assert_eq!(name_key(""), "");
+    }
+
+    #[test]
+    fn the_program_of_an_exec_line() {
+        let prog = exec_program;
+        assert_eq!(prog("firefox %u").as_deref(), Some("firefox"));
+        assert_eq!(prog("/usr/bin/Code %F").as_deref(), Some("code"));
+        assert_eq!(prog("\"/opt/My App/run\" %f").as_deref(), Some("run"));
+        assert_eq!(prog("env A=1 app %U").as_deref(), Some("app"));
+        assert_eq!(prog("flatpak run org.a.B"), None);
+        assert_eq!(prog("sh -c app"), None);
+        assert_eq!(prog(""), None);
+        assert_eq!(prog("env A=1"), None);
+    }
+
+    #[test]
+    fn parse_keeps_the_program_of_the_exec_line() {
+        let e = parse("Firefox.desktop", "/p/Firefox.desktop", FIREFOX).unwrap();
+        assert_eq!(e.exec_name.as_deref(), Some("firefox"));
+        let bare = "[Desktop Entry]\nType=Application";
+        assert_eq!(parse("a.desktop", "/a", bare).unwrap().exec_name, None);
+    }
+
+    #[test]
+    fn aliases_cover_every_name_a_window_may_have() {
+        let mut terminal = entry("org.gnome.terminal", None);
+        terminal.exec_name = Some("gnome-terminal".into());
+        let idx = Index::new(vec![
+            entry("org.mozilla.firefox", Some("Firefox")),
+            terminal,
+        ]);
+        let has = |list: &[String], name: &str| list.iter().any(|a| a == name);
+        // a short name finds the entry through the suffix rule
+        let a = idx.aliases("firefox");
+        assert!(has(&a, "firefox"));
+        assert!(has(&a, "org.mozilla.firefox"));
+        // a program name finds it through the Exec line
+        let t = idx.aliases("GNOME-Terminal");
+        assert!(has(&t, "gnome-terminal"));
+        assert!(has(&t, "org.gnome.terminal"));
+        // a path to the desktop file names the same app
+        let p = idx.aliases("/x/org.gnome.terminal.desktop");
+        assert!(has(&p, "gnome-terminal"));
+    }
+
+    #[test]
+    fn aliases_of_an_unknown_app_are_its_own_name() {
+        let idx = Index::default();
+        assert_eq!(idx.aliases("/usr/bin/Htop"), ["htop"]);
+        assert_eq!(idx.aliases(" xterm "), ["xterm"]);
+        assert!(idx.aliases("  ").is_empty());
     }
 
     #[test]

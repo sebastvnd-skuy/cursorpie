@@ -4,6 +4,7 @@ use super::{
     CONFIG_VERSION, Config, Item, ItemKind, MAX_DEPTH, MAX_ITEMS, MAX_PROFILES, item_at, presets,
     share::clean_apps,
 };
+use crate::platform::{Os, linux::roles};
 
 /// The accent that versions before 0.7 started with. It is replaced by the new default.
 const OLD_DEFAULT_ACCENT: [u8; 3] = [64, 156, 255];
@@ -48,6 +49,19 @@ fn clean_items(items: &mut Vec<Item>, depth: usize) {
     }
 }
 
+/// Turns the launcher commands of older Linux default configs (Files, Terminal, Browser) into roles
+/// (see [`roles`]). A command always starts a new copy; an "Open app" slice raises the window that
+/// exists.
+fn upgrade_launchers(items: &mut [Item]) {
+    for it in items {
+        match &mut it.kind {
+            ItemKind::Run(action) => roles::upgrade(action),
+            ItemKind::Submenu(children) => upgrade_launchers(children),
+            ItemKind::Mode { .. } => {}
+        }
+    }
+}
+
 impl Config {
     /// Forces the config into the limits the rest of the program relies on (see
     /// [`guides::config_format`](crate::guides::config_format#validation) for the list).
@@ -75,6 +89,10 @@ impl Config {
                 p.items = vec![presets().remove(0)];
             }
             clean_items(&mut p.items, 0);
+            // a config copied from another system may hold these commands: leave it alone there
+            if matches!(Os::current(), Os::Linux) {
+                upgrade_launchers(&mut p.items);
+            }
             let ok = matches!(
                 item_at(&p.items, &p.active).map(|i| &i.kind),
                 Some(ItemKind::Mode { .. })
@@ -276,5 +294,33 @@ mod tests {
             items = ch;
         }
         assert!(depth <= MAX_DEPTH, "depth {depth}");
+    }
+
+    #[test]
+    fn old_launcher_commands_become_roles_in_every_ring() {
+        use crate::config::Action;
+        let cmd = |c: &str| Action::Command(c.into());
+        let mut items = vec![
+            Item::run("Files", "ico:folder-simple", cmd(roles::FILES_COMMAND)),
+            Item::submenu(
+                "Launch",
+                "ico:rocket-launch",
+                vec![
+                    Item::run("Browser", "ico:globe", cmd(roles::BROWSER_COMMAND)),
+                    Item::run("Mine", "ico:crop", cmd("ls")),
+                ],
+            ),
+        ];
+        upgrade_launchers(&mut items);
+        let kind = |i: &Item| match &i.kind {
+            ItemKind::Run(a) => a.clone(),
+            other => panic!("not a slice: {other:?}"),
+        };
+        assert_eq!(kind(&items[0]), Action::OpenApp("@files".into()));
+        let ItemKind::Submenu(inner) = &items[1].kind else {
+            panic!("a submenu");
+        };
+        assert_eq!(kind(&inner[0]), Action::OpenApp("@browser".into()));
+        assert_eq!(kind(&inner[1]), cmd("ls"), "a command of the user stays");
     }
 }

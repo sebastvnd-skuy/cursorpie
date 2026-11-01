@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.7.1
+
+- **Linux: "Open app" no longer starts a second copy of an app that is already open.** The slice compared what
+  you typed (`firefox`, `gnome-terminal`, a path) with the one name the window manager gives the window
+  (`org.mozilla.firefox`, `org.gnome.terminal`), found no match and started the app again. It now compares every
+  name a window has (its class, its instance and the desktop entry's id, window class and program), so the
+  existing window is raised, on whichever workspace it is.
+- **Linux: the Files, Terminal and Browser slices raise the window that is open.** They were shell commands, which
+  always start a new copy (a new Firefox window on every click). They are now "Open app" slices that name a role:
+  `@browser`, `@files` or `@terminal`. CursorPie asks the system which app that is (`xdg-settings`, `xdg-mime`, or
+  the first terminal it finds), then raises its window or starts it. Your existing `config.json` is upgraded
+  when it is loaded (the file itself changes at the next save): only the three unchanged default commands are
+  replaced, your own commands stay. You can
+  type these roles in any "Open app" slice. If the system cannot name the app, the old command runs.
+
 ## 0.7.0
 - **Quit asks before it quits.** Pressing **Quit CursorPie** while Settings is open (sidebar, General, or the
   tray / menu bar icon) opens a sheet instead of quitting at once. With nothing unsaved it asks "Do you really
