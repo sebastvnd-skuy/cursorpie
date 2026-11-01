@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **macOS: "Open app" now opens the app on the screen you clicked.** With two screens, an app that already had
+  a window on the other screen (Finder, say) was taken for "already here", so the slice only focused the window
+  on the screen you were not looking at. Now, with more than one screen, the app's front window on the screen
+  under the pointer is raised and given the focus; when the app has none there, its front window is moved to
+  that screen, centered, and raised. Full-screen windows, apps without a window, single-screen setups and "Do
+  nothing" behave as before; when a window cannot be moved the app is opened as before. Uses Accessibility only
+  (no private calls).
+
 ## 0.6.0
 
 - **Side-button slices can use every button of the mouse, not only back and forward.** A slice set to "Side

@@ -12,6 +12,8 @@
 //! The same module holds the other decisions that need no OS call: where an app's windows are
 //! ([`presence_of`]) and how one desktop is told from another ([`signature`]).
 
+use super::ScreenRect;
+
 /// Whether two paths of an app bundle name the same one: `/Applications/Helium.app/`, as it may be
 /// typed in a slice, and `/Applications/Helium.app`, as the system reports it. Trailing slashes
 /// and letter case (the default file system ignores it) do not matter.
@@ -95,6 +97,35 @@ pub fn presence_of(windows: &[WindowInfo], pid: i32) -> Presence {
         elsewhere.get_or_insert(w.number);
     }
     elsewhere.map_or(Presence::Nowhere, Presence::Elsewhere)
+}
+
+/// What to do with an app's windows so that one of them shows on the display `screen` (the one
+/// under the pointer).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OnScreen {
+    /// The window with this index is on that display already: raise it and give it the focus.
+    Raise(usize),
+    /// None is: move the window with this index there.
+    Move(usize),
+}
+
+/// Which of an app's windows to show on the display `screen`: `frames` are the frames of its real
+/// windows, front to back, in the space of the pointer. The front-most one on that display if
+/// there is one, otherwise the front-most one overall. `None` when the app has no real window.
+///
+/// [`presence_of`] looks at every display at once, so an app whose window is on screen 2 is "here"
+/// for a click on screen 1, and `open -a` then only focuses the window the person is not looking
+/// at, even when the app has a window on screen 1 too. A window belongs to the display that holds
+/// its middle.
+pub fn window_for_screen(frames: &[ScreenRect], screen: ScreenRect) -> Option<OnScreen> {
+    let on = |f: &ScreenRect| {
+        let (cx, cy) = (f.x + f.w / 2.0, f.y + f.h / 2.0);
+        cx >= screen.x && cx < screen.x + screen.w && cy >= screen.y && cy < screen.y + screen.h
+    };
+    match frames.iter().position(on) {
+        Some(at) => Some(OnScreen::Raise(at)),
+        None => (!frames.is_empty()).then_some(OnScreen::Move(0)),
+    }
 }
 
 /// A number that tells one desktop from another, made of the ids of the windows on it: the same
@@ -358,7 +389,7 @@ mod tests {
         assert_eq!(app_name_of_path(".app"), "");
     }
 
-    /// A window of `pid`, 800 x 600, normal layer.
+    /// A window of `pid`, 800 x 600, normal layer, at the top-left corner of the first screen.
     fn win(number: u32, pid: i32, on_screen: bool) -> WindowInfo {
         WindowInfo {
             number,
@@ -371,16 +402,63 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_app_with_a_window_on_the_shown_desktop_is_here() {
-        let list = [win(1, 7, false), win(2, 7, true), win(3, 8, true)];
-        assert_eq!(presence_of(&list, 7), Presence::Here);
+    /// The main screen (1920 x 1080) and a portrait one to its left (-1080, -194), the layout of
+    /// the bug report.
+    const MAIN: ScreenRect = ScreenRect {
+        x: 0.0,
+        y: 0.0,
+        w: 1920.0,
+        h: 1080.0,
+    };
+    const LEFT: ScreenRect = ScreenRect {
+        x: -1080.0,
+        y: -194.0,
+        w: 1080.0,
+        h: 1920.0,
+    };
+
+    /// A window frame of 800 x 600 with its top-left corner at (`x`, `y`).
+    fn frame(x: f64, y: f64) -> ScreenRect {
+        ScreenRect {
+            x,
+            y,
+            w: 800.0,
+            h: 600.0,
+        }
     }
 
     #[test]
-    fn an_app_with_windows_only_elsewhere_gives_its_top_most_one() {
-        let list = [win(5, 8, true), win(4, 7, false), win(3, 7, false)];
-        assert_eq!(presence_of(&list, 7), Presence::Elsewhere(4));
+    fn a_window_only_on_the_other_screen_is_moved() {
+        let frames = [frame(-900.0, 100.0)];
+        assert_eq!(window_for_screen(&frames, MAIN), Some(OnScreen::Move(0)));
+        assert_eq!(window_for_screen(&frames, LEFT), Some(OnScreen::Raise(0)));
+    }
+
+    #[test]
+    fn a_window_on_the_clicked_screen_is_raised_even_behind_one_on_the_other() {
+        // the front window is on the left screen, the one behind it on the main screen
+        let frames = [frame(-900.0, 100.0), frame(300.0, 200.0)];
+        assert_eq!(window_for_screen(&frames, MAIN), Some(OnScreen::Raise(1)));
+        assert_eq!(window_for_screen(&frames, LEFT), Some(OnScreen::Raise(0)));
+    }
+
+    #[test]
+    fn the_front_window_is_the_one_moved() {
+        let frames = [frame(-800.0, 0.0), frame(-700.0, 50.0)];
+        assert_eq!(window_for_screen(&frames, MAIN), Some(OnScreen::Move(0)));
+    }
+
+    #[test]
+    fn a_window_belongs_to_the_screen_that_holds_its_middle() {
+        // 800 wide, starting at -300: the middle is at 100, on the main screen
+        let across = [frame(-300.0, 100.0)];
+        assert_eq!(window_for_screen(&across, MAIN), Some(OnScreen::Raise(0)));
+        assert_eq!(window_for_screen(&across, LEFT), Some(OnScreen::Move(0)));
+    }
+
+    #[test]
+    fn nothing_is_done_for_an_app_without_windows() {
+        assert_eq!(window_for_screen(&[], MAIN), None);
     }
 
     #[test]

@@ -29,6 +29,14 @@
 //!   keys are sent and put back afterwards: the switch animation happens on the screen of the
 //!   window, not on the screen that was clicked.
 //!
+//!   **An app that is on the other screen.** `open -a` cannot help when the app's window is on a
+//!   Space that is shown, but on another display than the one that was clicked: the app is already
+//!   "here" for the window server, and activating it only focuses a window the person is not looking
+//!   at. So with more than one display the app's front window on the display under the pointer is
+//!   raised and given the focus, and when it has none there the window is moved onto that display first
+//!   ([`show_on_pointer_display`]), through Accessibility (public API, no private calls). When that does not work (a
+//!   full-screen window, no Accessibility permission) the app is opened as before.
+//!
 //!   Once the Space is shown the window is raised itself ([`focus_app`]): after the switch animation
 //!   it is raised through Accessibility, the app is made frontmost, and the front window is checked.
 //!
@@ -44,17 +52,18 @@
 use super::shell::open_app;
 use crate::config::DesktopMode;
 use crate::platform::desktops::{
-    Desktops, DisplayRow, MAX_STEPS, Presence, WindowInfo, app_name_of_path, pick_display,
-    presence_of, same_app_path, signature, steps_between, walk_to_target,
+    Desktops, DisplayRow, MAX_STEPS, OnScreen, Presence, WindowInfo, app_name_of_path,
+    pick_display, presence_of, same_app_path, signature, steps_between, walk_to_target,
+    window_for_screen,
 };
-use crate::platform::spawn_reaped;
+use crate::platform::{ScreenRect, spawn_reaped};
 use core_foundation::array::{CFArray, CFArrayRef};
 use core_foundation::base::{CFType, CFTypeRef, TCFType};
 use core_foundation::boolean::CFBoolean;
 use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::number::CFNumber;
 use core_foundation::string::{CFString, CFStringRef};
-use core_graphics::geometry::{CGPoint, CGRect};
+use core_graphics::geometry::{CGPoint, CGRect, CGSize};
 use core_graphics::window::{
     copy_window_info, kCGNullWindowID, kCGWindowAlpha, kCGWindowBounds, kCGWindowIsOnscreen,
     kCGWindowLayer, kCGWindowListExcludeDesktopElements, kCGWindowListOptionAll,
@@ -83,6 +92,12 @@ const STEP_PAUSE: Duration = Duration::from_millis(350);
 const POINTER_SETTLE: Duration = Duration::from_millis(150);
 /// How often the screen is looked at while waiting.
 const POLL: Duration = Duration::from_millis(50);
+/// How long a window that was moved to another display gets to show up there.
+const MOVE_WAIT: Duration = Duration::from_millis(600);
+/// Space kept free at the top of a display for the menu bar when a window is moved onto it.
+const MENU_BAR: f64 = 40.0;
+/// How far (summed over x and y) the position a window reports may be from the one it was given.
+const SAME_PLACE: f64 = 6.0;
 
 /// Prints what the Space code saw when `CURSORPIE_DEBUG` is set, to find out why an app was not
 /// reached. `message` is only built then.
@@ -566,6 +581,9 @@ pub fn reveal_app(app: &str, mode: DesktopMode) {
         .filter(|w| w.pid == pid && w.is_ordinary())
         .map(|w| w.number)
         .collect();
+    if presence == Presence::Here && show_on_pointer_display(pid) {
+        return;
+    }
     let Presence::Elsewhere(window) = presence else {
         open_app(app);
         return;
@@ -612,6 +630,244 @@ pub fn reveal_app(app: &str, mode: DesktopMode) {
     );
 }
 
+/// The display under the pointer, in the space of the pointer. `None` with one display only (there
+/// is no other screen to fetch from), or when the pointer is on none.
+fn pointer_screen() -> Option<ScreenRect> {
+    use core_graphics::display::CGDisplay;
+
+    let (x, y) = super::cursor_pos()?;
+    let point = CGPoint::new(x, y);
+    let displays = CGDisplay::active_displays().ok()?;
+    if displays.len() < 2 {
+        return None;
+    }
+    displays
+        .into_iter()
+        .map(|id| CGDisplay::new(id).bounds())
+        .find(|b| b.contains(&point))
+        .map(|b| ScreenRect {
+            x: b.origin.x,
+            y: b.origin.y,
+            w: b.size.width,
+            h: b.size.height,
+        })
+}
+
+/// Where a window of `size` goes on `screen`: centered, and never above the menu bar. A window
+/// larger than the display is made to fit.
+fn place_on(screen: ScreenRect, width: f64, height: f64) -> (CGPoint, CGSize) {
+    let w = width.min(screen.w).max(1.0);
+    let h = height.min(screen.h - MENU_BAR).max(1.0);
+    let x = screen.x + (screen.w - w) / 2.0;
+    let y = screen.y + MENU_BAR.max((screen.h - h) / 2.0);
+    (CGPoint::new(x, y), CGSize::new(w, h))
+}
+
+/// Shows a window of the app `pid` on the display under the pointer, when there is more than one
+/// display: its front window on that display is raised and gets the focus, and when it has none
+/// there, its front window is moved onto that display first. `true` when that was done. `false`
+/// leaves everything as it was: one display only, no real window (an app with only its desktop,
+/// like Finder without a window), a window that cannot be moved (full screen) or no Accessibility
+/// permission. The caller then opens the app as before.
+///
+/// `open -a` is not enough on more than one display: it focuses whichever window of the app was
+/// active last, which can be the one on the display the person is not looking at, even when the app
+/// has a window on the clicked display too.
+///
+/// The windows come from Accessibility, and only the standard ones count. The window list of the
+/// window server also holds small helper windows of an app (Finder has them) that Accessibility
+/// does not know and that cannot be moved, and the windows that draw the desktop.
+fn show_on_pointer_display(pid: i32) -> bool {
+    let Some(screen) = pointer_screen() else {
+        return false;
+    };
+    // SAFETY: every element that is created or copied is wrapped at once, so it is released on
+    // every path; names are CFStrings that outlive the calls; AXValue pointers are to live locals
+    // of the type the AXValue type asks for.
+    unsafe {
+        let app_ref = AXUIElementCreateApplication(pid);
+        if app_ref.is_null() {
+            return false;
+        }
+        let app = CFType::wrap_under_create_rule(app_ref);
+        let Some(list) = copy_attribute(&app, "AXWindows").and_then(|v| v.downcast::<CFArray>())
+        else {
+            trace(|| format!("AXWindows of pid {pid}: none (no permission?)"));
+            return false;
+        };
+        trace(|| format!("AXWindows of pid {pid}: {} windows", list.len()));
+        let mut frames: Vec<ScreenRect> = Vec::new();
+        let mut elements: Vec<CFType> = Vec::new();
+        for item in list.iter() {
+            let window = CFType::wrap_under_get_rule(*item);
+            let subrole = copy_attribute(&window, "AXSubrole")
+                .and_then(|v| v.downcast::<CFString>())
+                .map(|s| s.to_string());
+            let flag = |name: &str| {
+                copy_attribute(&window, name)
+                    .and_then(|v| v.downcast::<CFBoolean>())
+                    .is_some_and(bool::from)
+            };
+            let (at, by) = (ax_point(&window, "AXPosition"), ax_size(&window, "AXSize"));
+            trace(|| format!("  AX window {subrole:?} at {at:?} size {by:?}"));
+            let (Some(at), Some(by)) = (at, by) else {
+                continue;
+            };
+            if subrole.as_deref() != Some("AXStandardWindow")
+                || flag("AXMinimized")
+                || flag("AXFullScreen")
+                || by.width < 50.0
+                || by.height < 50.0
+            {
+                continue;
+            }
+            frames.push(ScreenRect {
+                x: at.x,
+                y: at.y,
+                w: by.width,
+                h: by.height,
+            });
+            elements.push(window);
+        }
+        let Some(pick) = window_for_screen(&frames, screen) else {
+            trace(|| "no real window".into());
+            return false;
+        };
+        let (front, moves) = match pick {
+            OnScreen::Raise(at) => (at, false),
+            OnScreen::Move(at) => (at, true),
+        };
+        let (frame, target) = (frames[front], elements.swap_remove(front));
+        let mut expected = None;
+        if moves {
+            let (origin, size) = place_on(screen, frame.w, frame.h);
+            // the size first, only when it has to shrink, so that the window fits where it lands
+            if size.width < frame.w || size.height < frame.h {
+                ax_set_value(
+                    &target,
+                    "AXSize",
+                    2,
+                    &size as *const CGSize as *const c_void,
+                );
+            }
+            let error = ax_set_value(
+                &target,
+                "AXPosition",
+                1,
+                &origin as *const CGPoint as *const c_void,
+            );
+            trace(|| format!("AXPosition set to {origin:?}: AX error {error}"));
+            if error != 0 {
+                return false;
+            }
+            expected = Some(origin);
+        } else {
+            trace(|| format!("a window is on this display already: raising {frame:?}"));
+        }
+        // the app first (that raises all of its windows), then the one that was meant, last, so
+        // that it is the one in front and the one that has the keyboard
+        activate(pid);
+        let frontmost = CFString::from_static_string("AXFrontmost");
+        AXUIElementSetAttributeValue(
+            app.as_CFTypeRef(),
+            frontmost.as_concrete_TypeRef(),
+            CFBoolean::true_value().as_CFTypeRef(),
+        );
+        let raise = CFString::from_static_string("AXRaise");
+        AXUIElementPerformAction(target.as_CFTypeRef(), raise.as_concrete_TypeRef());
+        for attribute in ["AXMain", "AXFocused"] {
+            let name = CFString::from_static_string(attribute);
+            AXUIElementSetAttributeValue(
+                target.as_CFTypeRef(),
+                name.as_concrete_TypeRef(),
+                CFBoolean::true_value().as_CFTypeRef(),
+            );
+        }
+        // a move is judged by where the window says it is now, not by the answer of the set call
+        if let Some(origin) = expected {
+            let start = Instant::now();
+            loop {
+                let at = ax_point(&target, "AXPosition");
+                if at.is_some_and(|p| (p.x - origin.x).abs() + (p.y - origin.y).abs() <= SAME_PLACE)
+                {
+                    break;
+                }
+                if start.elapsed() >= MOVE_WAIT {
+                    trace(|| format!("the window did not move (now at {at:?})"));
+                    return false;
+                }
+                std::thread::sleep(POLL);
+            }
+        }
+        trace(|| "a window of the app is shown on this display".into());
+        true
+    }
+}
+
+/// Sets an Accessibility attribute to a point (`kind` 1) or a size (`kind` 2) and gives the AX
+/// error, 0 when it worked.
+///
+/// # Safety
+/// `element` must be a live accessibility element and `value` must point to a live `CGPoint` for
+/// kind 1, or to a live `CGSize` for kind 2.
+unsafe fn ax_set_value(
+    element: &CFType,
+    attribute: &str,
+    kind: c_int,
+    value: *const c_void,
+) -> c_int {
+    // SAFETY: guaranteed by the caller; the AXValue that is created is wrapped at once.
+    unsafe {
+        let made = AXValueCreate(kind, value);
+        if made.is_null() {
+            return -1;
+        }
+        let made = CFType::wrap_under_create_rule(made);
+        let name = CFString::new(attribute);
+        AXUIElementSetAttributeValue(
+            element.as_CFTypeRef(),
+            name.as_concrete_TypeRef(),
+            made.as_CFTypeRef(),
+        )
+    }
+}
+
+/// The size an Accessibility attribute such as `AXSize` holds.
+///
+/// # Safety
+/// `element` must be a live accessibility element.
+unsafe fn ax_size(element: &CFType, attribute: &str) -> Option<CGSize> {
+    // SAFETY: guaranteed by the caller; `size` is a live CGSize, which is what kind 2 writes.
+    unsafe {
+        let value = copy_attribute(element, attribute)?;
+        let mut size = CGSize::new(0.0, 0.0);
+        let ok = AXValueGetValue(
+            value.as_CFTypeRef(),
+            2,
+            &mut size as *mut CGSize as *mut c_void,
+        );
+        (ok != 0).then_some(size)
+    }
+}
+
+/// The point an Accessibility attribute such as `AXPosition` holds.
+///
+/// # Safety
+/// `element` must be a live accessibility element.
+unsafe fn ax_point(element: &CFType, attribute: &str) -> Option<CGPoint> {
+    // SAFETY: guaranteed by the caller; `point` is a live CGPoint, which is what kind 1 writes.
+    unsafe {
+        let value = copy_attribute(element, attribute)?;
+        let mut point = CGPoint::new(0.0, 0.0);
+        let ok = AXValueGetValue(
+            value.as_CFTypeRef(),
+            1,
+            &mut point as *mut CGPoint as *mut c_void,
+        );
+        (ok != 0).then_some(point)
+    }
+}
+
 // ----------------------------------------------------------------------------- Accessibility
 
 #[link(name = "ApplicationServices", kind = "framework")]
@@ -628,6 +884,8 @@ unsafe extern "C" {
         attribute: CFStringRef,
         value: CFTypeRef,
     ) -> c_int;
+    fn AXValueCreate(kind: c_int, value: *const c_void) -> CFTypeRef;
+    fn AXValueGetValue(value: CFTypeRef, kind: c_int, out: *mut c_void) -> u8;
     /// The CFUUID of a display (ColorSync, part of ApplicationServices); a new object.
     fn CGDisplayCreateUUIDFromDisplayID(display: u32) -> CFTypeRef;
 }

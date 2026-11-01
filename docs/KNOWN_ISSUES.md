@@ -39,6 +39,10 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
   right a space* to be on. If nothing works you stay where you were and `CursorPie: could not reach the Space of
   <app>` is printed. Start with `CURSORPIE_DEBUG=1 cargo run --release` to see what each way found. How it works:
   [OTHER_DESKTOPS.md](OTHER_DESKTOPS.md).
+- **Two screens:** "Open app" shows the app on the screen you clicked: its front window there is raised, or,
+  when it has none there, its front window is moved to that screen through Accessibility. A full-screen window
+  cannot be moved that way: the app is opened as before and stays on its own screen. Needs the Accessibility
+  permission.
 - **Bring the window to this Space** is experimental. macOS has no public call that moves another app's window,
   so CursorPie uses private SkyLight calls (the ones Hammerspoon and yabai use), checks that the window really
   arrived and switches to the app's Space when it did not. Apple may change or block those calls in any release;
