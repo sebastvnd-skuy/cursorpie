@@ -56,6 +56,15 @@ pub enum Msg {
     ProfileImportPicked(String),
     /// Show a short message in the Settings status bar (sent by helpers that cannot reach `App`).
     Notice(String),
+    /// A mouse was connected that is not the one that was in use: `new` if CursorPie had never met
+    /// it, otherwise one it knows. `extra` is the number of extra buttons it has.
+    MouseChanged {
+        new: bool,
+        name: String,
+        extra: usize,
+    },
+    /// An extra button (its button number) was pressed while Settings scans the mouse.
+    ButtonScanned(i64),
     /// An app was chosen for an "Open app" action of the slice at `path` (`slot` = which action).
     ActionAppPicked {
         profile: usize,

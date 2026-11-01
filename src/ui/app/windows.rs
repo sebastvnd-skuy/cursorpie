@@ -18,6 +18,7 @@ impl App {
         // how long closing took (saving is most of it) and whether the edits were kept
         let _t = diag::timed!("ui", "close_settings", save = save);
         self.ed.stop_recording();
+        self.ed.scan = None;
         if save {
             let new = self.edit.clone().sanitize();
             let login = new.launch_at_login;
@@ -73,6 +74,7 @@ impl App {
         self.closing = None;
         self.settings_anim = 0.0;
         self.ed.stop_recording();
+        self.ed.scan = None;
         self.ed.icons.revalidate();
         self.ed.profile = 0;
         self.ed.reset_nav();
@@ -99,6 +101,7 @@ impl App {
         self.closing = None;
         self.settings_anim = 0.0;
         self.ed.stop_recording();
+        self.ed.scan = None;
         self.welcome = Some(Welcome::new(platform::launch_at_login_enabled()));
         self.card_size = self.place_card_window(ctx, at, welcome_size_for);
     }

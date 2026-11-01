@@ -18,6 +18,10 @@ use std::sync::mpsc::Sender;
 
 /// Read-only things the recursive editor needs.
 pub(super) struct Env<'a> {
+    /// The trigger button of the edited config: it opens the pie, so it cannot be a side button too
+    pub trigger: i64,
+    /// The extra buttons of the mouse in use (`mouse::active_buttons`)
+    pub mouse: &'a [i64],
     pub ctx: &'a egui::Context,
     pub tx: &'a Sender<Msg>,
     pub accent: Color32,
@@ -157,6 +161,16 @@ pub(super) fn item_inspector(
         is_rec(ed, env.profile, &path, Slot::Forward),
         is_rec(ed, env.profile, &path, Slot::Run),
     );
+    // the extra buttons offered for a mode: the mouse's, and the ones that already have an action
+    let used: Vec<i64> = match &ring[i].kind {
+        ItemKind::Mode { extra, .. } => extra.keys().copied().collect(),
+        _ => Vec::new(),
+    };
+    let buttons = crate::mouse::editor_buttons(env.mouse, &used, env.trigger);
+    let extra_rec: Vec<bool> = buttons
+        .iter()
+        .map(|&b| is_rec(ed, env.profile, &path, Slot::Extra(b)))
+        .collect();
     let (mut start, mut remove, mut enter, mut shift) = (None::<Slot>, false, false, 0i32);
     let mut pick_app: Option<Slot> = None;
     let mut change_icon = false;
@@ -208,7 +222,7 @@ pub(super) fn item_inspector(
                         sel = 0;
                     }
                     if chip(ui, "", "Side buttons", now == 1, env.accent)
-                        .on_hover_text("Sets what the mouse back / forward buttons do")
+                        .on_hover_text("Sets what the mouse side buttons do")
                         .clicked()
                     {
                         sel = 1;
@@ -242,7 +256,11 @@ pub(super) fn item_inspector(
                     pick_app = Some(Slot::Run);
                 }
             }
-            ItemKind::Mode { back, forward } => {
+            ItemKind::Mode {
+                back,
+                forward,
+                extra,
+            } => {
                 muted(ui, "◀  Back button");
                 let r = action_editor(ui, &format!("{uid}_b"), back, rb, env.accent);
                 if r.shortcut {
@@ -258,6 +276,32 @@ pub(super) fn item_inspector(
                 }
                 if r.pick_app {
                     pick_app = Some(Slot::Forward);
+                }
+                for (k, &b) in buttons.iter().enumerate() {
+                    muted(ui, &format!("•  {}", crate::mouse::button_label(b)));
+                    // an action of "None" is not stored: the button then passes through
+                    let mut act = extra.get(&b).cloned().unwrap_or_default();
+                    let r = action_editor(
+                        ui,
+                        &format!("{uid}_x{b}"),
+                        &mut act,
+                        extra_rec[k],
+                        env.accent,
+                    );
+                    if act == Action::Nothing {
+                        extra.remove(&b);
+                    } else {
+                        extra.insert(b, act);
+                    }
+                    if r.shortcut {
+                        start = Some(Slot::Extra(b));
+                    }
+                    if r.pick_app {
+                        pick_app = Some(Slot::Extra(b));
+                    }
+                }
+                if buttons.is_empty() {
+                    muted(ui, "More buttons? Scan your mouse in General > Mouse.");
                 }
             }
             ItemKind::Submenu(ch) => {

@@ -1,4 +1,4 @@
-//! General tab: permissions status and config import/export/reset.
+//! General tab: permissions status, the mouse, and config import/export/reset.
 
 use crate::config::backup::age_label;
 use crate::config::*;
@@ -85,6 +85,7 @@ impl App {
                 );
             }
         });
+        self.mouse_panel(ui);
         panel(ui, "Configuration", |ui| {
             let path = config_path();
             ui.label(

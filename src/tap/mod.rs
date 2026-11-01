@@ -10,7 +10,8 @@
 //! | pause | the top of `dispatch` |
 //! | key down / up | `keyboard`: only used to record a shortcut in Settings |
 //! | right button | `right_click`: switches the side-button pie while a pie is open |
-//! | side buttons (3, 4) | `side_buttons`: run the active mode's actions |
+//! | side buttons (3, 4) and the extra buttons a mode uses (5 and up) | `side_buttons`: run the active mode's actions |
+//! | any extra button while Settings scans the mouse | the top of `dispatch`: reported and swallowed |
 //! | the trigger button | `trigger`: the gesture state machine (`gesture::Gesture`) |
 //!
 //! `resolve` answers "what does this gesture mean": hovered slice, profile, target app, selection.
@@ -65,9 +66,9 @@ use std::sync::{Arc, Mutex};
 /// Button number of the right button.
 const RIGHT_BUTTON: i64 = 1;
 /// Button number of the "back" side button.
-const SIDE_BACK: i64 = 3;
+const SIDE_BACK: i64 = crate::mouse::BACK;
 /// Button number of the "forward" side button.
-const SIDE_FORWARD: i64 = 4;
+const SIDE_FORWARD: i64 = crate::mouse::FORWARD;
 /// Movement (px) before a press counts as a drag and is handed back to the app.
 const DRAG_TOLERANCE: f64 = 6.0;
 /// Same, when "flick" is enabled: the pie opens instead.
@@ -142,6 +143,13 @@ pub(crate) fn dispatch(
             if button == RIGHT_BUTTON {
                 return right_click::handle_right(state, notifier, kind);
             }
+            // Settings is scanning the mouse: say which button it was and let nothing else happen
+            if crate::mouse::is_extra(button) && crate::mouse::scanning() {
+                if kind == Kind::Down {
+                    notifier.send(Msg::ButtonScanned(button));
+                }
+                return Verdict::Drop;
+            }
             if button == SIDE_BACK || button == SIDE_FORWARD {
                 return side_buttons::handle_side(state, kind, button, pos);
             }
@@ -150,6 +158,9 @@ pub(crate) fn dispatch(
                 (c.trigger_button, c.flick)
             };
             if button != trigger {
+                if side_buttons::is_mapped(button) {
+                    return side_buttons::handle_side(state, kind, button, pos);
+                }
                 return Verdict::Keep;
             }
             trigger::handle(state, notifier, kind, pos, button, flick, replay_drag)
@@ -296,6 +307,36 @@ mod tests {
                 );
             }
         }
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn extra_buttons_are_swallowed_and_reported_only_while_scanning() {
+        let _s = serial();
+        PAUSED.store(false, Ordering::SeqCst);
+        let (n, rx) = notifier();
+        let st = idle();
+        let ev = |kind| Ev::Mouse {
+            kind,
+            button: 6,
+            pos: Point::new(0.0, 0.0),
+        };
+        let scan = crate::mouse::Scan::start();
+        assert_eq!(dispatch(&st, &n, ev(Kind::Down), &|| {}), Verdict::Drop);
+        assert!(matches!(rx.try_recv(), Ok(Msg::ButtonScanned(6))));
+        // the release and the drag are swallowed too, but only the press is reported
+        assert_eq!(dispatch(&st, &n, ev(Kind::Up), &|| {}), Verdict::Drop);
+        assert_eq!(dispatch(&st, &n, ev(Kind::Drag), &|| {}), Verdict::Drop);
+        assert!(rx.try_recv().is_err());
+        // a button that is not an extra one is not part of a scan
+        let left = Ev::Mouse {
+            kind: Kind::Down,
+            button: 0,
+            pos: Point::new(0.0, 0.0),
+        };
+        assert_eq!(dispatch(&st, &n, left, &|| {}), Verdict::Keep);
+        drop(scan);
+        assert_eq!(dispatch(&st, &n, ev(Kind::Down), &|| {}), Verdict::Keep);
         assert!(rx.try_recv().is_err());
     }
 

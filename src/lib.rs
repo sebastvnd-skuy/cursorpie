@@ -60,6 +60,7 @@ pub mod geometry;
 pub mod guides;
 pub mod history;
 pub mod keys;
+pub mod mouse;
 pub mod msg;
 pub mod platform;
 pub mod side;
@@ -140,6 +141,7 @@ pub fn run() -> eframe::Result<()> {
                 ctx: cc.egui_ctx.clone(),
             };
             tap::spawn(notifier.clone());
+            mouse::spawn_watcher(notifier.clone());
             let tray = ui::tray::build(&notifier);
             // the very first start: say hello (decided before anything can write config.json)
             if config::welcome_due() {

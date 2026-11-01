@@ -17,11 +17,35 @@ up the next time CursorPie starts. Next to the file you may find:
 config.json            the live config
 config.backup.1.json   the version before your last Save (up to config.backup.5.json)
 config.broken.json     a config that could not be read (see below)
+mice.json              the mice CursorPie has met and their extra buttons (not part of the config, see below)
 icons/                 images copied in by a profile import, and the smaller copies made when you choose a big image
 welcome_shown          empty file: the welcome window was already shown
 ```
 
 Export writes `cursorpie-config.json` to your Downloads folder.
+
+## Extra mouse buttons
+
+A `Mode` has `back` and `forward`, and an optional `extra`: an object from the number of an extra mouse button
+(`"5"` to `"15"`) to an `Action`. Button numbers are the macOS ones: 3 back, 4 forward, 5 and up extra; on Linux
+button 5 is X button 10. `extra` is left out of the file when empty, a file without it loads as before, and
+numbers outside 5 to 15 are removed when the config is loaded. A button without an entry (or with `Nothing`)
+passes through to the app.
+
+## mice.json
+
+`mice.json` holds device state, not settings: it is written by CursorPie as soon as a mouse is met or scanned,
+and Save, Undo and the backups do not touch it. Delete it to make CursorPie forget every mouse. Per mouse:
+
+| Field | Meaning |
+|---|---|
+| `id` | `hw:<vendor>:<product>` or, when the system gives no id, `name:<lower-case name>` |
+| `name` | The name the system gave |
+| `reported` | Extra buttons the system reported when the mouse was last seen |
+| `scanned` | Extra buttons pressed in a scan; when not empty, these are the mouse's buttons |
+| `first_seen`, `last_seen`, `times` | Unix seconds, and how often it was connected |
+
+At most 24 mice are kept (the one seen longest ago goes first). `active` names the mouse in use.
 
 ## Image icons
 
@@ -69,7 +93,8 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
           "kind": {
             "Mode": {
               "back": { "Key": { "key": 6, "mods": 8 } },
-              "forward": { "Key": { "key": 6, "mods": 9 } }
+              "forward": { "Key": { "key": 6, "mods": 9 } },
+              "extra": { "5": { "OpenUrl": "https://example.com" } }
             }
           }
         },

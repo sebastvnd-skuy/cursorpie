@@ -71,6 +71,12 @@ fn post_key(src: &CGEventSource, code: CGKeyCode, down: bool, flags: CGEventFlag
     }
 }
 
+/// The mice macOS lists: none. There is no public call CursorPie uses to ask a Mac how many buttons
+/// its mouse has, so the buttons are found by scanning the mouse in Settings (see [`mouse`](crate::mouse)).
+pub fn mouse_devices() -> Vec<crate::mouse::Device> {
+    Vec::new()
+}
+
 /// Re-posts a swallowed press or release of `button` at `pos` (used when a quick click must reach
 /// the app after all). Only `Kind::Down` and `Kind::Up` are replayed.
 pub fn post_mouse(pos: Point, kind: Kind, button: i64) {

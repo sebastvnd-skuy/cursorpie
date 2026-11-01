@@ -26,12 +26,21 @@ fn first_mode(items: &[Item]) -> Option<Vec<usize>> {
 fn clean_items(items: &mut Vec<Item>, depth: usize) {
     items.truncate(MAX_ITEMS);
     for it in items.iter_mut() {
-        if let ItemKind::Submenu(c) = &mut it.kind {
-            if depth + 1 >= MAX_DEPTH {
-                c.clear();
-            } else {
-                clean_items(c, depth + 1);
+        match &mut it.kind {
+            ItemKind::Submenu(c) => {
+                if depth + 1 >= MAX_DEPTH {
+                    c.clear();
+                } else {
+                    clean_items(c, depth + 1);
+                }
             }
+            // back and forward have fields of their own; only real extra buttons are kept
+            ItemKind::Mode { extra, .. } => extra.retain(|b, _| {
+                crate::mouse::is_extra(*b)
+                    && *b != crate::mouse::BACK
+                    && *b != crate::mouse::FORWARD
+            }),
+            ItemKind::Run(_) => {}
         }
     }
 }
@@ -105,6 +114,42 @@ mod tests {
         let big = parse(r#"{"version":2,"pie_hold_ms":99999,"pie_size":9999}"#);
         assert_eq!(big.pie_hold_ms, 2000);
         assert_eq!(big.pie_size, 360.0);
+    }
+
+    #[test]
+    fn extra_buttons_of_a_mode_are_kept_and_cleaned() {
+        let c = parse(
+            r#"{"version":2,"profiles":[{"name":"G","apps":[],"active":[0],"items":[
+                {"name":"M","icon":"M","kind":{"Mode":{"back":"Nothing","forward":"Nothing",
+                 "extra":{"5":{"OpenUrl":"a"},"3":{"OpenUrl":"b"},"2":{"OpenUrl":"c"},"99":"Nothing","7":"Nothing"}}}}
+            ]}]}"#,
+        );
+        let ItemKind::Mode { extra, .. } = &c.profiles[0].items[0].kind else {
+            panic!("not a mode");
+        };
+        let keys: Vec<i64> = extra.keys().copied().collect();
+        assert_eq!(
+            keys,
+            [5, 7],
+            "back, middle and out-of-range buttons are dropped"
+        );
+        // only buttons with an action are taken from the apps
+        let used: Vec<i64> = crate::config::extra_buttons_in_use(&c)
+            .into_iter()
+            .collect();
+        assert_eq!(used, [5]);
+        // and a file written by an older version has none
+        let old = parse(
+            r#"{"version":2,"profiles":[{"name":"G","apps":[],"active":[0],"items":[
+                {"name":"M","icon":"M","kind":{"Mode":{"back":"Nothing","forward":"Nothing"}}}
+            ]}]}"#,
+        );
+        assert!(crate::config::extra_buttons_in_use(&old).is_empty());
+        let json = serde_json::to_string(&old).unwrap();
+        assert!(
+            !json.contains("extra"),
+            "nothing is written for a mode without extras"
+        );
     }
 
     #[test]

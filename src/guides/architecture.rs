@@ -21,6 +21,7 @@
 //! |---|---|---|---|
 //! | **main / UI** | `eframe::run_native` in [`crate::run`] | the [`App`](crate::ui::app::App), every egui window, the menu bar icon, the keyboard-layout snapshot | receives [`Msg`](crate::msg::Msg) values |
 //! | **`cursorpie-tap`** | [`tap::spawn`](crate::tap::spawn) | the OS hook (`CGEventTap` + `CFRunLoop`, the Windows low-level hooks + message loop, or on Linux the XInput2 grabs on the shared X connection), the gesture state | sends `Msg` (`Warm`, `ShowPie`, ...) through a [`Notifier`](crate::msg::Notifier); enqueues actions |
+//! | **`cursorpie-mouse`** | [`mouse::spawn_watcher`](crate::mouse::spawn_watcher) | the book of known mice (`mice.json`) | looks at the connected mice every few seconds; sends `Msg::MouseChanged` when one arrives that is new or comes back |
 //! | **`cursorpie-actions`** | [`actions::init`](crate::actions::init) | the queue of [`Action`](crate::config::Action)s to execute | receives jobs from [`actions::run_in`](crate::actions::run_in) |
 //! | short-lived | on demand | hold timer, double-click timer, file chooser, config save | send `Msg` or touch shared state |
 //!

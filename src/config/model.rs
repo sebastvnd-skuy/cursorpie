@@ -6,6 +6,7 @@
 use super::item_at;
 use crate::keys::*;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Something CursorPie can do.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -27,8 +28,16 @@ pub enum Action {
 /// What a slice does.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum ItemKind {
-    /// Selecting it makes the side buttons (back/forward) send these actions.
-    Mode { back: Action, forward: Action },
+    /// Selecting it makes the side buttons (back/forward) send these actions, and every other extra
+    /// button of the mouse (button number 5 and up) the action listed for it in `extra`. A button
+    /// that is not listed passes through to the app. Files from before extra buttons existed have
+    /// no `extra` and load with none.
+    Mode {
+        back: Action,
+        forward: Action,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        extra: BTreeMap<i64, Action>,
+    },
     /// Runs the action when you release the button over the slice.
     Run(Action),
     /// Drag outward across the rim to open it.
@@ -110,6 +119,27 @@ impl DesktopMode {
     }
 }
 
+impl ItemKind {
+    /// What this slice does for the side or extra button `button` (mouse button numbers: 3 back, 4
+    /// forward, 5 and up extra). `None` unless it is a mode; `Nothing` for a button it does not
+    /// handle.
+    pub fn button_action(&self, button: i64) -> Option<&Action> {
+        static NOTHING: Action = Action::Nothing;
+        match self {
+            ItemKind::Mode {
+                back,
+                forward,
+                extra,
+            } => Some(match button {
+                crate::mouse::BACK => back,
+                crate::mouse::FORWARD => forward,
+                b => extra.get(&b).unwrap_or(&NOTHING),
+            }),
+            _ => None,
+        }
+    }
+}
+
 impl Item {
     /// Creates a side-button mode slice that sends the `back` / `forward` shortcuts.
     pub fn mode(name: &str, icon: &str, back: Shortcut, forward: Shortcut) -> Self {
@@ -119,6 +149,7 @@ impl Item {
             kind: ItemKind::Mode {
                 back: Action::Key(back),
                 forward: Action::Key(forward),
+                extra: BTreeMap::new(),
             },
         }
     }
