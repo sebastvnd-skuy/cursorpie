@@ -7,6 +7,8 @@
 use crate::config::{AppGesture, Appearance, Config, DesktopMode, PieStyle, SideTarget, TargetApp};
 use crate::ui::app::App;
 use crate::ui::draw::rgb;
+use crate::ui::pie::glass::Glass;
+use crate::ui::settings::demo;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use crate::ui::symbols;
@@ -48,6 +50,7 @@ impl App {
         let accent = rgb(self.edit.accent);
         let cfg = &mut self.edit;
         panel(ui, "Trigger", |ui| {
+            demo::hold_demo(ui, accent, cfg.pie_hold_ms, cfg.settings_hold_ms, cfg.flick);
             let name = |b: i64| match b {
                 2 => "Middle button",
                 5 => "Extra button 6",
@@ -95,6 +98,14 @@ impl App {
             );
         });
         panel(ui, "Look & feel", |ui| {
+            demo::look_demo(
+                ui,
+                accent,
+                cfg.pie_size,
+                cfg.show_labels,
+                cfg.center_app_icon,
+                Glass::of(cfg),
+            );
             row_wide(ui, "Appearance", "Settings and the pie.", 300.0, |ui| {
                 let modes = [
                     (Appearance::System, symbols::MONITOR, "System"),
@@ -133,6 +144,13 @@ impl App {
             );
             toggle_row(
                 ui,
+                &mut cfg.show_labels,
+                "Show names under the icons",
+                "Off: the pie shows icons only.",
+                accent,
+            );
+            toggle_row(
+                ui,
                 &mut cfg.center_app_icon,
                 "Show the app's icon in the center",
                 "In an app's own pie.",
@@ -143,7 +161,7 @@ impl App {
             row_wide(
                 ui,
                 "Style",
-                "Glass is see-through and frosted.",
+                "Glass is see-through and frosted, always smoked dark.",
                 230.0,
                 |ui| {
                     let styles = [
@@ -171,6 +189,7 @@ impl App {
             }
         });
         panel(ui, "Pie of the app in front", |ui| {
+            demo::gesture_demo(ui, accent, cfg.app_gesture, cfg.double_click_ms);
             choice_row(
                 ui,
                 &mut cfg.app_gesture,
@@ -199,6 +218,7 @@ impl App {
             }
         });
         panel(ui, "App detection", |ui| {
+            demo::target_demo(ui, accent, cfg.target_app, cfg.focus_target);
             choice_row(
                 ui,
                 &mut cfg.target_app,
@@ -226,6 +246,8 @@ impl App {
             });
         });
         panel(ui, desktops_title(), |ui| {
+            let mode = cfg.desktop_mode.effective(crate::platform::OS);
+            demo::desktop_demo(ui, accent, mode, desktop_noun());
             note(
                 ui,
                 &format!(
@@ -245,6 +267,14 @@ impl App {
             }
         });
         panel(ui, "Side buttons", |ui| {
+            demo::side_demo(
+                ui,
+                accent,
+                rgb(cfg.inactive_color),
+                cfg.side_default,
+                cfg.right_click_switch,
+                cfg.side_indicator,
+            );
             note(
                 ui,
                 "In an app that has its own pie, the side buttons follow:",
@@ -318,6 +348,7 @@ impl App {
             );
         });
         panel(ui, "Memory", |ui| {
+            demo::memory_demo(ui, accent, cfg.sleep_after_s != 0, cfg.sleep_after_s);
             let mut on = cfg.sleep_after_s != 0;
             if toggle_row(
                 ui,
@@ -347,7 +378,7 @@ impl App {
 /// A strip of colors with four slices of the configured glass over it, so a change of the
 /// sliders shows at once: how much of the colors comes through and how thick the frost is.
 fn glass_preview(ui: &mut egui::Ui, cfg: &Config) {
-    use crate::ui::draw::{pie_colors, rgb};
+    use crate::ui::draw::{glass_colors, rgb};
     use crate::ui::pie::glass;
     let Some(g) = glass::Glass::of(cfg) else {
         return;
@@ -387,7 +418,7 @@ fn glass_preview(ui: &mut egui::Ui, cfg: &Config) {
             center,
             (inner, outer),
             (a0, a0 + step - 0.08),
-            pie_colors().slice,
+            glass_colors().slice,
             if i == 1 { 1.0 } else { 0.0 },
             1.0,
             g,

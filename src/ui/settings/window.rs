@@ -409,25 +409,27 @@ impl App {
                 ))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
             |ui| {
+                // one line of small text in every case, so the footer stays calm
+                let hint = |text: &str| RichText::new(text).size(12.0).color(pal().muted);
                 if !platform::is_trusted_cached() || !TAP_ACTIVE.load(Ordering::SeqCst) {
+                    let problem = if platform::OS.needs_permission() {
+                        "Accessibility permission needed"
+                    } else {
+                        "Mouse hook not running"
+                    };
+                    ui.label(RichText::new(problem).size(12.0).color(pal().bad));
                     if platform::OS.needs_permission() {
-                        status(ui, false, "Accessibility permission needed");
-                        if button(ui, Look::Soft, Some(symbols::ARROW_SQUARE_OUT), "Open System Settings").clicked() {
+                        ui.label(hint("\u{b7}"));
+                        if link(ui, "Open System Settings", accent).clicked() {
                             platform::open_accessibility_settings();
                         }
-                    } else {
-                        status(ui, false, "Mouse hook not running");
                     }
                 } else if let Some((msg, _)) = &self.toast {
-                    ui.label(RichText::new(msg).color(accent));
+                    ui.label(hint(msg));
                 } else {
-                    ui.label(
-                        RichText::new(format!(
-                            "Esc cancels  \u{b7}  {primary}+Z undoes  \u{b7}  Save applies every tab at once"
-                        ))
-                        .size(12.0)
-                        .color(pal().muted),
-                    );
+                    ui.label(hint(&format!(
+                        "Esc cancels  \u{b7}  {primary}+Z undoes  \u{b7}  Save applies every tab at once"
+                    )));
                 }
             },
         );

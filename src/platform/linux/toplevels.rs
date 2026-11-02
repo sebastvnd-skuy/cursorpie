@@ -40,6 +40,12 @@ pub fn hit_test(
     })
 }
 
+/// Whether a window that reports `names` (its canonical app id, class and instance, lower case)
+/// belongs to an app that goes by `aliases` (see `Index::aliases`).
+pub fn belongs_to(names: &[String], aliases: &[String]) -> bool {
+    names.iter().any(|n| !n.is_empty() && aliases.contains(n))
+}
+
 /// `(instance, class)` from the bytes of a `WM_CLASS` property (two NUL-terminated strings). A
 /// single string is used for both. `None` if there is nothing readable.
 pub fn parse_wm_class(bytes: &[u8]) -> Option<(String, String)> {
@@ -147,6 +153,18 @@ mod tests {
         );
         assert_eq!(parse_wm_class(b"\0\0"), None);
         assert_eq!(parse_wm_class(b""), None);
+    }
+
+    #[test]
+    fn a_window_belongs_to_an_app_when_any_name_matches() {
+        let list = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let aliases = list(&["firefox", "org.mozilla.firefox"]);
+        let by_id = list(&["navigator", "org.mozilla.firefox"]);
+        assert!(belongs_to(&by_id, &aliases));
+        assert!(belongs_to(&list(&["firefox"]), &aliases));
+        assert!(!belongs_to(&list(&["chromium"]), &aliases));
+        assert!(!belongs_to(&list(&[""]), &list(&[""])), "no name at all");
+        assert!(!belongs_to(&[], &aliases));
     }
 
     #[test]

@@ -106,6 +106,7 @@ mod tests {
             id: "firefox".into(),
             name: "Firefox".into(),
             wm_class: None,
+            exec_name: None,
             path: "/usr/share/applications/firefox.desktop".into(),
         }])
     }

@@ -41,6 +41,10 @@ impl App {
         };
         let total = view.items.len().max(1);
         let glass = glass::Glass::of(&cfg());
+        // Glass is always smoked graphite, even in the light appearance: pale glass on a light page
+        // looks washed out. Solid follows the appearance.
+        let smoked = glass.is_some() || dark();
+        let colors = pie_colors_for(smoked);
 
         let (anim, mut moving) = step_linear(
             self.anim,
@@ -141,7 +145,7 @@ impl App {
                     let rr = (inner + (r + 5.0 * h - inner) * lpe).min(room);
 
                     let t = (h * 0.95 + m * 0.4).min(1.0);
-                    let rest = pie_colors().slice;
+                    let rest = colors.slice;
                     let col = if live {
                         mix(rest, view.accent, t)
                     } else {
@@ -153,7 +157,7 @@ impl App {
                         )
                     };
                     // icon and name: dark on a light slice, the readable color on the accent
-                    let ink = pie_colors()
+                    let ink = colors
                         .ink
                         .lerp_to_gamma(on_accent(accent), (h * 0.95).min(1.0));
                     let (s0, s1) = (start + gap / 2.0, start + sl - gap / 2.0);
@@ -203,21 +207,29 @@ impl App {
                     let am = start + sl / 2.0;
                     let dir = Vec2::new(am.cos(), am.sin());
                     let tp = c + dir * ((inner + rr) / 2.0);
+                    // with a name the icon sits a little high; alone it is centered and larger
+                    let (icon_dy, icon_size) = if view.labels {
+                        (-r * 0.04, r * 0.30)
+                    } else {
+                        (0.0, r * 0.36)
+                    };
                     draw_icon(
                         &painter,
                         tex[i].as_ref(),
                         icon,
-                        tp - Vec2::new(0.0, r * 0.04),
-                        r * 0.30 * (1.0 + 0.15 * h),
+                        tp + Vec2::new(0.0, icon_dy),
+                        icon_size * (1.0 + 0.15 * h),
                         ink.gamma_multiply(lf),
                     );
-                    painter.text(
-                        tp + Vec2::new(0.0, r * 0.17),
-                        Align2::CENTER_CENTER,
-                        name,
-                        FontId::proportional((r * 0.09).max(9.0)),
-                        ink.gamma_multiply(lf * (0.78 + 0.22 * h)),
-                    );
+                    if view.labels {
+                        painter.text(
+                            tp + Vec2::new(0.0, r * 0.17),
+                            Align2::CENTER_CENTER,
+                            name,
+                            FontId::proportional((r * 0.09).max(9.0)),
+                            ink.gamma_multiply(lf * (0.78 + 0.22 * h)),
+                        );
+                    }
                     if *is_sub {
                         // dot on the rim: drag outward across it to open the submenu
                         painter.circle_filled(
@@ -246,8 +258,8 @@ impl App {
                 // center disc: active mode (or the parent submenu icon) + "hold for settings" progress
                 let core = inner * 0.86;
                 let disc = if live {
-                    pie_colors().core
-                } else if dark() {
+                    colors.core
+                } else if smoked {
                     CORE_INACTIVE_DARK
                 } else {
                     CORE_INACTIVE
@@ -265,7 +277,7 @@ impl App {
                 }
                 if let Some(t) = app_tex.as_ref() {
                     // the app's icon, a white glyph, tinted dark
-                    let tint = pie_colors()
+                    let tint = colors
                         .ink
                         .gamma_multiply(fade * if live { 0.85 } else { 0.45 });
                     draw_texture(&painter, t, c, core * 1.3, tint);
@@ -276,7 +288,7 @@ impl App {
                         &view.center_icon,
                         c,
                         core * 1.0,
-                        pie_colors()
+                        colors
                             .ink
                             .gamma_multiply(fade * if live { 0.6 } else { 0.3 }),
                     );

@@ -202,7 +202,9 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
                 egui::UserAttentionType::Informational,
             ));
-            self.say("Settings is open, so the pie is off. Save or Cancel to use the pie again.");
+            self.say(
+                "The pie is off while Settings is open  \u{b7}  Save or Cancel to use it again",
+            );
             return;
         }
         self.win = cfg().pie_size;

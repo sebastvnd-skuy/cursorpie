@@ -7,6 +7,7 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 # A new push to a pull request replaces the run that is still going; runs on main and tags finish.
 concurrency:
@@ -46,3 +47,152 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: cargo tools check --tag "$TAG"
+
+  # Produce distributable packages in addition to running the checks above. These jobs run for
+  # pull requests too, so packaging regressions are caught before a merge. The artifacts are
+  # downloadable from the corresponding GitHub Actions run.
+  package-macos:
+    name: Package macOS (universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build universal DMG
+        env:
+          UNIVERSAL: "1"
+        run: scripts/make-dmg.sh
+      - name: Prepare stable release asset names
+        shell: bash
+        run: |
+          version=$(sed -nE 's/^version = "([^"]+)"/\1/p' Cargo.toml | head -n1)
+          cp "target/bundle/CursorPie-$version-universal.dmg" target/bundle/CursorPie-macos-universal.dmg
+          (cd target/bundle && shasum -a 256 CursorPie-macos-universal.dmg > CursorPie-macos-universal.dmg.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CursorPie-macos-universal
+          path: |
+            target/bundle/CursorPie-macos-universal.dmg
+            target/bundle/CursorPie-macos-universal.dmg.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  package-windows:
+    name: Package Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Inno Setup
+        run: winget install --id JRSoftware.InnoSetup --exact --silent --accept-package-agreements --accept-source-agreements
+      - name: Build ZIP and Setup installer
+        shell: pwsh
+        run: .\scripts\package-windows.ps1
+      - name: Prepare stable installer name
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.*)"' | Select-Object -First 1).Matches.Groups[1].Value
+          Copy-Item "target\bundle\CursorPie-$version-setup.exe" "target\bundle\CursorPie-windows-setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CursorPie-windows-x86_64
+          path: |
+            target/bundle/CursorPie-windows.zip
+            target/bundle/CursorPie-windows-setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  package-linux-ubuntu:
+    name: Package Linux (Ubuntu x86_64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libx11-dev libxi-dev libxtst-dev libxrandr-dev imagemagick
+      - name: Build Linux package
+        run: scripts/package-linux.sh
+      - name: Prepare Ubuntu release asset name
+        run: |
+          version=$(sed -nE 's/^version = "([^"]+)"/\1/p' Cargo.toml | head -n1)
+          cp "target/bundle/cursorpie-$version-linux-x86_64.tar.gz" target/bundle/CursorPie-ubuntu-24.04-x86_64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CursorPie-linux-ubuntu-x86_64
+          path: target/bundle/CursorPie-ubuntu-24.04-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  package-linux-fedora:
+    name: Package Linux (Fedora 44 x86_64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Fedora Rust caches
+        run: mkdir -p "$HOME/.cache/cursorpie-fedora/cargo" "$HOME/.cache/cursorpie-fedora/rustup"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/cursorpie-fedora/cargo
+            ~/.cache/cursorpie-fedora/rustup
+          key: fedora-44-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+      - name: Build inside Fedora 44
+        run: |
+          host_uid="$(id -u)"
+          host_gid="$(id -g)"
+          docker run --rm \
+            --env HOST_UID="$host_uid" \
+            --env HOST_GID="$host_gid" \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --volume "$HOME/.cache/cursorpie-fedora/cargo:/root/.cargo" \
+            --volume "$HOME/.cache/cursorpie-fedora/rustup:/root/.rustup" \
+            --workdir /workspace \
+            fedora:44 \
+            bash -euxo pipefail -c '
+              dnf install -y gcc libX11-devel libXi-devel libXtst-devel libXrandr-devel ImageMagick curl tar gzip
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+              source /root/.cargo/env
+              rustup update stable
+              scripts/package-linux.sh
+              version=$(grep -m1 "^version" Cargo.toml | cut -d \" -f2)
+              cp "target/bundle/cursorpie-$version-linux-x86_64.tar.gz" target/bundle/CursorPie-fedora-44-x86_64.tar.gz
+              chown -R "$HOST_UID:$HOST_GID" target
+            '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CursorPie-linux-fedora-44-x86_64
+          path: target/bundle/CursorPie-fedora-44-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  # A version tag turns the validated packages into public, ready-to-install Release assets.
+  publish-release:
+    name: Publish GitHub Release assets
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - test
+      - package-macos
+      - package-windows
+      - package-linux-ubuntu
+      - package-linux-fedora
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: CursorPie-*
+          path: release-assets
+          merge-multiple: true
+      - name: List release assets
+        run: ls -lah release-assets
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

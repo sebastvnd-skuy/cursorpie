@@ -61,7 +61,7 @@ Actions are available for Run slices and for each side button of a Mode:
 |---|---|
 | None | Nothing. For side buttons, the click passes through to the app |
 | Shortcut | Sends a key combination. Click the button and press the keys to record it (Esc cancels) |
-| Open app | macOS: `open -a <name or path>`, for example `Safari` or `/Applications/Safari.app`. Windows: a program name or the path of an `.exe`, for example `chrome` or `C:\Tools\App.exe`. Linux: a desktop-entry id, a program name or a path. If the app already runs on another virtual desktop or Space, CursorPie goes to it |
+| Open app | macOS: `open -a <name or path>`, for example `Safari` or `/Applications/Safari.app`. Windows: a program name or the path of an `.exe`, for example `chrome` or `C:\Tools\App.exe`. Linux: a desktop-entry id, a program name or a path, or a role that the system fills: `@browser`, `@files` or `@terminal`. If the app already runs on another virtual desktop or Space, CursorPie goes to it |
 | Open URL / file | Opens the target with the system, for example `https://example.com` or a file path |
 | Shell command | macOS and Linux: `/bin/sh -c "<command>"`. Windows: `cmd /C "<command>"` without a console window |
 | Sequence | Several actions in order, 40 ms apart. Edit these in `config.json` (see [Configuration](CONFIGURATION.md)) |

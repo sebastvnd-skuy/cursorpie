@@ -7,6 +7,7 @@
 use crate::mouse::{self, MouseProfile, Recognition};
 use crate::ui::app::App;
 use crate::ui::draw::rgb;
+use crate::ui::settings::demo;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use crate::ui::symbols;
@@ -63,6 +64,7 @@ impl App {
         let accent = rgb(self.edit.accent);
 
         panel(ui, "Mouse", |ui| {
+            demo::scan_demo(ui, accent);
             match book.active_profile() {
                 Some(p) => {
                     info_row(ui, "In use", |ui| {

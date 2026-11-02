@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+## 0.7.2
+
+- **More settings that show what they do, and bigger demos.** The animated demos have a taller stage (190 points
+  instead of 140), so the pies, the mouse and the captions are no longer cramped. Four panels got a demo of
+  their own: **Look & feel** (the pie at the size you set, with or without names and the app's icon, the accent
+  on the slice under the pointer, solid or glass), **Side buttons** (a side-button press runs the pie they
+  follow; the ring colors and the right-click switch show which one that is), **Memory** (the idle timer runs
+  out, the icons and the editor's copy are dropped, the trigger loads them again) and **Mouse** (each extra
+  button is pressed, heard and listed, then Done saves them).
+- **Glass pie is always dark.** The glass pie now keeps its smoked graphite look in the light appearance too.
+  Pale glass over a light page looked washed out and nothing like Liquid Glass. Solid still follows the
+  appearance, and so does the rest of Settings.
+- **Icons only.** A new switch in Settings, **Show names under the icons** (Behavior > Look & feel), hides
+  the names in the pie so each slice shows just its icon, a little larger. It is on by default; the names stay
+  in Settings, so you can still tell the slices apart while you edit them. Old config files keep the names.
+- **Settings that show what they do.** On **Behavior**, the panels *Trigger*, *Pie of the app in front*, *App
+  detection* and *Other Spaces / desktops / workspaces* now start with a small animation instead of only a
+  sentence: the button going down and the pie opening after your hold time, which pie a hold and a double-click
+  open, which window the pie works on, and what "Open app" does to an app on another desktop. The animation
+  follows the choice and the sliders as you change them, and it only runs while you can see it.
+- **A calmer footer in Settings.** The notice that the pie is off while Settings is open, and every other short
+  message in the footer, now use the small grey text of the shortcut hint. "Open System Settings" is a plain text
+  link with an arrow instead of a boxed button next to a red pill.
+
+## 0.7.1
+
+- **Linux: "Open app" no longer starts a second copy of an app that is already open.** The slice compared what
+  you typed (`firefox`, `gnome-terminal`, a path) with the one name the window manager gives the window
+  (`org.mozilla.firefox`, `org.gnome.terminal`), found no match and started the app again. It now compares every
+  name a window has (its class, its instance and the desktop entry's id, window class and program), so the
+  existing window is raised, on whichever workspace it is.
+- **Linux: the Files, Terminal and Browser slices raise the window that is open.** They were shell commands, which
+  always start a new copy (a new Firefox window on every click). They are now "Open app" slices that name a role:
+  `@browser`, `@files` or `@terminal`. CursorPie asks the system which app that is (`xdg-settings`, `xdg-mime`, or
+  the first terminal it finds), then raises its window or starts it. Your existing `config.json` is upgraded
+  when it is loaded (the file itself changes at the next save): only the three unchanged default commands are
+  replaced, your own commands stay. You can
+  type these roles in any "Open app" slice. If the system cannot name the app, the old command runs.
+
 ## 0.7.0
 - **Quit asks before it quits.** Pressing **Quit CursorPie** while Settings is open (sidebar, General, or the
   tray / menu bar icon) opens a sheet instead of quitting at once. With nothing unsaved it asks "Do you really

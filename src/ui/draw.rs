@@ -279,7 +279,12 @@ pub struct PieColors {
 
 /// The pie colors for the current appearance: frosted white, or smoked graphite.
 pub fn pie_colors() -> PieColors {
-    if dark() {
+    pie_colors_for(dark())
+}
+
+/// The pie colors of one appearance, whatever the interface is showing right now.
+pub fn pie_colors_for(dark: bool) -> PieColors {
+    if dark {
         PieColors {
             slice: [46, 46, 52],
             ghost: [36, 36, 41],
@@ -294,6 +299,13 @@ pub fn pie_colors() -> PieColors {
             core: Color32::from_rgb(255, 255, 255),
         }
     }
+}
+
+/// The colors of the glass pie. Glass is always smoked, in the light appearance too: frosted
+/// white glass over a light page has nothing to catch the light against and looks washed out,
+/// which is not how Liquid Glass looks.
+pub fn glass_colors() -> PieColors {
+    pie_colors_for(true)
 }
 
 /// `[r, g, b]` as an egui color.
@@ -451,6 +463,18 @@ mod tests {
 
     fn dist(c: Pos2, v: &egui::epaint::Vertex) -> f32 {
         (v.pos - c).length()
+    }
+
+    // ------------------------------------------------------------ pie palette
+    #[test]
+    fn glass_is_always_smoked_whatever_the_appearance() {
+        let g = glass_colors();
+        let smoked = pie_colors_for(true);
+        assert_eq!(g.slice, smoked.slice);
+        assert_eq!(g.core, smoked.core);
+        assert_ne!(g.slice, pie_colors_for(false).slice);
+        // the name and the icon are light and read on the dark slice
+        assert!(contrast(g.ink, rgb(g.slice)) >= 7.0);
     }
 
     // ------------------------------------------------------------ icons

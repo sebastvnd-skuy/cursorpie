@@ -200,6 +200,49 @@ pub(in crate::ui::settings) fn button_if(
         .inner
 }
 
+/// A line of text that acts as a link: the accent color and an arrow after it, underlined and with
+/// the arrow nudged while the pointer is over it. It has no box, so it reads as part of the text
+/// around it (a footer, a sentence) and not as one more button.
+pub(in crate::ui::settings) fn link(
+    ui: &mut egui::Ui,
+    label: &str,
+    accent: Color32,
+) -> egui::Response {
+    const SIZE: f32 = 12.0;
+    let text = galley(ui, label, text_font(SIZE, true), Color32::PLACEHOLDER);
+    let arrow = galley(
+        ui,
+        &symbols::ARROW_RIGHT.to_string(),
+        FontId::new(SIZE, fonts::icons()),
+        Color32::PLACEHOLDER,
+    );
+    let size = Vec2::new(
+        text.size().x + ICON_GAP / 2.0 + arrow.size().x + 2.0,
+        text.size().y.max(arrow.size().y),
+    );
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, label));
+    let hot = resp.hovered() || resp.has_focus();
+    let (text_w, arrow_h) = (text.size().x, arrow.size().y);
+    let painter = ui.painter();
+    let top = rect.center().y - text.size().y / 2.0;
+    painter.galley(Pos2::new(rect.min.x, top).round(), text, accent);
+    let nudge = if hot { 2.0 } else { 0.0 };
+    let arrow_at = Pos2::new(
+        rect.min.x + text_w + ICON_GAP / 2.0 + nudge,
+        rect.center().y - arrow_h / 2.0,
+    );
+    painter.galley(arrow_at.round(), arrow, accent);
+    if hot {
+        let y = rect.center().y + SIZE / 2.0 + 1.0;
+        painter.line_segment(
+            [Pos2::new(rect.min.x, y), Pos2::new(rect.min.x + text_w, y)],
+            Stroke::new(1.0, accent),
+        );
+    }
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// A square button with one icon and a tooltip. Plain until the pointer is over it.
 pub(in crate::ui::settings) fn icon_button(
     ui: &mut egui::Ui,
@@ -1436,5 +1479,29 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_link_is_a_line_of_text_and_not_a_button() {
+        let ctx = egui::Context::default();
+        crate::ui::fonts::install(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 200.0))),
+            ..Default::default()
+        };
+        let mut size = Vec2::ZERO;
+        // nothing renders the output, so the texture uploads are dropped on purpose
+        ctx.run_ui(input, |ui| {
+            size = link(ui, "Open System Settings", Color32::RED).rect.size();
+        })
+        .drop_without_applying_deltas();
+        assert!(
+            size.x > 100.0 && size.x < 260.0,
+            "as wide as its words: {size:?}"
+        );
+        assert!(
+            size.y < CONTROL_H - 8.0,
+            "no taller than a line of text: {size:?}"
+        );
     }
 }

@@ -450,6 +450,20 @@ impl Conn {
         if id.is_empty() { None } else { Some(id) }
     }
 
+    /// Every name a window goes by, lower case: its canonical app id, its class and its instance.
+    /// Empty if it has no `WM_CLASS`.
+    fn window_names(&self, w: Window) -> Vec<String> {
+        let mut names = Vec::new();
+        if let Some(bytes) = self.prop8(w, XA_WM_CLASS, XA_STRING, 256)
+            && let Some((instance, class)) = toplevels::parse_wm_class(&bytes)
+        {
+            names.push(desktop_entry::id_key(&class));
+            names.push(desktop_entry::id_key(&instance));
+        }
+        names.extend(self.app_id(w));
+        names
+    }
+
     /// The app in front.
     pub fn frontmost(&self) -> Option<String> {
         self.app_id(self.active_window()?)
@@ -503,17 +517,19 @@ impl Conn {
     /// Like [`Conn::activate`], and says whether `app` has a window at all. The window may be on
     /// another workspace: `_NET_ACTIVE_WINDOW` makes the usual window managers (Mutter, KWin, Xfwm,
     /// Openbox, i3...) go to that workspace, which is how "Open app" follows an app to its desktop.
+    ///
+    /// `app` is what the user typed, so it is compared with every name a window has (see
+    /// [`Conn::window_names`]) and not with one id: `firefox` must find the window of
+    /// `org.mozilla.firefox`, or the caller starts a second copy of a program that already runs.
     pub fn raise(&self, app: &str) -> bool {
-        let key = desktop_entry::id_key(app);
-        if self.frontmost().as_deref() == Some(key.as_str()) {
+        let aliases = index().unwrap_or_default().aliases(app);
+        let belongs = |w: Window| toplevels::belongs_to(&self.window_names(w), &aliases);
+        if self.active_window().is_some_and(belongs) {
             return true;
         }
         let mut stack = self.stacking();
         stack.reverse();
-        let Some(target) = stack
-            .into_iter()
-            .find(|w| self.app_id(*w).as_deref() == Some(key.as_str()))
-        else {
+        let Some(target) = stack.into_iter().find(|w| belongs(*w)) else {
             return false;
         };
         let mut ev = XEvent::zeroed();
