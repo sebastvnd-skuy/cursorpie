@@ -8,25 +8,69 @@
   // ---------------------------------------------------------------
   // Shared site controls
   // ---------------------------------------------------------------
-  document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
-    const initialDark = root.dataset.theme === 'dark' ||
-      (!root.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const themeStorageKey = 'cursorpie-theme';
 
-    const setButton = (dark) => {
+  function readSavedTheme() {
+    try {
+      const saved = window.localStorage.getItem(themeStorageKey);
+      return saved === 'light' || saved === 'dark' ? saved : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function applyTheme(theme, persist) {
+    if (theme !== 'light' && theme !== 'dark') return;
+
+    root.dataset.theme = theme;
+
+    document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+      const dark = theme === 'dark';
       button.innerHTML = dark
         ? '<span class="icon" aria-hidden="true">&#xe472;</span>'
         : '<span class="icon" aria-hidden="true">&#xe330;</span>';
       button.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    };
-
-    setButton(initialDark);
-    button.addEventListener('click', () => {
-      const current = root.dataset.theme ||
-        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      const nextDark = current !== 'dark';
-      root.dataset.theme = nextDark ? 'dark' : 'light';
-      setButton(nextDark);
     });
+
+    const themeColor = document.querySelector('meta[name="theme-color"]');
+    if (themeColor) {
+      themeColor.setAttribute('content', theme === 'dark' ? '#202922' : '#f5f3ec');
+    }
+
+    if (persist) {
+      try {
+        window.localStorage.setItem(themeStorageKey, theme);
+      } catch (_) {
+        // The theme still applies for this page when storage is unavailable.
+      }
+    }
+  }
+
+  const savedTheme = readSavedTheme();
+  const initialTheme = savedTheme ||
+    (root.dataset.theme === 'light' || root.dataset.theme === 'dark'
+      ? root.dataset.theme
+      : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+  applyTheme(initialTheme, false);
+
+  document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true);
+    });
+  });
+
+  // Keep the selected theme in sync when another tab changes it.
+  window.addEventListener('storage', (event) => {
+    if (event.key !== themeStorageKey) return;
+
+    const nextTheme = event.newValue;
+    applyTheme(
+      nextTheme === 'light' || nextTheme === 'dark'
+        ? nextTheme
+        : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+      false
+    );
   });
 
   document.querySelectorAll('[data-year]').forEach((element) => {

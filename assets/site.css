@@ -55,3 +55,93 @@ footer{padding:42px 0 30px;border-top:1px solid var(--line);background:var(--pap
   .nav a:nth-child(1),.nav a:nth-child(2){display:none}
   .nav a{font-size:.76rem}
 }
+
+
+/* Features: calmer, consistent cards with a balanced grid. */
+.feature-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 38px;
+}
+
+.feature-card,
+.feature-card.wide,
+.feature-card.tall {
+  grid-column: auto;
+  min-height: 220px;
+  padding: 25px;
+  border-radius: 20px;
+  background: var(--paper);
+}
+
+.feature-card.tone-sage,
+.feature-card.tone-peach,
+.feature-card.tone-lilac {
+  background: var(--paper);
+}
+
+.feature-card h3 {
+  max-width: none;
+  margin-bottom: 8px;
+}
+
+.feature-card p {
+  max-width: 38ch;
+}
+
+.feature-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 21px;
+  border-radius: 12px;
+}
+
+.feature-art {
+  display: none;
+}
+
+.feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(41, 54, 47, .07);
+}
+
+@media (max-width: 900px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .feature-card,
+  .feature-card.wide,
+  .feature-card.tall {
+    min-height: 210px;
+  }
+}
+
+@media (max-width: 680px) {
+  .feature-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 30px;
+  }
+
+  .feature-card,
+  .feature-card.wide,
+  .feature-card.tall {
+    min-height: 0;
+    padding: 22px;
+  }
+
+  .feature-icon {
+    margin-bottom: 17px;
+  }
+}
+
+/* Keep the primary navigation visible while scrolling. */
+.header-shell {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--page) 94%, transparent);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  backdrop-filter: saturate(140%) blur(12px);
+}
