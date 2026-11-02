@@ -42,5 +42,6 @@ mod welcome;
 mod widgets;
 mod window;
 
+pub use picker::choosing;
 pub use state::{Ed, Slot, Tab};
 pub use welcome::Welcome;

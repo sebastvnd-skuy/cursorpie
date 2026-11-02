@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Settings waits calmly while a file chooser is open.** Choosing an app, an icon image or a config file opens
+  the system's own chooser beside Settings, and Settings stayed live under it: a second click opened a second
+  chooser, Esc closed Settings, and a press of the trigger pulled Settings over the chooser. Settings is now
+  dimmed with "Waiting for the file chooser..." until the chooser closes, then comes back to the front. **Import...**
+  now hands the focus back too.
+- **Linux: pressing the trigger while Settings is open brings it forward again.** With Settings open on another
+  workspace, or behind the app you were using, a press (or holding the trigger in the middle of the pie) only made
+  its taskbar button blink: the window manager refuses the focus request the toolkit sends. CursorPie now asks the
+  way a pager does, goes to the workspace Settings is on and raises it, as it already does on macOS. If it still
+  does not work on your desktop, start with `CURSORPIE_DEBUG=1` and run `cargo tools diag`: it says whether the
+  window manager refused the request.
+
 ## 0.7.2
 
 - **More settings that show what they do, and bigger demos.** The animated demos have a taller stage (190 points

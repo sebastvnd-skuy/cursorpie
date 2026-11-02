@@ -146,6 +146,21 @@ pub const EXPECTED: &[Expected] = &[
         fields: &["kind", "wait_ms"],
     },
     Expected {
+        cat: "x11",
+        ev: "raise_own",
+        fields: &["found", "tries", "waited_ms"],
+    },
+    Expected {
+        cat: "x11",
+        ev: "raise_own_seen",
+        fields: &[
+            "active_ours",
+            "current_desktop",
+            "asked_from_desktop",
+            "window_desktop",
+        ],
+    },
+    Expected {
         cat: "tap",
         ev: "hook",
         fields: &["backend", "state"],

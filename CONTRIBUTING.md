@@ -6,7 +6,7 @@ the Rust docs as `guides::contributing`.
 ## Quick start
 
 ```sh
-git clone https://github.com/sebastvnd-skuy/cursorpie.git
+git clone https://github.com/sebastvnd/cursorpie.git
 cd cursorpie
 cargo tools hooks install   # once per clone: turns on the Git hooks
 cargo run --release         # try the app

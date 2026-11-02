@@ -691,6 +691,8 @@ Linux. Record the distribution, desktop, session type, GPU and scaling with each
 22. A game or app with pointer lock still receives smooth relative motion.
 23. Extra buttons as trigger on at least two mouse models, per Appendix B.
 24. `cursorpie --doctor` output is complete enough for a bug report.
+25. Settings open on another workspace, minimized, or behind another app: pressing or holding the trigger
+    brings it forward and goes to its workspace (`CURSORPIE_DEBUG=1`, then `cargo tools diag`, shows a refusal).
 
 ## Security and privacy
 

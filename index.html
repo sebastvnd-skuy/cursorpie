@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f3ec">
+  <meta name="description" content="CursorPie puts your shortcuts and everyday actions right under your cursor. Hold, flick, release.">
+  <title>CursorPie — Your actions, one gesture away</title>
+  <link rel="icon" href="./assets/cursorpie-mark.png">
+  <link rel="stylesheet" href="./assets/site.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="header-shell">
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="./index.html" aria-label="CursorPie home">
+        <img src="./assets/cursorpie-logo.png" alt="CursorPie">
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="./index.html" data-home-link aria-current="page">Home</a>
+        <a href="./index.html#features">Features</a>
+        <a href="./index.html?doc=docs/README.md" data-doc-link>Documentation</a>
+        <a href="./index.html#download">Download</a>
+        <a href="https://github.com/sebastvnd/cursorpie" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <div class="header-tools">
+        <button class="themebtn" type="button" data-theme-toggle aria-label="Switch to dark theme">
+          <span class="icon" aria-hidden="true">&#xe330;</span>
+        </button>
+      </div>
+    </header>
+  </div>
+</div>
+
+<main id="main">
+  <div id="landing-view">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">One gesture. More room to work.</span>
+          <h1>Your actions,<br><em>right under</em><br>your cursor.</h1>
+          <p class="lead">CursorPie brings your favorite shortcuts and actions right to the pointer. Hold a mouse button, flick toward what you need, and release. No menus to search. No shortcuts to memorize.</p>
+          <div class="cta-row">
+            <a class="btn" id="hero-download" href="#download">Download CursorPie <span class="icon" aria-hidden="true">&#xe5de;</span></a>
+            <a class="btn btn-secondary" href="./index.html?doc=docs/USER_GUIDE.md">See how it works <span class="icon" aria-hidden="true">&#xe13a;</span></a>
+          </div>
+          <div class="hero-meta">
+            <span><i class="icon" aria-hidden="true">&#xe184;</i> Free and open source</span>
+            <span><i class="icon" aria-hidden="true">&#xe40c;</i> No account or telemetry</span>
+            <span><i class="icon" aria-hidden="true">&#xe586;</i> Windows, macOS, Linux</span>
+          </div>
+        </div>
+        <div class="visual-wrap">
+          <div class="visual-card">
+            <div class="visual-tag"><i class="icon" aria-hidden="true">&#xe15a;</i> Try the pie menu</div>
+            <div class="stage" id="pie-stage" aria-label="Interactive CursorPie menu demo">
+              <svg id="pie-demo" viewBox="-160 -160 320 320" role="img" aria-label="The default four-slice menu: History, Clipboard, Brackets and Launch"></svg>
+              <p class="stage-hint" id="pie-hint">Press and hold, move toward a slice, then <strong>release</strong>.</p>
+            </div>
+          </div>
+          <div class="visual-foot"><span><strong>Default pie</strong> · four slices</span><span>Move to explore</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-paper" id="how-it-works">
+      <div class="wrap">
+        <div class="section-heading">
+          <span class="eyebrow">How it works</span>
+          <h2>Three movements.<br>Nothing to memorize.</h2>
+          <p class="lead">The actions you use most should not be buried in menus or take up space in your memory. Just move your mouse.</p>
+        </div>
+        <div class="steps-grid">
+          <article class="step-card"><span class="step-index">01</span><h3>Hold the trigger</h3><p>Hold the middle mouse button for half a second. The pie appears right under your cursor.</p><span class="step-ghost">01</span></article>
+          <article class="step-card"><span class="step-index">02</span><h3>Flick toward a slice</h3><p>Move toward the action you need. The slice highlights as your pointer passes over it.</p><span class="step-ghost">02</span></article>
+          <article class="step-card"><span class="step-index">03</span><h3>Release to act</h3><p>Release the button and the action runs. Hold in the center to open Settings.</p><span class="step-ghost">03</span></article>
+        </div>
+        <div class="mouse-note"><span class="icon mouse-icon" aria-hidden="true">&#xe644;</span> A clickable scroll wheel is all you need. Extra mouse buttons are supported on some platforms.</div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <div class="section-heading">
+          <span class="eyebrow">Made to fit your habits</span>
+          <h2>A little space for<br>the things you do often.</h2>
+          <p class="lead">From simple shortcuts to app-specific workflows, CursorPie adapts to the way you work.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card wide tone-sage"><div class="feature-icon"><i class="icon" aria-hidden="true">&#xe2c2;</i></div><h3>A different pie for every app</h3><p>Keep a general menu, then create dedicated pies for your browser, code editor, or favorite apps.</p><div class="feature-art"><span class="art-ring"></span></div></article>
+          <article class="feature-card tall tone-peach"><div class="feature-icon"><i class="icon" aria-hidden="true">&#xe2d8;</i></div><h3>Actions that work your way</h3><p>Send keyboard shortcuts, open apps, links or files, run commands, and even combine multiple actions.</p></article>
+          <article class="feature-card tone-lilac"><div class="feature-icon"><i class="icon" aria-hidden="true">&#xe466;</i></div><h3>Nested submenus</h3><p>Up to 8 slices per ring and 5 levels deep.</p></article>
+          <article class="feature-card tone-sage"><div class="feature-icon"><i class="icon" aria-hidden="true">&#xe644;</i></div><h3>Make side buttons useful</h3><p>Set your back and forward buttons to Undo/Redo, switch tabs, zoom, and more.</p></article>
+          <article class="feature-card tone-peach"><div class="feature-icon"><i class="icon" aria-hidden="true">&#xe1a0;</i></div><h3>Room to experiment</h3><p>Settings includes undo, redo, and automatic backups of previous saves.</p></article>
+          <article class="feature-card tone-lilac"><div class="feature-icon"><i class="icon" aria-hidden="true">&#xe4c0;</i></div><h3>Easy to share</h3><p>Export a complete profile with its icons as one JSON file and share it with others.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-paper">
+      <div class="wrap">
+        <div class="privacy-panel">
+          <div><span class="eyebrow">Yours to keep</span><h2>Lightweight, private, and out of the way.</h2><p>CursorPie runs on your computer. It needs no account, sends no data to a server, and collects no telemetry. The menu stays out of sight when you are not using it.</p></div>
+          <div class="privacy-mark"><i class="icon" aria-hidden="true">&#xe40c;</i></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="download">
+      <div class="wrap">
+        <div class="platform-intro">
+          <div class="section-heading"><span class="eyebrow">Get started</span><h2>Find the right build<br>for your computer.</h2></div>
+          <p class="lead" data-device-copy>Choose the package that matches your system.</p>
+        </div>
+        <div class="os-grid">
+          <article class="os-card" data-os-card="win"><div class="os-top"><span class="os-symbol"><i class="icon" aria-hidden="true">&#xe32e;</i></span><span class="badge">Stable</span></div><h3>Windows</h3><p>Windows 10 (1809) or 11. Per-user installer; no special permissions required.</p><div class="os-links"><a data-release="CursorPie-windows-setup.exe" href="#">Installer <i class="icon" aria-hidden="true">&#xe5de;</i></a><a data-release="CursorPie-windows.zip" href="#">ZIP</a></div></article>
+          <article class="os-card" data-os-card="mac"><div class="os-top"><span class="os-symbol"><i class="icon" aria-hidden="true">&#xe586;</i></span><span class="badge">Supported</span></div><h3>macOS</h3><p>macOS 11+, for Intel and Apple silicon. Accessibility permission is required.</p><div class="os-links"><a data-release="CursorPie-macos-universal.dmg" href="#">Universal DMG <i class="icon" aria-hidden="true">&#xe5de;</i></a></div></article>
+          <article class="os-card" data-os-card="linux"><div class="os-top"><span class="os-symbol"><i class="icon" aria-hidden="true">&#xe1aa;</i></span><span class="badge">Experimental</span></div><h3>Linux (X11)</h3><p>x86_64 builds for Ubuntu 24.04+ and Fedora 44. On Wayland, only X11/XWayland windows are supported.</p><div class="os-links"><a data-release="CursorPie-ubuntu-24.04-x86_64.tar.gz" href="#">Ubuntu 24.04+</a><a data-release="CursorPie-fedora-44-x86_64.tar.gz" href="#">Fedora 44</a></div></article>
+        </div>
+        <div class="download-notes">
+          <div class="download-note"><h4>Seeing a Windows warning?</h4><p>This build is not signed yet. Select <strong>More info</strong>, then <strong>Run anyway</strong> if you choose to continue.</p></div>
+          <div class="download-note"><h4>macOS will not open?</h4><p>On first launch, right-click the app and choose <strong>Open</strong>, then grant Accessibility permission.</p></div>
+          <div class="download-note"><h4>Linux</h4><p>Extract the package and run <code>install.sh</code>. A tray icon is not available yet.</p></div>
+        </div>
+        <div class="doc-cta"><div><h3>Need help getting set up?</h3><p>The installation guide covers Windows, macOS, and Linux.</p></div><a class="btn btn-secondary" href="./index.html?doc=docs/INSTALL.md">Read the installation guide <span class="icon" aria-hidden="true">&#xe13a;</span></a></div>
+      </div>
+    </section>
+
+    <section class="section section-paper" id="faq">
+      <div class="wrap">
+        <div class="section-heading"><span class="eyebrow">Common questions</span><h2>A few things you<br>might be wondering.</h2></div>
+        <div class="faq-list">
+          <details><summary>Is CursorPie free?</summary><p>Yes. CursorPie is open source under the MIT license, with no account and no ads.</p></details>
+          <details><summary>Does my data go online?</summary><p>No. CursorPie does not make network connections or collect telemetry. Keyboard events are read while you record a shortcut in Settings; otherwise, events are passed through and are not stored or logged.</p></details>
+          <details><summary>Can I use it without a middle mouse button?</summary><p>CursorPie needs a middle mouse button. A clickable scroll wheel is enough. On macOS, some additional mouse buttons can also be used as triggers.</p></details>
+          <details><summary>How do I change the slices?</summary><p>Hold in the center of the pie to open Settings. From there, add actions, change icons, and configure pies for specific apps.</p></details>
+          <details><summary>Is Linux Wayland supported?</summary><p>Linux support is currently experimental and uses X11. In a Wayland session, CursorPie works only with X11 and XWayland windows; a tray icon is not available yet.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section class="section"><div class="wrap"><div class="doc-cta"><div><span class="eyebrow">Keep exploring</span><h3 style="margin-top:12px">Guides, documentation, and release notes.</h3><p>Everything you need to get started and understand how CursorPie works.</p></div><a class="btn" href="./index.html?doc=docs/README.md">Explore the documentation <span class="icon" aria-hidden="true">&#xe13a;</span></a></div></div></section>
+  </div>
+
+  <section id="documentation-view" hidden>
+    <div class="docs-hero"><div class="wrap"><span class="eyebrow">CursorPie documentation</span><h1 id="doc-page-heading">Documentation.</h1><p class="lead" id="doc-page-subtitle">Guides and technical notes, loaded directly from the Markdown files in this repository.</p></div></div>
+    <div class="wrap docs-layout">
+      <aside class="docs-sidebar" aria-label="Documentation pages">
+        <h3>Documentation</h3>
+        <a href="?doc=docs/README.md" data-doc-file="docs/README.md"><span class="icon" aria-hidden="true">&#xe1b8;</span> Overview</a>
+        <a href="?doc=docs/INSTALL.md" data-doc-file="docs/INSTALL.md"><span class="icon" aria-hidden="true">&#xe20c;</span> Installation</a>
+        <a href="?doc=docs/USER_GUIDE.md" data-doc-file="docs/USER_GUIDE.md"><span class="icon" aria-hidden="true">&#xe0e6;</span> User guide</a>
+        <a href="?doc=docs/CONFIGURATION.md" data-doc-file="docs/CONFIGURATION.md"><span class="icon" aria-hidden="true">&#xe434;</span> Configuration</a>
+        <a href="?doc=docs/KNOWN_ISSUES.md" data-doc-file="docs/KNOWN_ISSUES.md"><span class="icon" aria-hidden="true">&#xe4e0;</span> Known issues</a>
+        <a href="?doc=docs/DEBUGGING.md" data-doc-file="docs/DEBUGGING.md"><span class="icon" aria-hidden="true">&#xeae8;</span> Debugging</a>
+        <h3 style="margin-top:18px">Project & engineering</h3>
+        <a href="?doc=CONTRIBUTING.md" data-doc-file="CONTRIBUTING.md"><span class="icon" aria-hidden="true">&#xe576;</span> Contributing</a>
+        <a href="?doc=CHANGELOG.md" data-doc-file="CHANGELOG.md"><span class="icon" aria-hidden="true">&#xe1a0;</span> Changelog</a>
+        <a href="?doc=docs/LINUX_MIGRATION.md" data-doc-file="docs/LINUX_MIGRATION.md"><span class="icon" aria-hidden="true">&#xe6a2;</span> Linux migration</a>
+        <a href="?doc=docs/WINDOWS_MIGRATION.md" data-doc-file="docs/WINDOWS_MIGRATION.md"><span class="icon" aria-hidden="true">&#xe32e;</span> Windows migration</a>
+        <a href="?doc=docs/OTHER_DESKTOPS.md" data-doc-file="docs/OTHER_DESKTOPS.md"><span class="icon" aria-hidden="true">&#xe586;</span> Other desktops</a>
+        <a href="?doc=docs/UI_DESIGN.md" data-doc-file="docs/UI_DESIGN.md"><span class="icon" aria-hidden="true">&#xe150;</span> UI design</a>
+        <div class="sidebar-note"><span class="icon" aria-hidden="true">&#xe1b8;</span><p>Pages are rendered from the original <code>.md</code> files. Edit the Markdown in the repository to update this site.</p></div>
+      </aside>
+      <article class="markdown" id="markdown-content" aria-live="polite">
+        <div class="markdown-loading"><span class="loading-dot"></span> Loading documentation…</div>
+      </article>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-top">
+      <div class="footer-brand"><img src="./assets/cursorpie-mark.png" alt=""><p>A simple pie menu that stays close to your cursor and feels natural to use every day.</p></div>
+      <nav class="footer-links" aria-label="Footer navigation">
+        <a href="./index.html?doc=docs/README.md">Documentation</a>
+        <a href="./index.html?doc=docs/INSTALL.md">Installation</a>
+        <a href="./index.html?doc=docs/USER_GUIDE.md">User guide</a>
+        <a href="./index.html?doc=CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/sebastvnd/cursorpie/issues" target="_blank" rel="noopener">Report an issue</a>
+        <a href="https://github.com/sebastvnd/cursorpie" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+    <div class="footer-bottom"><span>© <span data-year>2026</span> CursorPie · MIT License</span><span>Made with Rust and egui · Inspired by Kando</span></div>
+  </div>
+</footer>
+
+<script src="./assets/js/marked.js"></script>
+<script src="./assets/site.js" defer></script>
+</body>
+</html>

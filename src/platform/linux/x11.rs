@@ -44,6 +44,23 @@ pub struct Conn {
     pub scale: f64,
 }
 
+/// What [`Conn::raise_own`] found when it asked for CursorPie's own window to come forward. It is
+/// only read by the diagnostic log, to tell "the window manager refused" from "there was nothing to
+/// raise".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OwnRaise {
+    /// The window that was asked to come forward.
+    pub window: Window,
+    /// Its workspace; `None` if it is on all of them.
+    pub window_desktop: Option<u32>,
+    /// The workspace that was shown when it was asked.
+    pub current_desktop: Option<u32>,
+    /// It was minimized.
+    pub hidden: bool,
+    /// It already was the active window.
+    pub was_active: bool,
+}
+
 // SAFETY: the Display was opened after `XInitThreads`, which makes Xlib lock internally; the other
 // fields are plain values.
 unsafe impl Send for Conn {}
@@ -405,7 +422,8 @@ impl Conn {
         self.prop32(self.root, self.atoms.client_list_stacking, XA_WINDOW)
     }
 
-    fn current_desktop(&self) -> Option<u32> {
+    /// The workspace that is shown.
+    pub fn current_desktop(&self) -> Option<u32> {
         self.prop32(self.root, self.atoms.current_desktop, XA_CARDINAL)
             .first()
             .map(|d| *d as u32)
@@ -532,16 +550,22 @@ impl Conn {
         let Some(target) = stack.into_iter().find(|w| belongs(*w)) else {
             return false;
         };
+        self.send_activate(target);
+        true
+    }
+
+    /// Sends a client message to the window manager (through the root window), the way a pager does.
+    fn send_to_wm(&self, window: Window, message_type: Atom, data: [c_long; 5]) {
         let mut ev = XEvent::zeroed();
         // SAFETY: every member of the union starts at offset 0 and the event is zeroed; the cast
         // views it as a client message, which `XSendEvent` copies.
         unsafe {
             let m = &mut *(&mut ev as *mut XEvent as *mut XClientMessageEvent);
             m.type_ = CLIENT_MESSAGE;
-            m.window = target;
-            m.message_type = self.atoms.active_window;
+            m.window = window;
+            m.message_type = message_type;
             m.format = 32;
-            m.data = [2, CURRENT_TIME as c_long, 0, 0, 0]; // 2 = the request comes from a pager
+            m.data = data;
             XSendEvent(
                 self.dpy,
                 self.root,
@@ -551,7 +575,61 @@ impl Conn {
             );
             XFlush(self.dpy);
         }
-        true
+    }
+
+    /// Asks the window manager, as a pager would (see [`toplevels::pager_request`]), to activate
+    /// `target`: raise it and give it the focus.
+    fn send_activate(&self, target: Window) {
+        self.send_to_wm(target, self.atoms.active_window, toplevels::pager_request());
+    }
+
+    /// Asks the window manager to show workspace `desktop`. Activating a window does not do this
+    /// in every window manager (Openbox leaves you where you are), so a pager says it itself.
+    fn send_switch_desktop(&self, desktop: u32) {
+        self.send_to_wm(
+            self.root,
+            self.atoms.current_desktop,
+            toplevels::switch_desktop_request(desktop),
+        );
+    }
+
+    /// The top-most window of CursorPie itself (Settings or the welcome window) that the window
+    /// manager lists. The pie window is not listed while it is hidden, so it is only found while it
+    /// is showing.
+    fn own_window(&self) -> Option<Window> {
+        let mut stack = self.stacking();
+        stack.reverse();
+        stack
+            .into_iter()
+            .find(|w| self.is_ours(*w) || self.app_id(*w).as_deref() == Some(OWN_APP_ID))
+    }
+
+    /// Asks the window manager to bring CursorPie's own window forward, on whichever workspace it is
+    /// (and out of the minimized state), and says what it found. `None` when the window manager lists
+    /// no window of ours: a window that was only just shown is not known to it for a moment.
+    ///
+    /// The toolkit's own `Focus` request is no substitute: it is sent as an application, which a
+    /// window manager refuses while another program has the focus (see [`toplevels::SOURCE_PAGER`]).
+    pub fn raise_own(&self) -> Option<OwnRaise> {
+        let window = self.own_window()?;
+        let seen = OwnRaise {
+            window,
+            window_desktop: self.window_desktop(window),
+            current_desktop: self.current_desktop(),
+            hidden: self.is_hidden(window),
+            was_active: self.active_window() == Some(window),
+        };
+        if let Some(d) = toplevels::desktop_to_switch_to(seen.window_desktop, seen.current_desktop)
+        {
+            self.send_switch_desktop(d);
+        }
+        self.send_activate(window);
+        Some(seen)
+    }
+
+    /// Whether `w` is the window the window manager says has the focus.
+    pub fn is_active(&self, w: Window) -> bool {
+        self.active_window() == Some(w)
     }
 
     // ------------------------------------------------------------------ injection

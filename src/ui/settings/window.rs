@@ -141,7 +141,7 @@ impl App {
 
         // Esc closes what is on top: a sheet, then a popup (egui closes it itself), then the window
         // (when not recording) = cancel
-        if self.closing.is_none() && self.ed.recording.is_none() {
+        if self.closing.is_none() && self.ed.recording.is_none() && !super::picker::choosing() {
             let esc = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
             if esc {
                 if self.confirm_quit {
@@ -433,6 +433,11 @@ impl App {
                 }
             },
         );
+
+        // a native file chooser is open beside the window: nothing here can be used meanwhile
+        if super::picker::choosing() {
+            super::picker::waiting_scrim(&ctx, card_rect);
+        }
 
         // the sheet that asks again before quitting with unsaved changes (over everything else)
         self.quit_dialog(&ctx, accent);

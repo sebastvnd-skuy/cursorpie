@@ -54,6 +54,26 @@ impl App {
         self.sleep_step(ctx); // the idle clock starts now
     }
 
+    /// Brings the Settings (or welcome) window in front of everything: out of the minimized state,
+    /// from behind other windows and from another desktop, workspace or Space. `why` names the
+    /// reason for the diagnostic log.
+    ///
+    /// The toolkit's request is enough on macOS and Windows. On X11 the window manager refuses it
+    /// while another program has the focus, so the platform asks again in its own way (see
+    /// [`platform::raise_own_window`]).
+    pub fn raise_settings(&self, ctx: &egui::Context, why: &'static str) {
+        diag::log!(
+            "ui",
+            "raise_settings",
+            why = why,
+            visible = self.visible,
+            welcome = self.welcome.is_some()
+        );
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        platform::raise_own_window();
+    }
+
     /// Turns the window into Settings, centered on the display that contains `at`.
     pub(super) fn open_settings(&mut self, ctx: &egui::Context, at: Pos2, about: bool) {
         diag::log!(
@@ -63,7 +83,7 @@ impl App {
             already_open = self.settings_open
         );
         if self.settings_open {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            self.raise_settings(ctx, "open_settings");
             if about {
                 self.ed.tab = Tab::About;
             }
@@ -94,7 +114,7 @@ impl App {
     /// bring it to the front.
     pub(super) fn open_welcome(&mut self, ctx: &egui::Context, at: Pos2) {
         if self.settings_open {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            self.raise_settings(ctx, "open_welcome");
             return;
         }
         self.pie_open = false;
@@ -138,6 +158,9 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(top_left));
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        // on X11 the toolkit drops that request until the window is mapped, and a window manager
+        // may map it without the focus: ask again once it is listed
+        platform::raise_own_window();
         card
     }
 
@@ -195,13 +218,16 @@ impl App {
                 x = x,
                 y = y
             );
-            // Settings may be behind other windows or minimized: without a sign the press looks
-            // like it did nothing. Bring the window forward and say why the pie did not open.
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
-                egui::UserAttentionType::Informational,
-            ));
+            // Settings may be behind other windows, minimized or on another desktop: without a
+            // sign the press looks like it did nothing. Bring the window forward and say why the
+            // pie did not open.
+            // (not while a file chooser is open: it would end up under Settings)
+            if !crate::ui::settings::choosing() {
+                self.raise_settings(ctx, "pie_press");
+                ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
+                    egui::UserAttentionType::Informational,
+                ));
+            }
             self.say(
                 "The pie is off while Settings is open  \u{b7}  Save or Cancel to use it again",
             );

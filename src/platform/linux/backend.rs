@@ -18,6 +18,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -130,6 +131,87 @@ pub fn post_mouse(_pos: Point, kind: Kind, button: i64) {
 pub fn activate_app(bundle: &str) {
     if let Some(c) = x11::conn() {
         c.activate(bundle);
+    }
+}
+
+/// How often [`raise_own_window`] looks for the window while the window manager does not list it.
+const RAISE_STEP: Duration = Duration::from_millis(25);
+/// How long [`raise_own_window`] keeps looking. A window is listed within a few milliseconds of
+/// being shown; a second is for a loaded machine.
+const RAISE_WAIT: Duration = Duration::from_millis(1000);
+/// How long after the request the diagnostic log looks at who has the focus.
+const RAISE_SETTLE: Duration = Duration::from_millis(200);
+
+/// Set while a thread of [`raise_own_window`] still looks for the window.
+static RAISE_WAITING: AtomicBool = AtomicBool::new(false);
+
+/// Brings CursorPie's own window (Settings, or the welcome window) to the front, on whichever
+/// workspace it is. Returns at once: the work is done on a thread of its own.
+///
+/// The toolkit's focus request cannot do this on X11: it is sent as an application, and a window
+/// manager that sees another program with the focus only flashes the taskbar (see
+/// [`toplevels::SOURCE_PAGER`](super::toplevels::SOURCE_PAGER)). This asks as a pager does, like
+/// "Open app" does for another app's window. The window may have been shown a moment ago and not be
+/// known to the window manager yet, so the request is repeated until it is listed. One thread
+/// waiting is enough: a request that comes while it waits is the same request.
+pub fn raise_own_window() {
+    if RAISE_WAITING.swap(true, Ordering::SeqCst) {
+        diag::log!("x11", "raise_own_merged");
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("cursorpie-raise".into())
+        .spawn(raise_own_and_watch);
+    if spawned.is_err() {
+        RAISE_WAITING.store(false, Ordering::SeqCst);
+    }
+}
+
+/// The body of the thread of [`raise_own_window`].
+fn raise_own_and_watch() {
+    let Some(conn) = x11::conn() else {
+        RAISE_WAITING.store(false, Ordering::SeqCst);
+        return;
+    };
+    let started = Instant::now();
+    let mut tries = 0u32;
+    let raised = loop {
+        tries += 1;
+        if let Some(r) = conn.raise_own() {
+            break Some(r);
+        }
+        if started.elapsed() >= RAISE_WAIT {
+            break None;
+        }
+        std::thread::sleep(RAISE_STEP);
+    };
+    RAISE_WAITING.store(false, Ordering::SeqCst);
+    // what the window manager was asked, next to what the window looked like when it was asked
+    diag::log!(
+        "x11",
+        "raise_own",
+        found = raised.is_some(),
+        tries = tries,
+        waited_ms = started.elapsed(),
+        window = raised.map(|r| r.window),
+        window_desktop = raised.and_then(|r| r.window_desktop),
+        current_desktop = raised.and_then(|r| r.current_desktop),
+        hidden = raised.map(|r| r.hidden),
+        was_active = raised.map(|r| r.was_active)
+    );
+    // ...and what it did about it: only worth the wait while the log is on
+    if let Some(r) = raised
+        && diag::enabled("x11")
+    {
+        std::thread::sleep(RAISE_SETTLE);
+        diag::log!(
+            "x11",
+            "raise_own_seen",
+            active_ours = conn.is_active(r.window),
+            current_desktop = conn.current_desktop(),
+            asked_from_desktop = r.current_desktop,
+            window_desktop = r.window_desktop
+        );
     }
 }
 
