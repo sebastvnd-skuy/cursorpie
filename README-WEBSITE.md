@@ -76,3 +76,12 @@ Then open <http://localhost:8000>.
 ## Updating documentation
 
 Edit the existing `.md` file in `docs/` (or the relevant root-level Markdown file) and publish the changes. The website reads the file when a documentation page is opened, so there is no HTML conversion or duplicate documentation to maintain.
+
+## Search engine optimization (SEO)
+
+- `index.html` carries the title, description, canonical URL, Open Graph/Twitter tags and JSON-LD (`SoftwareApplication`).
+- `assets/site.js` updates the title, canonical URL and description for every `?doc=...` page.
+- `robots.txt` and `sitemap.xml` live in the repository root and are copied to the site by `.github/workflows/static.yml`.
+- `assets/og-image.png` (1200x630) is the preview image for links shared on social networks and chat apps.
+- The site URL `https://sebastvnd.github.io/cursorpie/` is written in `index.html`, `robots.txt` and `sitemap.xml`. If the address changes (for example a custom domain), replace it in those three files.
+- Google Search Console: either upload the `googleXXXXXXXX.html` file it gives you to the repository root (the workflow copies `google*.html`), or use the commented `google-site-verification` meta tag in `index.html`.

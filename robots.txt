@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sebastvnd.github.io/cursorpie/sitemap.xml

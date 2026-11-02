@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.7.3
+
+- **Linux: cancelling the file chooser ends the wait.** After Cancel or the close button, CursorPie could keep
+  showing "Waiting for the file chooser..." because it waited for the chooser's output to close, which a helper
+  the chooser leaves behind can hold open. It now waits for the chooser itself to end. The waiting screen also has
+  a **Stop waiting** button for a chooser that never answers or is lost behind other windows.
+- **macOS: the file chooser is handled the same way.** `osascript`, which shows the Finder's chooser, now goes
+  through the same code as zenity and kdialog on Linux: CursorPie waits for the chooser itself to end, not for
+  its output pipe to close. **Windows** needed no change: its chooser returns the moment you press Cancel or the
+  close button. The dimmed "Waiting for the file chooser..." screen and the **Stop waiting** button are the same
+  on every system.
 - **Settings waits calmly while a file chooser is open.** Choosing an app, an icon image or a config file opens
   the system's own chooser beside Settings, and Settings stayed live under it: a second click opened a second
   chooser, Esc closed Settings, and a press of the trigger pulled Settings over the chooser. Settings is now
@@ -13,6 +24,15 @@
   way a pager does, goes to the workspace Settings is on and raises it, as it already does on macOS. If it still
   does not work on your desktop, start with `CURSORPIE_DEBUG=1` and run `cargo tools diag`: it says whether the
   window manager refused the request.
+- **A website for CursorPie.** The repository now has a landing page (`index.html`) that detects your system and
+  links the matching download, and shows the project's Markdown documentation (install guide, user guide,
+  configuration, known issues, this changelog) in the browser, read straight from the files in the repository. It
+  is published to GitHub Pages by `.github/workflows/static.yml` on every push to `main`. See `README-WEBSITE.md`.
+- **The project now lives at `github.com/sebastvnd/cursorpie`.** The clone and download links in `docs/INSTALL.md`
+  and `CONTRIBUTING.md` point there, and the PNG logos and sample icons in `icon/` are no longer ignored by git.
+- **Windows: the build works again.** Asking the window manager for a workspace (Linux code that is also built and
+  tested on every system) converted a `u32` with `c_long::from`, which does not exist where `c_long` is 32 bits
+  wide, so the Windows build failed. It is now a plain cast, with a test that the workspace number survives it.
 
 ## 0.7.2
 

@@ -55,6 +55,13 @@ jobs:
             cp diag/README.md _site/diag/
           fi
 
+          # SEO files: crawler rules, sitemap and Google Search Console verification file.
+          for file in robots.txt sitemap.xml google*.html; do
+            if [ -f "$file" ]; then
+              cp "$file" _site/
+            fi
+          done
+
           touch _site/.nojekyll
 
       - name: Upload website artifact

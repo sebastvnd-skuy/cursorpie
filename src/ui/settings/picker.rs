@@ -5,15 +5,20 @@
 //! chooser cannot be started, and a press of the trigger does not pull Settings over the chooser.
 
 use super::theme::{CARD_RADIUS, pal};
+use super::widgets::{Look, button};
 use crate::msg::Msg;
 use crate::platform::{self, FileKind};
 use eframe::egui;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 /// Set from the click that starts a chooser until the chooser is gone.
 static CHOOSING: AtomicBool = AtomicBool::new(false);
+
+/// Counts the times the user gave up waiting: a chooser that was given up on must not touch the
+/// state of the next one when it finally ends.
+static ROUND: AtomicU64 = AtomicU64::new(0);
 
 /// Whether a native file chooser is open (or about to be).
 pub fn choosing() -> bool {
@@ -23,16 +28,33 @@ pub fn choosing() -> bool {
 /// Takes the right to open a chooser. `None` while another one is open. The right is given back
 /// when the returned guard is dropped, also if the worker thread panics.
 fn claim() -> Option<Release> {
-    (!CHOOSING.swap(true, Ordering::SeqCst)).then_some(Release)
+    (!CHOOSING.swap(true, Ordering::SeqCst)).then(|| Release(ROUND.load(Ordering::SeqCst)))
 }
 
-/// Gives the chooser back when dropped.
-struct Release;
+/// Gives the chooser back when dropped, unless the user gave up on it before.
+struct Release(u64);
+
+impl Release {
+    /// The user pressed "Stop waiting" while this chooser was open.
+    fn abandoned(&self) -> bool {
+        ROUND.load(Ordering::SeqCst) != self.0
+    }
+}
 
 impl Drop for Release {
     fn drop(&mut self) {
-        CHOOSING.store(false, Ordering::SeqCst);
+        if !self.abandoned() {
+            CHOOSING.store(false, Ordering::SeqCst);
+        }
     }
+}
+
+/// Gives up waiting for the chooser that is open (one that hangs, or hides behind other windows):
+/// Settings is usable again and the chooser's answer, if it ever comes, is dropped.
+pub(super) fn stop_waiting() {
+    diag::log!("ui", "chooser_abandoned");
+    ROUND.fetch_add(1, Ordering::SeqCst);
+    CHOOSING.store(false, Ordering::SeqCst);
 }
 
 /// Opens the native file chooser on a worker thread (it blocks until the user answers), turns the
@@ -53,16 +75,21 @@ pub(super) fn spawn_file_picker(
         return;
     };
     diag::log!("ui", "chooser_open");
+    let started = std::time::Instant::now();
     ctx.request_repaint(); // the dimming shows at once
     std::thread::spawn(move || {
-        if let Some(file) = platform::choose_file(kind, prompt)
+        let picked = platform::choose_file(kind, prompt);
+        if release.abandoned() {
+            return; // the user stopped waiting: the answer comes too late
+        }
+        if let Some(file) = picked
             && let Some(msg) = make(file)
         {
             let _ = tx.send(msg);
         }
         std::thread::sleep(Duration::from_millis(120)); // give the OS time to hand focus back
         drop(release);
-        diag::log!("ui", "chooser_closed");
+        diag::log!("ui", "chooser_closed", waited_ms = started.elapsed());
         let _ = tx.send(Msg::Refocus);
         ctx.request_repaint();
     });
@@ -93,6 +120,22 @@ pub(super) fn waiting_scrim(ctx: &egui::Context, bounds: egui::Rect) {
                 .rect_filled(pill, pill.height() / 2.0, pal().card);
             ui.painter()
                 .galley(pill.center() - galley.size() / 2.0, galley, pal().text);
+            // the way out when the chooser never answers or cannot be found
+            let below = egui::Rect::from_center_size(
+                pill.center_bottom() + egui::vec2(0.0, 36.0),
+                egui::vec2(160.0, 32.0),
+            );
+            let clicked = ui
+                .scope_builder(
+                    egui::UiBuilder::new()
+                        .max_rect(below)
+                        .layout(egui::Layout::top_down(egui::Align::Center)),
+                    |ui| button(ui, Look::Soft, None, "Stop waiting").clicked(),
+                )
+                .inner;
+            if clicked {
+                stop_waiting();
+            }
         });
 }
 
@@ -111,6 +154,21 @@ mod tests {
         );
         drop(first);
         assert!(!choosing());
-        assert!(claim().is_some(), "free again once the first one is gone");
+        let again = claim();
+        assert!(again.is_some(), "free again once the first one is gone");
+        drop(again);
+    }
+
+    #[test]
+    fn giving_up_frees_settings_and_the_old_chooser_cannot_undo_it() {
+        let old = claim().expect("free");
+        stop_waiting();
+        assert!(!choosing(), "usable again at once");
+        assert!(old.abandoned());
+        let new = claim().expect("a new chooser may start");
+        drop(old); // the abandoned one ends late
+        assert!(choosing(), "and must not free the new one");
+        drop(new);
+        assert!(!choosing());
     }
 }

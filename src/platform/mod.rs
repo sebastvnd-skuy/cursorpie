@@ -41,6 +41,10 @@
 pub mod desktops;
 pub mod keymap;
 
+// Runs the file choosers that are separate programs: zenity and kdialog on Linux, osascript on macOS.
+#[cfg(unix)]
+pub(crate) mod chooser;
+
 // The pure Linux helpers (session, desktop entries, window hit test, XDG paths) compile on every OS so
 // their tests run everywhere; the X11 backend inside is only compiled on Linux.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]

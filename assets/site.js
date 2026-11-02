@@ -258,6 +258,7 @@
     const metadata = documentMap.find((item) => item.file === requested);
     const label = metadata ? metadata.label : requested.split('/').pop().replace(/\.md$/i, '').replace(/[_-]+/g, ' ');
     document.title = label + ' — CursorPie';
+    updateSeoForDocument(requested, label);
     const subtitle = document.getElementById('doc-page-subtitle');
     if (subtitle) subtitle.textContent = 'Source: ' + requested + ' · Rendered from the repository Markdown file';
 
@@ -269,8 +270,26 @@
     loadMarkdown(requested);
   }
 
+  function setHeadMeta(selector, create, attr, value) {
+    let element = document.head.querySelector(selector);
+    if (!element) { element = create(); document.head.appendChild(element); }
+    element.setAttribute(attr, value);
+  }
+
+  function updateSeoForDocument(requested, label) {
+    const url = routeForMarkdown(requested);
+    const description = label + ' for CursorPie, the free open-source pie menu for Windows, macOS and Linux.';
+    setHeadMeta('link[rel="canonical"]', () => { const l = document.createElement('link'); l.rel = 'canonical'; return l; }, 'href', url);
+    setHeadMeta('meta[name="description"]', () => { const m = document.createElement('meta'); m.name = 'description'; return m; }, 'content', description);
+    setHeadMeta('meta[property="og:url"]', () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:url'); return m; }, 'content', url);
+    setHeadMeta('meta[property="og:title"]', () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:title'); return m; }, 'content', document.title);
+    setHeadMeta('meta[property="og:description"]', () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:description'); return m; }, 'content', description);
+  }
+
   function renderDocumentError(message, path) {
     if (!markdownContainer) return;
+    // Never let broken documentation URLs get indexed.
+    setHeadMeta('meta[name="robots"]', () => { const m = document.createElement('meta'); m.name = 'robots'; return m; }, 'content', 'noindex');
     markdownContainer.innerHTML = '<div class="doc-error"><span class="icon" aria-hidden="true">&#xe4e0;</span><h2>Could not load this document</h2><p></p><p class="doc-error-path"></p><p>Make sure the website is in the repository root and the Markdown file is available at that path.</p><p>For local testing, start a web server from the repository root, for example <code>python3 -m http.server 8000</code>.</p></div>';
     markdownContainer.querySelector('p').textContent = message;
     markdownContainer.querySelector('.doc-error-path').textContent = path || '';

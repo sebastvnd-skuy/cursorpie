@@ -12,7 +12,7 @@ use super::{autostart, inputdev, x11, xdg, xlib};
 use crate::config::DesktopMode;
 use crate::geometry::Point;
 use crate::keys::Shortcut;
-use crate::platform::{FileKind, NativeIcon, ScreenRect, spawn_reaped};
+use crate::platform::{FileKind, NativeIcon, ScreenRect, chooser, spawn_reaped};
 use crate::tap::Kind;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
@@ -385,22 +385,11 @@ pub fn choose_file(kind: FileKind, prompt: &str) -> Option<String> {
         eprintln!("CursorPie: install zenity or kdialog to choose files, or type the path");
         return None;
     };
-    let out = Command::new(tool.program())
-        .args(launch::chooser_args(tool, kind, prompt))
+    let mut cmd = Command::new(tool.program());
+    cmd.args(launch::chooser_args(tool, kind, prompt))
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let path = String::from_utf8(out.stdout).ok()?;
-    let path = path.trim();
-    if path.is_empty() {
-        None
-    } else {
-        Some(path.to_string())
-    }
+        .stderr(Stdio::null());
+    chooser::run(&mut cmd)
 }
 
 /// A soft hover sound through the sound theme, if `canberra-gtk-play` is installed. At most about
