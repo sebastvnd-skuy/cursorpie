@@ -343,6 +343,7 @@ impl Config {
             inactive_color: [232, 86, 86],
             preview_ms: 900,
             center_app_icon: true,
+            show_labels: true,
             sleep_after_s: 60,
             appearance: Appearance::System,
             pie_style: PieStyle::Solid,

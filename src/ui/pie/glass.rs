@@ -12,7 +12,7 @@
 //! configuration shape it, all in percent: how clear, how frosted and how shiny.
 
 use crate::config::Config;
-use crate::ui::draw::{arc_segments, pie_colors, ring_slice};
+use crate::ui::draw::{arc_segments, glass_colors, ring_slice};
 use eframe::egui::{self, Color32, Painter, Pos2, Shape, Vec2};
 use std::f32::consts::{PI, TAU};
 
@@ -74,13 +74,10 @@ impl Glass {
     }
 }
 
-/// The color of the frost and the highlights: white on light glass, a pale grey on smoked glass.
+/// The color of the frost and the highlights: the pale grey of smoked glass. Glass is smoked in
+/// the light appearance too (see [`crate::ui::draw::glass_colors`]), so this never depends on it.
 fn veil_color() -> [u8; 3] {
-    if crate::ui::draw::dark() {
-        [210, 212, 224]
-    } else {
-        [255, 255, 255]
-    }
+    [210, 212, 224]
 }
 
 fn with_alpha(rgb: [u8; 3], alpha: f32) -> Color32 {
@@ -333,7 +330,7 @@ pub fn core(
     tint: Option<Color32>,
     glass: Glass,
 ) {
-    let base = tint.unwrap_or_else(|| pie_colors().core);
+    let base = tint.unwrap_or_else(|| glass_colors().core);
     let alpha = (glass.body_alpha() + 0.25).min(1.0);
     painter.circle_filled(center, radius, base.gamma_multiply(alpha * fade));
 
@@ -511,6 +508,11 @@ mod tests {
         assert!(side_fringe(&open));
         assert!(field_mesh(c, (30.0, 30.1), (0.0, 1.0), 1.0, |_| Color32::WHITE).is_empty());
         assert!(field_mesh(c, (30.0, 90.0), (1.0, 1.0), 1.0, |_| Color32::WHITE).is_empty());
+    }
+
+    #[test]
+    fn the_veil_is_the_pale_grey_of_smoked_glass() {
+        assert_eq!(veil_color(), [210, 212, 224]);
     }
 
     #[test]

@@ -50,10 +50,27 @@ You need a mouse with a middle button (a clickable wheel is enough).
 - **Easy to share.** Export one profile, icons included, as a single JSON file.
 - **Light on resources.** Nothing is drawn while idle, and cached icons are freed after a pause.
 
+## Download and install
+
+Ready-to-install packages are attached to each version published through CI. Once a version tag has been
+released, the links below always download the matching asset from the latest
+[GitHub Release](https://github.com/sebastvnd/cursorpie/releases/latest):
+
+| System | Download |
+|---|---|
+| macOS 11+ (Intel and Apple silicon) | [Universal DMG](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-macos-universal.dmg) |
+| Windows 10/11 (recommended) | [Setup installer](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows-setup.exe) |
+| Windows (ZIP) | [ZIP bundle](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows.zip) |
+| Ubuntu 24.04+ (x86_64) | [Ubuntu package](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-ubuntu-24.04-x86_64.tar.gz) |
+| Fedora 44 (x86_64) | [Fedora package](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-fedora-44-x86_64.tar.gz) |
+
+For installation steps, including the Linux `install.sh` command and macOS permissions, see
+[docs/INSTALL.md](docs/INSTALL.md). CI also keeps short-lived build artifacts on each workflow run; public,
+ready-to-install downloads are published to GitHub Releases when a `v*` version tag is pushed.
+
 ## Quick start
 
-Download a build from the [Releases page](https://github.com/sebastvnd/cursorpie/releases) when one is published
-for your system, or build it yourself with [Rust](https://rustup.rs) 1.88 or later:
+To build from source instead, install [Rust](https://rustup.rs) 1.88 or later:
 
 ```sh
 git clone https://github.com/sebastvnd/cursorpie.git

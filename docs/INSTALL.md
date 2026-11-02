@@ -1,8 +1,25 @@
 # Install CursorPie
 
-CursorPie runs on macOS, Windows and Linux (X11). Pick your system below. If a ready-made package is
-published on the [Releases page](https://github.com/sebastvnd/cursorpie/releases), use it; otherwise build
-from source, which takes a few minutes.
+CursorPie runs on macOS, Windows and Linux (X11). You can install a ready-made package from the latest
+[GitHub Release](https://github.com/sebastvnd/cursorpie/releases/latest), or build from source.
+
+## Download a ready-made package
+
+These links point to the matching file attached to the latest release. CI publishes them automatically
+when a `v*` version tag is pushed. They become available after the first tagged release. Choose the package
+for your system:
+
+| System | Ready-to-use file |
+|---|---|
+| macOS 11+ (Intel and Apple silicon) | [CursorPie-macos-universal.dmg](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-macos-universal.dmg) |
+| Windows 10/11 | [CursorPie-windows-setup.exe](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows-setup.exe) (installer) or [CursorPie-windows.zip](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows.zip) |
+| Ubuntu 24.04+ (x86_64) | [CursorPie-ubuntu-24.04-x86_64.tar.gz](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-ubuntu-24.04-x86_64.tar.gz) |
+| Fedora 44 (x86_64) | [CursorPie-fedora-44-x86_64.tar.gz](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-fedora-44-x86_64.tar.gz) |
+
+The macOS CI build uses an ad-hoc signature and is not notarized; the Windows CI binaries are not code-signed.
+macOS may require **right-click > Open** on first launch, and Windows SmartScreen may show a warning. Linux
+packages are built on the named distribution and require an X11 session. The release page also contains the
+version-specific release notes.
 
 ## Requirements
 
@@ -26,6 +43,13 @@ cargo run --release
 On macOS, grant the permission to your terminal app (see [Permissions](#permissions-on-macos)).
 
 ## macOS
+
+**Install the ready-made build:** download
+[CursorPie-macos-universal.dmg](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-macos-universal.dmg),
+open it, then drag `CursorPie.app` into **Applications**. This universal image supports both Apple silicon and Intel Macs.
+The CI build uses an ad-hoc signature and is not notarized, so the first launch may need **right-click > Open**.
+
+**Build from source:**
 
 ```sh
 scripts/bundle.sh            # builds target/bundle/CursorPie.app
@@ -71,7 +95,14 @@ An ad-hoc signed build may need the permission again after each rebuild. Sign wi
 
 ## Windows
 
-In PowerShell, with the MSVC build tools installed:
+**Install the ready-made build:** download and run
+[CursorPie-windows-setup.exe](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows-setup.exe).
+The per-user installer does not need administrator rights. Alternatively, download
+[CursorPie-windows.zip](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows.zip),
+extract it and run `cursorpie.exe`; the first run installs that copy for your user. CI binaries are unsigned,
+so Windows SmartScreen may display a warning.
+
+**Build from source:** in PowerShell, with the MSVC build tools installed:
 
 ```powershell
 scripts\package-windows.ps1     # builds target\bundle\CursorPie-windows.zip
@@ -100,19 +131,33 @@ administrator too, because Windows blocks input to them otherwise.
 ## Linux (X11)
 
 Linux (X11) is supported but **experimental**: it works, but its behavior on different distributions and
-desktops is still being observed, so expect rough edges and please report them. Install the development files
-first:
+desktops is still being observed, so expect rough edges and please report them. You do not need development
+packages to install one of the ready-made archives. Log in with an X11 session before launching CursorPie.
+
+**Install a ready-made build:** download the package matching the distribution where you will run CursorPie:
+
+- [Ubuntu 24.04+ (x86_64)](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-ubuntu-24.04-x86_64.tar.gz)
+- [Fedora 44 (x86_64)](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-fedora-44-x86_64.tar.gz)
+
+Extract the downloaded archive, enter its versioned directory, and run the included installer:
+
+```sh
+# Ubuntu 24.04:
+tar -xzf CursorPie-ubuntu-24.04-x86_64.tar.gz
+# Fedora 44: use CursorPie-fedora-44-x86_64.tar.gz instead
+
+cd cursorpie-*-linux-x86_64
+./install.sh --user          # installs under ~/.local; no sudo needed
+```
+
+**Build from source:** install the development packages first, then build and install:
 
 ```sh
 # Debian, Ubuntu
 sudo apt install build-essential libx11-dev libxi-dev libxtst-dev libxrandr-dev
 # Fedora
 sudo dnf install gcc libX11-devel libXi-devel libXtst-devel libXrandr-devel
-```
 
-Then build a tarball and install it:
-
-```sh
 scripts/package-linux.sh                      # builds target/bundle/cursorpie-<version>-linux-<arch>.tar.gz
 tar -xzf target/bundle/cursorpie-*-linux-*.tar.gz
 cd cursorpie-*-linux-*

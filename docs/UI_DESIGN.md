@@ -142,6 +142,10 @@ previews them. The window cannot read what is behind it, so the frost is **paint
 the desktop**; a true backdrop blur needs a native call per system (NSVisualEffectView on macOS, the DWM
 on Windows, the compositor on Linux) and is a follow-up.
 
+Glass is **always smoked graphite**, in the light appearance as well (`draw::glass_colors`): pale glass on a
+light page has nothing to catch the light against, so it looked washed out. Only the Solid style follows the
+appearance.
+
 Timing: 0.22 s to open (slices appear one after another, with a small overshoot), 0.12 s to close.
 
 ## Why it used to look jagged and choppy
@@ -171,6 +175,27 @@ Timing: 0.22 s to open (slices appear one after another, with a small overshoot)
 7. **Keep colors, radii and sizes in `theme.rs`.**
 8. **Draw only what is on screen.** A list or grid that can pass a screenful uses `ScrollArea::show_rows` (see `icon_picker.rs`), builds its tiles from indexes instead of cloned strings, and loads textures only for the visible rows, a few per frame (`LOADS_PER_FRAME`).
 9. **Limit a file where it enters.** Read an image's size from its header and refuse it before decoding (`draw::MAX_SOURCE_SIDE`); shrink what the user chooses once (`ui::iconfit`) and say so in the status bar.
+
+## Demos
+
+A setting whose effect is hard to put in words gets a small looping animation at the top of its panel
+(`ui/settings/demo.rs`): the hold times, the double-click gesture, which app the pie works on, what
+"Open app" does to an app on another desktop, how the pie looks (size, names, material), which pie the
+side buttons follow, when the idle memory is freed, and what the mouse scan does. Every demo is drawn on
+the same stage, `STAGE_H` (190 points) tall, with the pie centered at `PIE_Y`; a build-time check keeps the
+pie, its name and the caption inside it. The rules:
+
+1. **The demo reads the settings being edited**, so a slider or a choice changes it at once. It never
+   writes to the config.
+2. **Split the logic from the painting.** A pure function turns the seconds of the loop and the settings
+   into a frame (numbers from 0 to 1); the painting only draws it. Test the frames, and test that every
+   demo draws.
+3. **Draw with the painter that is there.** The demos use egui shapes, `ring_slice` and the pie colors, so
+   they look like the pie they show. They need no image, no crate and no new font.
+4. **Ask for the next frame only while the demo is on screen** (`Ui::is_rect_visible`), at 30 frames a
+   second. A page that is not visible, and a closed window, cost nothing.
+5. **Keep a loop short** (about 3 to 6 seconds), and let it end where it started, so the jump from the last
+   frame to the first is not seen.
 
 ## Transparent window on Windows
 

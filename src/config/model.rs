@@ -272,6 +272,8 @@ pub struct Config {
     /// The center of an app's own pie shows that app's icon (as a white silhouette) instead of the
     /// icon of the active side-button mode.
     pub center_app_icon: bool,
+    /// Each slice shows its name under its icon. Off: the pie shows icons only.
+    pub show_labels: bool,
     /// Seconds without a pie or Settings on screen before the UI frees its caches and Settings
     /// state (0 = never). See [`ui::sleep`](crate::ui::sleep).
     pub sleep_after_s: u64,

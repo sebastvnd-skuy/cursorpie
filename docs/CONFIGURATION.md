@@ -80,6 +80,7 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
   "inactive_color": [232, 86, 86],
   "preview_ms": 900,
   "center_app_icon": true,
+  "show_labels": true,
   "sleep_after_s": 60,
   "profiles": [
     {
@@ -143,6 +144,7 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
 | `side_indicator` | Color the pie ring by who owns the side buttons; `inactive_color` is the "other pie" color |
 | `preview_ms` | How long the pie stays on screen after switching from the menu bar (0 to 3000, 0 = off) |
 | `center_app_icon` | Show the app's icon (white glyph) in the center of an app's own pie instead of the active mode's icon |
+| `show_labels` | Show each slice's name under its icon (`false` = icons only) |
 | `sleep_after_s` | Seconds without a pie or Settings before cached icons and the Settings copy are freed (10 to 3600, `0` = never) |
 | `apps` | App ids: bundle identifiers on macOS, executable names on Windows, desktop-entry ids on Linux. An empty list marks the general profile; only the first such profile is kept, all others need at least one app |
 | `active` | Path of the active side-button mode, as indices (`[3, 1]` = slice 1 inside slice 3) |

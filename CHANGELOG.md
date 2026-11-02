@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 0.7.2
+
+- **More settings that show what they do, and bigger demos.** The animated demos have a taller stage (190 points
+  instead of 140), so the pies, the mouse and the captions are no longer cramped. Four panels got a demo of
+  their own: **Look & feel** (the pie at the size you set, with or without names and the app's icon, the accent
+  on the slice under the pointer, solid or glass), **Side buttons** (a side-button press runs the pie they
+  follow; the ring colors and the right-click switch show which one that is), **Memory** (the idle timer runs
+  out, the icons and the editor's copy are dropped, the trigger loads them again) and **Mouse** (each extra
+  button is pressed, heard and listed, then Done saves them).
+- **Glass pie is always dark.** The glass pie now keeps its smoked graphite look in the light appearance too.
+  Pale glass over a light page looked washed out and nothing like Liquid Glass. Solid still follows the
+  appearance, and so does the rest of Settings.
+- **Icons only.** A new switch in Settings, **Show names under the icons** (Behavior > Look & feel), hides
+  the names in the pie so each slice shows just its icon, a little larger. It is on by default; the names stay
+  in Settings, so you can still tell the slices apart while you edit them. Old config files keep the names.
+- **Settings that show what they do.** On **Behavior**, the panels *Trigger*, *Pie of the app in front*, *App
+  detection* and *Other Spaces / desktops / workspaces* now start with a small animation instead of only a
+  sentence: the button going down and the pie opening after your hold time, which pie a hold and a double-click
+  open, which window the pie works on, and what "Open app" does to an app on another desktop. The animation
+  follows the choice and the sliders as you change them, and it only runs while you can see it.
+- **A calmer footer in Settings.** The notice that the pie is off while Settings is open, and every other short
+  message in the footer, now use the small grey text of the shortcut hint. "Open System Settings" is a plain text
+  link with an arrow instead of a boxed button next to a red pill.
+
 ## 0.7.1
 
 - **Linux: "Open app" no longer starts a second copy of an app that is already open.** The slice compared what

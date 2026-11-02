@@ -58,8 +58,18 @@ mod tests {
         assert_eq!(c.side_default, SideTarget::App);
         assert!(c.focus_target && c.side_adopt && c.right_click_switch && c.side_indicator);
         assert!(c.center_app_icon);
+        assert!(c.show_labels, "an old file keeps the names");
         assert!(!c.side_forget);
         assert_eq!(c.desktop_mode, DesktopMode::SwitchToApp);
+    }
+
+    #[test]
+    fn icons_only_is_stored_and_the_names_are_the_default() {
+        assert!(Config::default().show_labels);
+        let c = parse_config(r#"{"version": 2, "show_labels": false}"#).expect("parses");
+        assert!(!c.show_labels);
+        let json = serde_json::to_string(&c).expect("serializes");
+        assert!(json.contains(r#""show_labels":false"#));
     }
 
     #[test]

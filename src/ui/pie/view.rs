@@ -11,6 +11,8 @@ pub(super) struct PieView {
     /// index (in this ring) of the active side-button mode
     pub(super) active: Option<usize>,
     pub(super) center_icon: String,
+    /// draw each slice's name under its icon
+    pub(super) labels: bool,
     pub(super) accent: [u8; 3],
     pub(super) settle_ms: f32,
     pub(super) is_app: bool,
@@ -59,6 +61,7 @@ impl PieView {
             items,
             active,
             center_icon,
+            labels: c.show_labels,
             accent: c.accent,
             settle_ms: c.settings_hold_ms.saturating_sub(c.pie_hold_ms) as f32,
             is_app: prof.is_some_and(|p| !p.apps.is_empty()),

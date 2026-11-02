@@ -51,8 +51,16 @@ are under [Development workflow](#development-workflow).
 | other Unix | to run the tests | `cargo test` | no app: it builds the do-nothing stub |
 | any OS | to type-check the Windows backend | `cargo check --features check-windows` | no binary |
 
-Only a native build on macOS, Windows or Linux gives you a working app. The other builds exist to check that your
-change still compiles elsewhere. Signing, notarizing and installing are explained for users in
+GitHub Actions runs these package scripts automatically on pull requests, pushes to `main`, version tags
+(`v*`) and manual workflow runs. Each run publishes short-lived artifacts under **Actions → the workflow run →
+Artifacts**. When a `v*` tag is pushed, a final job also attaches ready-to-install assets to the GitHub Release:
+a universal macOS `.dmg`, a Windows `.zip` and Setup `.exe`, and separate Linux `.tar.gz` packages built on
+Ubuntu 24.04 and Fedora 44. The stable asset names are linked from `README.md` and `docs/INSTALL.md`. Linux
+archives are built for x86_64; the macOS disk image contains both Apple silicon and Intel binaries.
+
+Build on the target OS to exercise its native desktop integration. CI compiles and packages each supported
+platform, but interactive checks such as macOS permissions, Windows tray behavior and Linux desktop behavior
+still need a real user session. Signing, notarizing and installing are explained for users in
 `docs/INSTALL.md`; the maintainer-facing notes follow.
 
 **macOS.** CursorPie needs the **Accessibility** permission (and sometimes *Input Monitoring*). With `cargo run`,
