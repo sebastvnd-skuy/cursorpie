@@ -142,7 +142,11 @@ jobs:
           key: fedora-44-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
       - name: Build inside Fedora 44
         run: |
+          host_uid="$(id -u)"
+          host_gid="$(id -g)"
           docker run --rm \
+            --env HOST_UID="$host_uid" \
+            --env HOST_GID="$host_gid" \
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --volume "$HOME/.cache/cursorpie-fedora/cargo:/root/.cargo" \
             --volume "$HOME/.cache/cursorpie-fedora/rustup:/root/.rustup" \
@@ -154,11 +158,10 @@ jobs:
               source /root/.cargo/env
               rustup update stable
               scripts/package-linux.sh
+              version=$(grep -m1 "^version" Cargo.toml | cut -d \" -f2)
+              cp "target/bundle/cursorpie-$version-linux-x86_64.tar.gz" target/bundle/CursorPie-fedora-44-x86_64.tar.gz
+              chown -R "$HOST_UID:$HOST_GID" target
             '
-      - name: Prepare Fedora release asset name
-        run: |
-          version=$(sed -nE 's/^version = "([^"]+)"/\1/p' Cargo.toml | head -n1)
-          cp "target/bundle/cursorpie-$version-linux-x86_64.tar.gz" target/bundle/CursorPie-fedora-44-x86_64.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: CursorPie-linux-fedora-44-x86_64
