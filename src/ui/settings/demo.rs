@@ -9,6 +9,7 @@
 //! | [`target_demo`] | [`TargetApp`], "bring that app to the front" | which window the pie works on |
 //! | [`desktop_demo`] | [`DesktopMode`] | what "Open app" does to an app on another desktop |
 //! | [`look_demo`] | pie size, names, app icon, accent, material | the pie as it will look, the pointer passing over its slices |
+//! | [`app_icon_demo`] | [`AppIconStyle`], "Show the app's icon in the center" | the app's icon flying into the middle of the pie, staying in color or turning into a one-color silhouette |
 //! | [`side_demo`] | side buttons: which pie they follow, ring color, right-click | the side button firing the pie it follows, and right-click switching it |
 //! | [`memory_demo`] | "Free memory while idle" | the idle timer running out, the memory dropped, the trigger loading it again |
 //! | [`scan_demo`] | the mouse scan | each extra button pressed once and heard, then Done |
@@ -20,7 +21,7 @@
 //! visible, so a closed Settings window costs nothing.
 
 use super::theme::*;
-use crate::config::{AppGesture, DesktopMode, SideTarget, TargetApp};
+use crate::config::{AppGesture, AppIconStyle, DesktopMode, SideTarget, TargetApp};
 use crate::ui::draw::{ease_out_cubic, glass_colors, mix, pie_colors, rgb, ring_slice};
 use crate::ui::fonts;
 use crate::ui::pie::glass::{self, Glass};
@@ -514,14 +515,16 @@ fn look_caption(size: f32, labels: bool) -> String {
     format!("{size:.0} px, {what}")
 }
 
-/// The pie as the Look & feel settings make it: size, names, the app's icon in the middle, the
-/// accent on the slice under the pointer, and the material (solid or glass).
+/// The pie as the Look & feel settings make it: size, names, the app's icon in the middle (in its
+/// colors or as a silhouette), the accent on the slice under the pointer, and the material (solid
+/// or glass).
 pub(in crate::ui::settings) fn look_demo(
     ui: &mut egui::Ui,
     accent: Color32,
     size: f32,
     labels: bool,
     center_icon: bool,
+    app_icon: AppIconStyle,
     glass: Option<Glass>,
 ) {
     let (p, rect, t) = stage(ui);
@@ -580,11 +583,119 @@ pub(in crate::ui::settings) fn look_demo(
         p.circle_filled(c, core, colors.core);
     }
     if center_icon {
-        // the app's icon, here a tile of the accent color
-        let tile = Rect::from_center_size(c, Vec2::splat(core * 1.1));
-        p.rect_filled(tile, 4.0, accent);
+        // the app's icon, here a made-up one: in its colors, or a silhouette in the ink
+        let blend = if app_icon == AppIconStyle::Color {
+            0.0
+        } else {
+            1.0
+        };
+        let ink = colors.ink.gamma_multiply(0.85);
+        demo_app_icon(&p, c, core * 1.3, blend, ink, 1.0);
     }
     caption(&p, rect, &look_caption(size, labels));
+    ui.add_space(GAP);
+}
+
+// ------------------------------------------------------------ the app's icon
+
+/// Seconds the app-icon loop lasts.
+const ICON_LOOP: f32 = 4.4;
+
+/// One moment of the app-icon demo.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub(super) struct AppIconFrame {
+    /// How far the pie is open.
+    pub pie: f32,
+    /// Where the copy of the app's icon is: 0 at the app, 1 in the middle of the pie.
+    pub fly: f32,
+    /// How visible that copy is (it appears when it sets off and goes with the pie).
+    pub icon: f32,
+    /// 0: the icon keeps its colors; 1: it is a one-color silhouette.
+    pub blend: f32,
+}
+
+/// The app-icon demo at `t` seconds: the pie opens, the app's icon flies into its middle and, if
+/// the style is a silhouette, loses its colors on the way in.
+pub(super) fn app_icon_frame(t: f32, style: AppIconStyle) -> AppIconFrame {
+    let t = t.rem_euclid(ICON_LOOP);
+    let leaves = 3.9;
+    AppIconFrame {
+        pie: ramp(t, 0.2, 0.3) - ramp(t, leaves, 0.4),
+        fly: ease_out_cubic(ramp(t, 0.9, 0.8)),
+        icon: ramp(t, 0.9, 0.1) - ramp(t, leaves, 0.4),
+        blend: match style {
+            AppIconStyle::Glyph => ease_out_cubic(ramp(t, 1.7, 0.5)),
+            AppIconStyle::Color => 0.0,
+        },
+    }
+}
+
+/// What the app-icon demo says about the icon.
+fn app_icon_caption(style: AppIconStyle, enabled: bool) -> &'static str {
+    match (enabled, style) {
+        (false, _) => "Off: the center shows the icon of the active mode",
+        (true, AppIconStyle::Glyph) => "One color: a silhouette in the ink of the pie",
+        (true, AppIconStyle::Color) => "Full color: the app's own icon",
+    }
+}
+
+/// A made-up app icon of `size` px centered at `c`: a blue tile with a red square and a yellow
+/// dot. `blend` 0 keeps those colors; 1 drops the tile and draws the shapes in `ink`, which is
+/// what the pie makes of a real icon. `alpha` fades all of it.
+fn demo_app_icon(p: &egui::Painter, c: Pos2, size: f32, blend: f32, ink: Color32, alpha: f32) {
+    let own = |color: Color32| color.lerp_to_gamma(ink, blend).gamma_multiply(alpha);
+    let tile = Rect::from_center_size(c, Vec2::splat(size));
+    p.rect_filled(
+        tile,
+        size * 0.23,
+        Color32::from_rgb(52, 120, 246).gamma_multiply((1.0 - blend) * alpha),
+    );
+    let square = Rect::from_center_size(
+        c + Vec2::new(-size * 0.08, size * 0.08),
+        Vec2::splat(size * 0.34),
+    );
+    p.rect_filled(square, size * 0.06, own(Color32::from_rgb(255, 69, 58)));
+    p.circle_filled(
+        c + Vec2::new(size * 0.17, -size * 0.17),
+        size * 0.12,
+        own(Color32::from_rgb(255, 204, 0)),
+    );
+}
+
+/// The icon of an app in the middle of its pie: the real icon sits at the left, a copy flies into
+/// the pie and either stays in its colors or turns into a silhouette, as the setting says.
+/// `enabled` is the "Show the app's icon in the center" switch: off, no icon flies.
+pub(in crate::ui::settings) fn app_icon_demo(
+    ui: &mut egui::Ui,
+    accent: Color32,
+    style: AppIconStyle,
+    enabled: bool,
+) {
+    let (p, rect, t) = stage(ui);
+    let f = app_icon_frame(t, style);
+    let colors = pie_colors();
+    let reach = (rect.width() * 0.2).min(90.0);
+    let home = Pos2::new(rect.center().x - reach - 20.0, rect.min.y + PIE_Y);
+    let c = Pos2::new(rect.center().x + reach, rect.min.y + PIE_Y);
+    // the app: its real icon stays where it is
+    demo_app_icon(&p, home, 36.0, 0.0, colors.ink, 1.0);
+    p.text(
+        home + Vec2::new(0.0, 34.0),
+        Align2::CENTER_CENTER,
+        "App",
+        FontId::proportional(11.0),
+        pal().muted,
+    );
+    mini_pie(&p, c, PIE_R, f.pie, accent, false, 0.0);
+    if enabled && f.icon > 0.0 {
+        let core = PIE_R * 0.4 * 0.86;
+        let size = 36.0 + (core * 1.3 - 36.0) * f.fly;
+        let mut at = home + (c - home) * f.fly;
+        at.y -= (f.fly * std::f32::consts::PI).sin() * 14.0;
+        let ink = colors.ink.gamma_multiply(0.85);
+        demo_app_icon(&p, at, size, f.blend, ink, f.icon);
+    }
+    caption(&p, rect, app_icon_caption(style, enabled));
     ui.add_space(GAP);
 }
 
@@ -1150,6 +1261,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_icon_flies_into_the_pie_and_a_silhouette_loses_its_colors() {
+        let glyph = app_icon_frame(2.5, AppIconStyle::Glyph);
+        assert!(glyph.pie > 0.99 && glyph.fly > 0.99 && glyph.icon > 0.99);
+        assert!(glyph.blend > 0.99, "a silhouette ends up one color");
+        let color = app_icon_frame(2.5, AppIconStyle::Color);
+        assert_eq!(color.blend, 0.0, "full color keeps its colors");
+        assert_eq!((color.pie, color.fly), (glyph.pie, glyph.fly));
+        let early = app_icon_frame(0.5, AppIconStyle::Glyph);
+        assert_eq!(
+            (early.icon, early.blend),
+            (0.0, 0.0),
+            "nothing has set off yet"
+        );
+        let mid = app_icon_frame(1.3, AppIconStyle::Glyph);
+        assert!(mid.fly > 0.0 && mid.fly < 1.0, "on its way");
+        assert_eq!(mid.blend, 0.0, "still in its colors until it arrives");
+    }
+
+    #[test]
+    fn the_app_icon_loop_ends_with_the_pie_closed_and_repeats() {
+        for style in [AppIconStyle::Glyph, AppIconStyle::Color] {
+            let end = app_icon_frame(ICON_LOOP - 0.01, style);
+            assert!(end.pie.abs() < 1e-6 && end.icon.abs() < 1e-6, "{style:?}");
+            for t in [0.3, 1.2, 2.2, 3.5] {
+                let a = app_icon_frame(t, style);
+                let b = app_icon_frame(t + ICON_LOOP, style);
+                assert!((a.pie - b.pie).abs() < 1e-3 && (a.fly - b.fly).abs() < 1e-3);
+            }
+        }
+    }
+
+    #[test]
+    fn the_app_icon_caption_names_the_style() {
+        assert!(app_icon_caption(AppIconStyle::Glyph, true).contains("silhouette"));
+        assert!(app_icon_caption(AppIconStyle::Color, true).contains("own icon"));
+        assert!(app_icon_caption(AppIconStyle::Color, false).starts_with("Off"));
+    }
+
+    #[test]
     fn the_hold_waits_then_opens_the_pie_then_runs_the_arc() {
         let at = |t: f32| hold_frame(t, 500, 1200, false);
         assert_eq!(at(0.2), HoldFrame::default(), "nothing before the press");
@@ -1517,14 +1667,17 @@ mod tests {
                     frost: 0.45,
                     shine: 0.6,
                 });
-                look_demo(ui, accent, 140.0, true, false, None);
-                look_demo(ui, accent, 360.0, false, true, None);
-                look_demo(ui, accent, 220.0, true, true, smoked);
+                look_demo(ui, accent, 140.0, true, false, AppIconStyle::Glyph, None);
+                look_demo(ui, accent, 360.0, false, true, AppIconStyle::Color, None);
+                look_demo(ui, accent, 220.0, true, true, AppIconStyle::Glyph, smoked);
                 let other = Color32::from_rgb(255, 59, 48);
                 side_demo(ui, accent, other, SideTarget::App, true, true);
                 side_demo(ui, accent, other, SideTarget::General, false, false);
                 memory_demo(ui, accent, true, 60);
                 memory_demo(ui, accent, false, 0);
+                app_icon_demo(ui, accent, AppIconStyle::Glyph, true);
+                app_icon_demo(ui, accent, AppIconStyle::Color, true);
+                app_icon_demo(ui, accent, AppIconStyle::Color, false);
                 scan_demo(ui, accent);
             })
             .drop_without_applying_deltas();

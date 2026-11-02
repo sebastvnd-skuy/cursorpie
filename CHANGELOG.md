@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Choose how the app's icon looks in the middle of an app's pie.** Behavior has a new panel, **App icon in the
+  pie**: **One color** (the silhouette in the ink of the pie, as before and still the default) or **Full color**
+  (the app's own icon in its own colors). A small animation shows the icon flying into the pie and either keeping
+  its colors or losing them. The setting is `app_icon_style` in `config.json`; it only applies while **Show the
+  app's icon in the center** is on. The icon in the **Look & feel** animation follows the choice too. The panel
+  is only shown on macOS and Windows: Linux does not read app icons yet.
+
+- **The "Stop waiting" button is now a red circle with an X.** It sits under the "Waiting for the file chooser..."
+  pill and shows "Stop waiting" as a tooltip when the pointer rests on it.
+
 ## 0.7.3
 
 - **Linux: cancelling the file chooser ends the wait.** After Cancel or the close button, CursorPie could keep

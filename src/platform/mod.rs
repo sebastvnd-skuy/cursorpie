@@ -93,6 +93,12 @@ pub struct ModNames {
 }
 
 impl Os {
+    /// Whether CursorPie can read the real icon of an app on this OS. Linux cannot yet (the pie
+    /// shows the icon of the active mode), so the settings for how that icon looks are not shown.
+    pub const fn reads_app_icons(self) -> bool {
+        !matches!(self, Os::Linux)
+    }
+
     /// The OS this build runs on. Targets with no backend (the stub) report `Mac`, so the macOS
     /// characterization tests run unchanged there; tests that must hold on every build target pin
     /// their OS with the `_for(Os::Mac)` forms instead.
@@ -321,6 +327,12 @@ pub fn spawn_reaped(cmd: &mut Command) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_linux_cannot_read_app_icons_yet() {
+        assert!(Os::Mac.reads_app_icons() && Os::Windows.reads_app_icons());
+        assert!(!Os::Linux.reads_app_icons());
+    }
 
     #[test]
     fn the_primary_modifier_differs_per_os() {

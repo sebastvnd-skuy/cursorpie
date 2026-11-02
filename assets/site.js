@@ -30,6 +30,7 @@
         ? '<span class="icon" aria-hidden="true">&#xe472;</span>'
         : '<span class="icon" aria-hidden="true">&#xe330;</span>';
       button.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+      button.setAttribute('data-tip', dark ? 'Light theme' : 'Dark theme');
     });
 
     const themeColor = document.querySelector('meta[name="theme-color"]');
@@ -54,9 +55,29 @@
 
   applyTheme(initialTheme, false);
 
+  // Switch the palette in one frame. While `theme-switching` is set, CSS turns
+  // off every transition, so nothing fades at a different moment than the rest.
+  // Where supported, the View Transitions API cross-fades the whole page.
+  function switchTheme(theme) {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const release = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+      root.classList.remove('theme-switching');
+    }));
+
+    root.classList.add('theme-switching');
+
+    if (typeof document.startViewTransition === 'function' && !reduceMotion) {
+      const transition = document.startViewTransition(() => applyTheme(theme, true));
+      transition.finished.then(release, release);
+    } else {
+      applyTheme(theme, true);
+      release();
+    }
+  }
+
   document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
-      applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true);
+      switchTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
     });
   });
 

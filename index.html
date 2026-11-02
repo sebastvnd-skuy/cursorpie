@@ -59,6 +59,18 @@
   }
   </script>
   <link rel="icon" href="./assets/cursorpie-mark.png">
+  <script>
+    /* Apply the saved theme before first paint so the page never flashes the wrong colours. */
+    (function () {
+      try {
+        var t = localStorage.getItem('cursorpie-theme');
+        if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t;
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', t === 'dark' ? '#202922' : '#f5f3ec');
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="./assets/site.css">
 </head>
 <body>
@@ -70,14 +82,14 @@
         <img src="./assets/cursorpie-logo.png" alt="CursorPie">
       </a>
       <nav class="nav" aria-label="Main navigation">
-        <a href="./index.html" data-home-link aria-current="page">Home</a>
-        <a href="./index.html#features">Features</a>
-        <a href="./index.html?doc=docs/README.md" data-doc-link>Documentation</a>
-        <a href="./index.html#download">Download</a>
-        <a href="https://github.com/sebastvnd/cursorpie" target="_blank" rel="noopener">GitHub</a>
+        <a href="./index.html" data-home-link aria-current="page" aria-label="Home" data-tip="Home"><span class="icon" aria-hidden="true">&#xe2c2;</span></a>
+        <a href="./index.html#features" aria-label="Features" data-tip="Features"><span class="icon" aria-hidden="true">&#xe6a2;</span></a>
+        <a href="./index.html?doc=docs/README.md" data-doc-link aria-label="Documentation" data-tip="Documentation"><span class="icon" aria-hidden="true">&#xe0e6;</span></a>
+        <a href="./index.html#download" class="nav-download" aria-label="Download" data-tip="Download"><span class="icon" aria-hidden="true">&#xe20c;</span></a>
+        <a href="https://github.com/sebastvnd/cursorpie" target="_blank" rel="noopener" aria-label="GitHub" data-tip="GitHub"><span class="icon" aria-hidden="true">&#xe576;</span></a>
       </nav>
       <div class="header-tools">
-        <button class="themebtn" type="button" data-theme-toggle aria-label="Switch to dark theme">
+        <button class="themebtn" type="button" data-theme-toggle aria-label="Switch to dark theme" data-tip="Dark theme">
           <span class="icon" aria-hidden="true">&#xe330;</span>
         </button>
       </div>
@@ -198,7 +210,7 @@
       </div>
     </section>
 
-    <section class="section"><div class="wrap"><div class="doc-cta"><div><span class="eyebrow">Keep exploring</span><h3 style="margin-top:12px">Guides, documentation, and release notes.</h3><p>Everything you need to get started and understand how CursorPie works.</p></div><a class="btn" href="./index.html?doc=docs/README.md">Explore the documentation <span class="icon" aria-hidden="true">&#xe13a;</span></a></div></div></section>
+    <section class="section section-cta"><div class="wrap"><div class="doc-cta"><div><span class="eyebrow">Keep exploring</span><h3 style="margin-top:12px">Guides, documentation, and release notes.</h3><p>Everything you need to get started and understand how CursorPie works.</p></div><a class="btn" href="./index.html?doc=docs/README.md">Explore the documentation <span class="icon" aria-hidden="true">&#xe13a;</span></a></div></div></section>
   </div>
 
   <section id="documentation-view" hidden>
@@ -206,7 +218,7 @@
     <div class="wrap docs-layout">
       <aside class="docs-sidebar" aria-label="Documentation pages">
         <h3>Documentation</h3>
-        <a href="?doc=docs/README.md" data-doc-file="docs/README.md"><span class="icon" aria-hidden="true">&#xe1b8;</span> Overview</a>
+        <a href="?doc=docs/README.md" data-doc-file="docs/README.md"><span class="icon" aria-hidden="true">&#xe23a;</span> Overview</a>
         <a href="?doc=docs/INSTALL.md" data-doc-file="docs/INSTALL.md"><span class="icon" aria-hidden="true">&#xe20c;</span> Installation</a>
         <a href="?doc=docs/USER_GUIDE.md" data-doc-file="docs/USER_GUIDE.md"><span class="icon" aria-hidden="true">&#xe0e6;</span> User guide</a>
         <a href="?doc=docs/CONFIGURATION.md" data-doc-file="docs/CONFIGURATION.md"><span class="icon" aria-hidden="true">&#xe434;</span> Configuration</a>
@@ -219,7 +231,7 @@
         <a href="?doc=docs/WINDOWS_MIGRATION.md" data-doc-file="docs/WINDOWS_MIGRATION.md"><span class="icon" aria-hidden="true">&#xe32e;</span> Windows migration</a>
         <a href="?doc=docs/OTHER_DESKTOPS.md" data-doc-file="docs/OTHER_DESKTOPS.md"><span class="icon" aria-hidden="true">&#xe586;</span> Other desktops</a>
         <a href="?doc=docs/UI_DESIGN.md" data-doc-file="docs/UI_DESIGN.md"><span class="icon" aria-hidden="true">&#xe150;</span> UI design</a>
-        <div class="sidebar-note"><span class="icon" aria-hidden="true">&#xe1b8;</span><p>Pages are rendered from the original <code>.md</code> files. Edit the Markdown in the repository to update this site.</p></div>
+        <div class="sidebar-note"><span class="icon" aria-hidden="true">&#xe23a;</span><p>Pages are rendered from the original <code>.md</code> files. Edit the Markdown in the repository to update this site.</p></div>
       </aside>
       <article class="markdown" id="markdown-content" aria-live="polite">
         <div class="markdown-loading"><span class="loading-dot"></span> Loading documentation…</div>
@@ -228,20 +240,41 @@
   </section>
 </main>
 
-<footer>
+<footer class="site-footer">
   <div class="wrap">
-    <div class="footer-top">
-      <div class="footer-brand"><img src="./assets/cursorpie-mark.png" alt=""><p>A simple pie menu that stays close to your cursor and feels natural to use every day.</p></div>
-      <nav class="footer-links" aria-label="Footer navigation">
-        <a href="./index.html?doc=docs/README.md">Documentation</a>
-        <a href="./index.html?doc=docs/INSTALL.md">Installation</a>
-        <a href="./index.html?doc=docs/USER_GUIDE.md">User guide</a>
-        <a href="./index.html?doc=CHANGELOG.md">Changelog</a>
-        <a href="https://github.com/sebastvnd/cursorpie/issues" target="_blank" rel="noopener">Report an issue</a>
-        <a href="https://github.com/sebastvnd/cursorpie" target="_blank" rel="noopener">GitHub</a>
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="./index.html" aria-label="CursorPie home"><img src="./assets/cursorpie-logo.png" alt="CursorPie"></a>
+        <p>A simple pie menu that stays close to your cursor and feels natural to use every day.</p>
+        <div class="footer-social">
+          <a class="footer-icon" href="https://github.com/sebastvnd/cursorpie" target="_blank" rel="noopener" aria-label="GitHub" data-tip="GitHub"><span class="icon" aria-hidden="true">&#xe576;</span></a>
+          <a class="footer-icon" href="https://github.com/sebastvnd/cursorpie/issues" target="_blank" rel="noopener" aria-label="Report an issue" data-tip="Report an issue"><span class="icon" aria-hidden="true">&#xe5f4;</span></a>
+          <a class="footer-icon" href="./index.html#download" aria-label="Download" data-tip="Download"><span class="icon" aria-hidden="true">&#xe20c;</span></a>
+        </div>
+      </div>
+      <nav class="footer-col" aria-label="Learn">
+        <h4>Learn</h4>
+        <ul>
+          <li><a href="./index.html?doc=docs/README.md"><span class="icon" aria-hidden="true">&#xe0e6;</span>Documentation</a></li>
+          <li><a href="./index.html?doc=docs/INSTALL.md"><span class="icon" aria-hidden="true">&#xe20c;</span>Installation</a></li>
+          <li><a href="./index.html?doc=docs/USER_GUIDE.md"><span class="icon" aria-hidden="true">&#xe2dc;</span>User guide</a></li>
+          <li><a href="./index.html?doc=docs/CONFIGURATION.md"><span class="icon" aria-hidden="true">&#xe434;</span>Configuration</a></li>
+        </ul>
+      </nav>
+      <nav class="footer-col" aria-label="Project">
+        <h4>Project</h4>
+        <ul>
+          <li><a href="./index.html?doc=CHANGELOG.md"><span class="icon" aria-hidden="true">&#xe1a0;</span>Changelog</a></li>
+          <li><a href="./index.html?doc=docs/KNOWN_ISSUES.md"><span class="icon" aria-hidden="true">&#xe4e0;</span>Known issues</a></li>
+          <li><a href="./index.html?doc=CONTRIBUTING.md"><span class="icon" aria-hidden="true">&#xe2a8;</span>Contributing</a></li>
+          <li><a href="https://github.com/sebastvnd/cursorpie/issues" target="_blank" rel="noopener"><span class="icon" aria-hidden="true">&#xe5f4;</span>Report an issue</a></li>
+        </ul>
       </nav>
     </div>
-    <div class="footer-bottom"><span>© <span data-year>2026</span> CursorPie · MIT License</span><span>Made with Rust and egui · Inspired by Kando</span></div>
+    <div class="footer-bottom">
+      <span><i class="icon" aria-hidden="true">&#xe40c;</i><span>© <span data-year>2026</span> CursorPie · MIT License</span></span>
+      <span><i class="icon" aria-hidden="true">&#xe2a8;</i><span>Made with Rust and egui · Inspired by Kando</span></span>
+    </div>
   </div>
 </footer>
 

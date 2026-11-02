@@ -5,7 +5,6 @@
 //! chooser cannot be started, and a press of the trigger does not pull Settings over the chooser.
 
 use super::theme::{CARD_RADIUS, pal};
-use super::widgets::{Look, button};
 use crate::msg::Msg;
 use crate::platform::{self, FileKind};
 use eframe::egui;
@@ -95,6 +94,48 @@ pub(super) fn spawn_file_picker(
     });
 }
 
+/// Side of the round "stop waiting" button.
+const STOP_SIZE: f32 = 32.0;
+
+/// A red circle with a white X: gives up waiting for the chooser. It has no text, so it carries a
+/// tooltip and an accessible label.
+fn stop_button(ui: &mut egui::Ui, rect: egui::Rect) -> egui::Response {
+    const LABEL: &str = "Stop waiting";
+    let resp = ui
+        .interact(rect, egui::Id::new("chooser_stop"), egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(LABEL);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, LABEL));
+    let red = pal().bad;
+    let fill = if resp.is_pointer_button_down_on() {
+        red.lerp_to_gamma(egui::Color32::BLACK, 0.25)
+    } else if resp.hovered() {
+        red.lerp_to_gamma(egui::Color32::BLACK, 0.12)
+    } else {
+        red
+    };
+    let painter = ui.painter();
+    let center = rect.center();
+    painter.circle_filled(center, rect.width() / 2.0, fill);
+    let arm = rect.width() * 0.19;
+    let stroke = egui::Stroke::new(2.4, egui::Color32::WHITE);
+    painter.line_segment(
+        [
+            center + egui::vec2(-arm, -arm),
+            center + egui::vec2(arm, arm),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            center + egui::vec2(-arm, arm),
+            center + egui::vec2(arm, -arm),
+        ],
+        stroke,
+    );
+    resp
+}
+
 /// While a chooser is open: dims the window over `bounds` and takes every click, so nothing
 /// underneath can be changed or started a second time.
 pub(super) fn waiting_scrim(ctx: &egui::Context, bounds: egui::Rect) {
@@ -123,16 +164,9 @@ pub(super) fn waiting_scrim(ctx: &egui::Context, bounds: egui::Rect) {
             // the way out when the chooser never answers or cannot be found
             let below = egui::Rect::from_center_size(
                 pill.center_bottom() + egui::vec2(0.0, 36.0),
-                egui::vec2(160.0, 32.0),
+                egui::vec2(STOP_SIZE, STOP_SIZE),
             );
-            let clicked = ui
-                .scope_builder(
-                    egui::UiBuilder::new()
-                        .max_rect(below)
-                        .layout(egui::Layout::top_down(egui::Align::Center)),
-                    |ui| button(ui, Look::Soft, None, "Stop waiting").clicked(),
-                )
-                .inner;
+            let clicked = stop_button(ui, below).clicked();
             if clicked {
                 stop_waiting();
             }

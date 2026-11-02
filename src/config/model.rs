@@ -63,6 +63,16 @@ pub enum AppGesture {
     DoubleClick,
 }
 
+/// How the app's icon looks in the center of an app's own pie.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum AppIconStyle {
+    /// One color: a silhouette of the icon in the ink of the pie, like the other icons of the pie.
+    #[default]
+    Glyph,
+    /// The app's own icon, in its own colors.
+    Color,
+}
+
 /// Which pie the side buttons follow in an app that has a pie of its own, until you choose another.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
 pub enum SideTarget {
@@ -272,6 +282,8 @@ pub struct Config {
     /// The center of an app's own pie shows that app's icon (as a white silhouette) instead of the
     /// icon of the active side-button mode.
     pub center_app_icon: bool,
+    /// With `center_app_icon`: the app's icon as a one-color silhouette or in its own colors.
+    pub app_icon_style: AppIconStyle,
     /// Each slice shows its name under its icon. Off: the pie shows icons only.
     pub show_labels: bool,
     /// Seconds without a pie or Settings on screen before the UI frees its caches and Settings

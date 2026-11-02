@@ -4,7 +4,9 @@
 //! settings are laid out: what you press, how the pie looks, which pie opens for which app, then
 //! startup and memory.
 
-use crate::config::{AppGesture, Appearance, Config, DesktopMode, PieStyle, SideTarget, TargetApp};
+use crate::config::{
+    AppGesture, AppIconStyle, Appearance, Config, DesktopMode, PieStyle, SideTarget, TargetApp,
+};
 use crate::ui::app::App;
 use crate::ui::draw::rgb;
 use crate::ui::pie::glass::Glass;
@@ -104,6 +106,7 @@ impl App {
                 cfg.pie_size,
                 cfg.show_labels,
                 cfg.center_app_icon,
+                cfg.app_icon_style,
                 Glass::of(cfg),
             );
             row_wide(ui, "Appearance", "Settings and the pie.", 300.0, |ui| {
@@ -217,6 +220,36 @@ impl App {
                 );
             }
         });
+        // Linux cannot read app icons yet: there is nothing to color there
+        if crate::platform::OS.reads_app_icons() {
+            panel(ui, "App icon in the pie", |ui| {
+                demo::app_icon_demo(ui, accent, cfg.app_icon_style, cfg.center_app_icon);
+                ui.add_enabled_ui(cfg.center_app_icon, |ui| {
+                    choice_row(
+                        ui,
+                        &mut cfg.app_icon_style,
+                        AppIconStyle::Glyph,
+                        "One color",
+                        "A silhouette of the icon in the ink of the pie, like the other icons.",
+                        accent,
+                    );
+                    choice_row(
+                        ui,
+                        &mut cfg.app_icon_style,
+                        AppIconStyle::Color,
+                        "Full color",
+                        "The app's own icon, in its own colors.",
+                        accent,
+                    );
+                });
+                if !cfg.center_app_icon {
+                    note(
+                        ui,
+                        "Off: turn on \"Show the app's icon in the center\" under Look & feel to choose.",
+                    );
+                }
+            });
+        }
         panel(ui, "App detection", |ui| {
             demo::target_demo(ui, accent, cfg.target_app, cfg.focus_target);
             choice_row(

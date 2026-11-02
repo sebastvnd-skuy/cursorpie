@@ -1,6 +1,6 @@
 //! The data one pie frame needs, copied out of the config.
 
-use crate::config::{Config, ItemKind, item_at, items_at};
+use crate::config::{AppIconStyle, Config, ItemKind, item_at, items_at};
 use crate::side;
 use crate::ui::appicon;
 
@@ -19,8 +19,11 @@ pub(super) struct PieView {
     /// does the side-button indicator apply, and does the side button follow this pie?
     pub(super) side: side::View,
     pub(super) inactive: [u8; 3],
-    /// icon string (`app:<bundle id>`) of the app this pie belongs to, for the center disc
+    /// icon string (`app:<bundle id>`, or `appcolor:` for its own colors) of the app this pie
+    /// belongs to, for the center disc
     pub(super) app_icon: Option<String>,
+    /// whether that icon is drawn in its own colors (instead of one color, in the ink of the pie)
+    pub(super) app_icon_color: bool,
 }
 
 impl PieView {
@@ -54,7 +57,7 @@ impl PieView {
         let app_icon = (path.is_empty() && c.center_app_icon)
             .then(|| {
                 prof.and_then(|p| appicon::bundle_for(&p.apps, target.as_deref()))
-                    .map(|b| format!("{}{}", appicon::PREFIX, b))
+                    .map(|b| appicon::icon_string(c.app_icon_style, b))
             })
             .flatten();
         Self {
@@ -68,6 +71,7 @@ impl PieView {
             side: side::view_of(c, profile),
             inactive: c.inactive_color,
             app_icon,
+            app_icon_color: c.app_icon_style == AppIconStyle::Color,
         }
     }
 }
