@@ -21,7 +21,7 @@ pub fn pager_request() -> [c_long; 5] {
 /// The data words of the `_NET_CURRENT_DESKTOP` client message that asks for workspace `desktop`
 /// to be shown (the second word is the timestamp, `0`: now).
 pub fn switch_desktop_request(desktop: u32) -> [c_long; 5] {
-    [c_long::from(desktop), 0, 0, 0, 0]
+    [desktop as c_long, 0, 0, 0, 0]
 }
 
 /// The workspace to go to before activating a window that is on `window`, when `current` is shown:
@@ -241,5 +241,12 @@ mod tests {
         assert!(!is_skipped_type(&["_NET_WM_WINDOW_TYPE_NORMAL"]));
         assert!(!is_skipped_type(&["_NET_WM_WINDOW_TYPE_DIALOG"]));
         assert!(!is_skipped_type(&[]));
+    }
+
+    #[test]
+    fn desktop_request_preserves_the_protocol_value() {
+        for desktop in [0, 1, 3, u32::MAX] {
+            assert_eq!(switch_desktop_request(desktop)[0] as u32, desktop);
+        }
     }
 }
