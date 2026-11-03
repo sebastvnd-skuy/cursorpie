@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.7.6
+
+- New pie panel
+
 ## 0.7.5
 
 - **About links to the CursorPie website.** A **Website** button sits first among the links at the top of About,
