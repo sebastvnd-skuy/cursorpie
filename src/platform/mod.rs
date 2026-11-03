@@ -215,6 +215,18 @@ impl Os {
         }
     }
 
+    /// Short version for the narrow Startup card in the welcome guide. The full path and details
+    /// remain available through [`startup_hint`](Self::startup_hint) in Settings.
+    pub const fn welcome_startup_hint(self) -> &'static str {
+        match self {
+            Os::Mac => "Adds a LaunchAgent for your user. It takes effect at your next login.",
+            Os::Windows => "Starts when you sign in. Uninstall it from Settings > Apps.",
+            Os::Linux => {
+                "Adds an autostart entry for your user. It takes effect at your next login."
+            }
+        }
+    }
+
     /// Placeholder of the "app id" text field of a profile.
     pub const fn app_id_hint(self) -> &'static str {
         match self {

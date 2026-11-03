@@ -255,10 +255,10 @@ impl App {
                 ui.set_clip_rect(ui.clip_rect().intersect(body));
                 match page {
                     0 => intro_page(ui, accent),
-                    1 => setup_page(ui, accent),
+                    1 => setup_page(ui, accent, platform::OS),
                     _ => {
                         if let Some(w) = self.welcome.as_mut()
-                            && ready_page(ui, w, accent)
+                            && ready_page(ui, w, accent, platform::OS)
                         {
                             step = Step::Finish {
                                 open_settings: true,
@@ -597,8 +597,7 @@ fn two_columns(ui: &egui::Ui, left_frac: f32) -> (egui::Rect, egui::Rect) {
 }
 
 /// Page 2: the permission (macOS) or the tray (Windows), with the live status.
-fn setup_page(ui: &mut egui::Ui, accent: Color32) {
-    let os = platform::OS;
+fn setup_page(ui: &mut egui::Ui, accent: Color32, os: Os) {
     eyebrow(ui, &format!("Step 2 of {PAGES}"), accent);
     heading(ui, setup_title(os));
 
@@ -683,8 +682,7 @@ fn setup_page(ui: &mut egui::Ui, accent: Color32) {
 }
 
 /// Page 3: tips and the launch-at-login box. Returns true when "Open Settings" was clicked.
-fn ready_page(ui: &mut egui::Ui, w: &mut Welcome, accent: Color32) -> bool {
-    let os = platform::OS;
+fn ready_page(ui: &mut egui::Ui, w: &mut Welcome, accent: Color32, os: Os) -> bool {
     eyebrow(ui, &format!("Step 3 of {PAGES}"), accent);
     ui.horizontal(|ui| {
         ui.label(fonts::title("You're all set", 28.0, pal().text));
@@ -718,7 +716,7 @@ fn ready_page(ui: &mut egui::Ui, w: &mut Welcome, accent: Color32) -> bool {
                 ui,
                 &mut w.launch_at_login,
                 "Launch CursorPie at login",
-                os.startup_hint(),
+                os.welcome_startup_hint(),
                 accent,
             );
         });
@@ -796,9 +794,9 @@ mod tests {
                 };
                 let mut output = ctx.run_ui(input, |ui| match page {
                     0 => intro_page(ui, accent),
-                    1 => setup_page(ui, accent),
+                    1 => setup_page(ui, accent, platform::OS),
                     _ => {
-                        ready_page(ui, &mut w, accent);
+                        ready_page(ui, &mut w, accent, platform::OS);
                     }
                 });
                 output.textures_delta.clear(); // nothing uploads the textures here
@@ -814,8 +812,7 @@ mod tests {
         )
     }
 
-    /// Every page must fit the body of the card, at the normal size and at the smallest one: what
-    /// does not fit is cut off at the bottom (clipped to the body), which looks broken.
+    /// Every OS variant must fit both card sizes, regardless of the host running the test.
     #[test]
     fn every_page_fits_the_body_of_the_card() {
         use crate::ui::app::{WELCOME_MIN, WELCOME_SIZE};
@@ -823,40 +820,45 @@ mod tests {
         crate::ui::fonts::install(&ctx);
         let accent = egui::Color32::from_rgb(90, 120, 94);
         let mut w = Welcome::new(false);
-        for card in [WELCOME_SIZE, WELCOME_MIN] {
-            let body = body_size(card);
-            for page in 0..PAGES {
-                let mut used = 0.0;
-                ctx.data_mut(|d| d.insert_temp(egui::Id::new("welcome_card_overflow"), 0.0_f32));
-                for _ in 0..3 {
-                    let input = egui::RawInput {
-                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body)),
-                        ..Default::default()
-                    };
-                    let mut output = ctx.run_ui(input, |ui| {
-                        match page {
-                            0 => intro_page(ui, accent),
-                            1 => setup_page(ui, accent),
-                            _ => {
-                                ready_page(ui, &mut w, accent);
-                            }
-                        }
-                        used = ui.min_rect().height();
+
+        for os in [Os::Mac, Os::Windows, Os::Linux] {
+            for card in [WELCOME_SIZE, WELCOME_MIN] {
+                let body = body_size(card);
+                for page in 0..PAGES {
+                    let mut used = 0.0;
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::new("welcome_card_overflow"), 0.0_f32)
                     });
-                    output.textures_delta.clear();
+                    for _ in 0..3 {
+                        let input = egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, body)),
+                            ..Default::default()
+                        };
+                        let mut output = ctx.run_ui(input, |ui| {
+                            match page {
+                                0 => intro_page(ui, accent),
+                                1 => setup_page(ui, accent, os),
+                                _ => {
+                                    ready_page(ui, &mut w, accent, os);
+                                }
+                            }
+                            used = ui.min_rect().height();
+                        });
+                        output.textures_delta.clear();
+                    }
+                    let over: f32 = ctx
+                        .data(|d| d.get_temp(egui::Id::new("welcome_card_overflow")))
+                        .unwrap_or(0.0);
+                    assert!(
+                        over <= 0.5,
+                        "page {page} on {os:?}: step card text reaches {over} points out of its card ({card:?})"
+                    );
+                    assert!(
+                        used <= body.y + 0.5,
+                        "page {page} on {os:?} needs {used} points but the body of a {card:?} card has {}",
+                        body.y
+                    );
                 }
-                let over: f32 = ctx
-                    .data(|d| d.get_temp(egui::Id::new("welcome_card_overflow")))
-                    .unwrap_or(0.0);
-                assert!(
-                    over <= 0.5,
-                    "page {page}: step card text reaches {over} points out of its card ({card:?})"
-                );
-                assert!(
-                    used <= body.y + 0.5,
-                    "page {page} needs {used} points but the body of a {card:?} card has {}",
-                    body.y
-                );
             }
         }
     }
