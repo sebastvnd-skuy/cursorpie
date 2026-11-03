@@ -5,4 +5,4 @@ mod behavior;
 mod general;
 mod menu;
 mod mouse;
-mod profile_toolbar;
+pub(super) mod profile_toolbar;

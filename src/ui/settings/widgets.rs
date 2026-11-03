@@ -10,6 +10,7 @@
 //! | Widget | Look |
 //! |---|---|
 //! | [`button`], [`icon_button`] | rounded, [`CONTROL_H`] high; [`Look`] picks primary, soft, plain or danger |
+//! | [`round_button`] | a round disc with one icon, for an action that sits right next to what it acts on |
 //! | [`segmented`] | a soft track with the chosen option raised on it, for two to four options |
 //! | [`icon_tabs`] | icons sharing one line, a short accent bar under the current one, for a handful of views |
 //! | [`select`], [`select_icons`] | a drop-down list in a popup card |
@@ -264,6 +265,67 @@ pub(in crate::ui::settings) fn icon_button_look(
     enabled: bool,
 ) -> egui::Response {
     let resp = button_if(ui, enabled, look, Some(icon), "");
+    if enabled {
+        resp.on_hover_text(tip)
+    } else {
+        resp.on_disabled_hover_text(tip)
+    }
+}
+
+/// A round button, `size` across, with one icon and a tooltip: a soft grey disc that darkens under
+/// the pointer. [`Look::Danger`] keeps its red glyph and turns the disc pale red while hovered. Meant
+/// for the few actions that belong right next to what they act on (add or delete a slice under the pie).
+pub(in crate::ui::settings) fn round_button(
+    ui: &mut egui::Ui,
+    look: Look,
+    icon: char,
+    tip: &str,
+    enabled: bool,
+    size: f32,
+) -> egui::Response {
+    let resp = ui
+        .add_enabled_ui(enabled, |ui| {
+            let sense = if ui.is_enabled() {
+                egui::Sense::click()
+            } else {
+                egui::Sense::hover()
+            };
+            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), sense);
+            resp.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tip)
+            });
+            let (rest, hot, fg) = look.colors();
+            // the disc is always there, so the button is easy to find; only the glyph says what it does
+            let rest = if rest == Color32::TRANSPARENT {
+                pal().idle
+            } else {
+                rest
+            };
+            let on = ui.is_enabled();
+            let fill = if !on {
+                pal().idle.gamma_multiply(0.6)
+            } else if resp.is_pointer_button_down_on() {
+                darken(hot, 0.06)
+            } else if resp.hovered() {
+                hot
+            } else {
+                rest
+            };
+            let fg = if on {
+                fg
+            } else {
+                pal().muted.gamma_multiply(0.7)
+            };
+            let painter = ui.painter();
+            painter.circle_filled(rect.center(), size / 2.0, fill);
+            fonts::paint_icon(painter, rect.center(), icon, BUTTON_ICON + 1.0, fg, false);
+            if on {
+                resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+            } else {
+                resp
+            }
+        })
+        .inner;
     if enabled {
         resp.on_hover_text(tip)
     } else {

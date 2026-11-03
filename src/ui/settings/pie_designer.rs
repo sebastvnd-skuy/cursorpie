@@ -15,7 +15,10 @@ pub(super) enum Designer {
     None,
     Enter(usize),
     Up,
-    AddClicked,
+    /// The slice was dragged onto another one: move it to that place.
+    Move(usize, usize),
+    /// The slice was dragged onto the trash.
+    Delete(usize),
 }
 /// `[r, g, b]` of a palette color.
 fn rgb3(c: Color32) -> [u8; 3] {
@@ -29,7 +32,9 @@ enum Hit {
     Slice(usize),
 }
 
-/// Draws the pie of `items` at `size` px; click a slice to select it, the "+" slice to add one.
+/// Draws the pie of `items` at `size` px; click a slice to select it, drag it onto another slice to
+/// move it or onto the trash button of the editor to delete it. `show_labels` off draws icons only,
+/// like the pie itself.
 pub(super) fn pie_designer(
     ui: &mut egui::Ui,
     ed: &mut Ed,
@@ -37,14 +42,15 @@ pub(super) fn pie_designer(
     items: &[Item],
     accent: [u8; 3],
     size: f32,
+    show_labels: bool,
 ) -> Designer {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     let c = rect.center();
     let (outer, inner) = (pie_outer(size), pie_inner(size));
 
     let n = items.len();
-    let total = n + (n < MAX_ITEMS) as usize; // the "+" slice at the end
+    let total = n;
 
     let hit = |p: Pos2| -> Hit {
         let d = (p - c).length();
@@ -63,7 +69,27 @@ pub(super) fn pie_designer(
         }
     };
     let hov = resp.hover_pos().map(hit).unwrap_or(Hit::Out);
-    if !matches!(hov, Hit::Out) {
+    let pointer = ui.input(|i| i.pointer.latest_pos());
+
+    // a drag starts on the slice where the button went down
+    if resp.drag_started()
+        && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+        && let Hit::Slice(i) = hit(origin)
+        && i < n
+    {
+        ed.drag = Some(i);
+        ed.sel = Some(i);
+        ed.adding = false;
+    }
+    let dragging = ed.drag.filter(|&d| d < n && resp.dragged());
+    // the slice the dragged one would take the place of
+    let drag_to = dragging.zip(pointer).and_then(|(from, p)| match hit(p) {
+        Hit::Slice(j) if j < n && j != from => Some(j),
+        _ => None,
+    });
+    if dragging.is_some() {
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+    } else if !matches!(hov, Hit::Out) {
         ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
@@ -71,13 +97,14 @@ pub(super) fn pie_designer(
     let sl = TAU / total.max(1) as f32;
     let accent_c = rgb(accent);
     for i in 0..total {
-        let item = items.get(i); // None for the trailing "+" slice
-        let ghost = i == n;
+        let item = items.get(i);
         let selected = ed.sel == Some(i);
-        let hovered = matches!(hov, Hit::Slice(h) if h == i);
-        // a slice at rest is a control; the "+" slice is lighter, so it reads as a place, not a thing
-        let base = rgb3(if ghost { pal().input } else { pal().idle });
-        let t = if selected {
+        let lifted = dragging == Some(i);
+        let hovered = matches!(hov, Hit::Slice(h) if h == i) && dragging.is_none();
+        let base = rgb3(pal().idle);
+        let t = if drag_to == Some(i) {
+            0.45 // where the dragged slice would land
+        } else if selected {
             1.0
         } else if hovered {
             0.16
@@ -89,6 +116,12 @@ pub(super) fn pie_designer(
             on_accent(accent_c)
         } else {
             pie_colors().ink
+        };
+        // the dragged slice stays behind as a faint place holder
+        let ink = if lifted {
+            ink.gamma_multiply(0.35)
+        } else {
+            ink
         };
         let a0 = slice_start(i, total);
         painter.add(ring_slice(
@@ -103,29 +136,35 @@ pub(super) fn pie_designer(
 
         let am = a0 + sl / 2.0;
         let tp = c + Vec2::new(am.cos(), am.sin()) * ((inner + outer) / 2.0);
-        if ghost {
-            fonts::paint_icon(&painter, tp, symbols::PLUS, 26.0, pal().muted, false);
-        } else if let Some(it) = item {
+        if let Some(it) = item {
             let tex = ed.icon_for(ctx, &it.icon);
+            // icons only: the icon sits in the middle of the slice
+            let (icon_dy, caret_dy) = if show_labels {
+                (-8.0, 33.0)
+            } else {
+                (0.0, 24.0)
+            };
             draw_icon(
                 &painter,
                 tex.as_ref(),
                 &it.icon,
-                tp - Vec2::new(0.0, 8.0),
+                tp + Vec2::new(0.0, icon_dy),
                 30.0,
                 ink,
             );
-            painter.text(
-                tp + Vec2::new(0.0, 18.0),
-                Align2::CENTER_CENTER,
-                &it.name,
-                FontId::proportional(11.5),
-                ink.gamma_multiply(0.85),
-            );
+            if show_labels {
+                painter.text(
+                    tp + Vec2::new(0.0, 18.0),
+                    Align2::CENTER_CENTER,
+                    &it.name,
+                    FontId::proportional(11.5),
+                    ink.gamma_multiply(0.85),
+                );
+            }
             if matches!(it.kind, ItemKind::Submenu(_)) {
                 fonts::paint_icon(
                     &painter,
-                    tp + Vec2::new(0.0, 33.0),
+                    tp + Vec2::new(0.0, caret_dy),
                     symbols::CARET_DOWN,
                     13.0,
                     if selected { ink } else { accent_c },
@@ -165,13 +204,44 @@ pub(super) fn pie_designer(
         );
     }
 
+    // the dragged slice follows the pointer
+    if let (Some(from), Some(p)) = (dragging, pointer) {
+        let layer = egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("slice_drag"));
+        let float = ctx.layer_painter(layer);
+        float.circle_filled(p, 26.0, accent_c.gamma_multiply(0.92));
+        let it = &items[from];
+        let tex = ed.icon_for(ctx, &it.icon);
+        draw_icon(&float, tex.as_ref(), &it.icon, p, 28.0, on_accent(accent_c));
+    }
+
+    // ---- released: move it, delete it, or let it go back ----
+    if resp.drag_stopped() {
+        let from = ed.drag.take();
+        if let (Some(from), Some(p)) = (from, pointer)
+            && from < n
+        {
+            if ed.trash_rect.is_some_and(|r| r.expand(8.0).contains(p)) {
+                return Designer::Delete(from);
+            }
+            if let Hit::Slice(j) = hit(p)
+                && j < n
+                && j != from
+            {
+                return Designer::Move(from, j);
+            }
+        }
+    }
+
+    if !resp.dragged() {
+        ed.drag = None; // a drag that ended without telling us (focus lost)
+    }
+
     // ---- clicks ----
     if resp.clicked()
         && let Some(p) = resp.interact_pointer_pos()
     {
         match hit(p) {
             Hit::Center if !ed.nav.is_empty() => return Designer::Up,
-            Hit::Slice(i) if i == n && n < MAX_ITEMS => return Designer::AddClicked,
             Hit::Slice(i) if i < n => {
                 let is_sub = matches!(items[i].kind, ItemKind::Submenu(_));
                 if ed.sel == Some(i) && is_sub {

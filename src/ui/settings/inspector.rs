@@ -3,18 +3,20 @@
 use super::action_editor::action_editor;
 use super::icon_picker::icon_picker;
 use super::picker::spawn_file_picker;
-use super::state::{Ed, Rec, Slot};
+use super::state::{ActionTarget, Ed, PickFor, Rec, Slot};
+use super::tabs::profile_toolbar::open_picker;
 use crate::config::*;
 use crate::keys::{Shortcut, key};
 use crate::msg::Msg;
 use crate::platform::FileKind;
 use crate::tap::{RECORDING, SWALLOW_KEY};
+use crate::ui::appicon::{self, SliceTone};
 use crate::ui::draw::*;
 use crate::ui::fonts;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use crate::ui::symbols;
-use eframe::egui::{self, Align, Color32, Layout, Rect, Vec2};
+use eframe::egui::{self, Color32, Rect, Vec2};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 
@@ -97,25 +99,6 @@ fn pick_icon(env: &Env, path: &[usize]) {
     );
 }
 
-/// Lets the user choose an `.app` for an "Open app" action.
-fn pick_app_for_action(env: &Env, path: &[usize], slot: Slot) {
-    let (profile, path) = (env.profile, path.to_vec());
-    spawn_file_picker(
-        env.tx.clone(),
-        env.ctx.clone(),
-        FileKind::App,
-        "Choose an application",
-        move |app| {
-            Some(Msg::ActionAppPicked {
-                profile,
-                path,
-                slot,
-                app,
-            })
-        },
-    );
-}
-
 /// Draws the editor for the selected slice of `ring` (`nav` = path of the ring itself).
 pub(super) fn item_inspector(
     ui: &mut egui::Ui,
@@ -126,6 +109,7 @@ pub(super) fn item_inspector(
 ) {
     let Some(i) = ed.sel.filter(|&i| i < ring.len()) else {
         // nothing selected: an empty tile that says what to do
+        let mut add = false;
         card().show(ui, |ui| {
             ui.set_width(inner_width(env.width));
             ui.add_space(GAP * 4.0);
@@ -137,9 +121,18 @@ pub(super) fn item_inspector(
                     ui,
                     "Select a slice on the pie to edit its name, icon and actions.",
                 );
+                if ring.len() < MAX_ITEMS {
+                    ui.add_space(GAP);
+                    if button(ui, Look::Soft, Some(symbols::PLUS), "Add a slice").clicked() {
+                        add = true;
+                    }
+                }
             });
             ui.add_space(GAP * 4.0);
         });
+        if add {
+            ed.adding = true;
+        }
         return;
     };
     let n = ring.len();
@@ -196,9 +189,11 @@ pub(super) fn item_inspector(
         .iter()
         .map(|&b| is_rec(ed, env.profile, &path, Slot::Extra(b)))
         .collect();
-    let (mut start, mut remove, mut enter, mut shift) = (None::<Slot>, false, false, 0i32);
+    let (mut start, remove, mut enter, mut shift) = (None::<Slot>, false, false, 0i32);
     let mut pick_app: Option<Slot> = None;
     let mut change_icon = false;
+    // "use the icon of the app this slice opens", in this tone (with the app as the action has it)
+    let mut use_app_icon: Option<(SliceTone, String)> = None;
 
     card().show(ui, |ui| {
         ui.set_width(inner_width(env.width));
@@ -266,6 +261,27 @@ pub(super) fn item_inspector(
                 }
                 if r.pick_app {
                     pick_app = Some(Slot::Run);
+                }
+                // a slice that opens an app can wear that app's icon, in color or as a white or
+                // black glyph
+                if let Action::OpenApp(app) = a
+                    && !app.trim().is_empty()
+                {
+                    let now = appicon::parse_slice(&item.icon).map(|(tone, _)| tone);
+                    section_label(ui, "Icon of this app");
+                    ui.horizontal(|ui| {
+                        for tone in SliceTone::ALL {
+                            let look = if now == Some(tone) {
+                                Look::Primary(env.accent)
+                            } else {
+                                Look::Soft
+                            };
+                            if button(ui, look, None, tone.label()).clicked() {
+                                use_app_icon = Some((tone, app.clone()));
+                            }
+                        }
+                    });
+                    muted(ui, "White suits a dark or glass pie, black a light one.");
                 }
             }
             ItemKind::Mode {
@@ -341,14 +357,6 @@ pub(super) fn item_inspector(
             {
                 shift = 1;
             }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let can_delete = n > 1 || !nav.is_empty();
-                if icon_button_look(ui, Look::Danger, symbols::TRASH, "Delete slice", can_delete)
-                    .clicked()
-                {
-                    remove = true;
-                }
-            });
         });
     });
 
@@ -356,7 +364,24 @@ pub(super) fn item_inspector(
         start_rec(ed, env.profile, &path, slot);
     }
     if let Some(slot) = pick_app {
-        pick_app_for_action(env, &path, slot);
+        // the list of installed apps, the same one as "Add app" in the profile's apps
+        ed.action_target = Some(ActionTarget {
+            profile: env.profile,
+            path: path.clone(),
+            slot,
+        });
+        open_picker(env.ctx, ed, env.tx, PickFor::Action);
+    }
+    if let Some((tone, app)) = use_app_icon {
+        match appicon::app_id_for_action(&app, &ed.installed) {
+            Some(id) => ring[i].icon = appicon::slice_icon_string(tone, &id),
+            None => {
+                let _ = env.tx.send(Msg::Notice(
+                    "CursorPie could not find the icon of that app.".into(),
+                ));
+                env.ctx.request_repaint();
+            }
+        }
     }
     if change_icon {
         ed.picking_icon = true;

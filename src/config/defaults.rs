@@ -7,8 +7,8 @@
 //! as a parameter in its `_for` form (so tests cover both); the plain form uses the OS the build runs on.
 
 use super::{
-    Action, AppGesture, AppIconStyle, Appearance, CONFIG_VERSION, Config, DesktopMode, Item,
-    PieStyle, Profile, SideTarget, TargetApp,
+    Action, AppGesture, AppIconStyle, Appearance, CONFIG_VERSION, Config, DesktopMode, IconShadow,
+    Item, PieStyle, Profile, SideTarget, TargetApp,
 };
 use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT, Shortcut, key};
 use crate::platform::Os;
@@ -344,6 +344,7 @@ impl Config {
             preview_ms: 900,
             center_app_icon: true,
             app_icon_style: AppIconStyle::Glyph,
+            app_icon_shadow: IconShadow::Auto,
             show_labels: true,
             sleep_after_s: 60,
             appearance: Appearance::System,

@@ -1,6 +1,6 @@
 //! The data one pie frame needs, copied out of the config.
 
-use crate::config::{AppIconStyle, Config, ItemKind, item_at, items_at};
+use crate::config::{AppIconStyle, Config, IconShadow, ItemKind, item_at, items_at};
 use crate::side;
 use crate::ui::appicon;
 
@@ -24,6 +24,8 @@ pub(super) struct PieView {
     pub(super) app_icon: Option<String>,
     /// whether that icon is drawn in its own colors (instead of one color, in the ink of the pie)
     pub(super) app_icon_color: bool,
+    /// when the app's icon gets a shadow
+    pub(super) app_icon_shadow: IconShadow,
 }
 
 impl PieView {
@@ -72,6 +74,7 @@ impl PieView {
             inactive: c.inactive_color,
             app_icon,
             app_icon_color: c.app_icon_style == AppIconStyle::Color,
+            app_icon_shadow: c.app_icon_shadow,
         }
     }
 }

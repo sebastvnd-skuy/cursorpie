@@ -2,6 +2,9 @@
 //!   left  = breadcrumb + the interactive pie
 //!   right = slice editor (scrolls on its own if needed)
 //!
+//! Under the pie sit two round buttons: add a slice, and delete the selected one (also where a dragged
+//! slice is dropped to delete it).
+//!
 //! "Add a slice" and the icon picker are sheets that float over the window, see
 //! [`sheet`](crate::ui::settings::widgets::sheet).
 
@@ -15,9 +18,13 @@ use crate::ui::settings::add_panel::add_panel;
 use crate::ui::settings::inspector::{Env, item_inspector};
 use crate::ui::settings::pie_designer::{Designer, pie_designer};
 use crate::ui::settings::theme::*;
+use crate::ui::settings::widgets::{Look, round_button};
 use crate::ui::symbols;
-use eframe::egui::{self, Rect, RichText, UiBuilder, pos2, vec2};
+use eframe::egui::{self, Color32, Rect, RichText, Sense, UiBuilder, pos2, vec2};
 use std::sync::mpsc::Sender;
+
+/// Diameter of the round add and delete buttons under the pie.
+const ROUND: f32 = 40.0;
 
 impl App {
     /// Draws the Menu tab into `ui`, `content_w` pixels wide.
@@ -31,6 +38,7 @@ impl App {
         ed.profile = ed.profile.min(edit.profiles.len().saturating_sub(1));
         let accent = rgb(edit.accent);
         let accent_rgb = edit.accent;
+        let show_labels = edit.show_labels;
         let tx_ref: &Sender<Msg> = tx;
         let trigger = edit.trigger_button;
         let mouse = crate::mouse::active_buttons();
@@ -46,7 +54,7 @@ impl App {
         // the pie fills the tile's width (when there is enough height) and is centered in the tile
         let pad = GAP + 4.0;
         let pie_size = (left_w - 2.0 * pad)
-            .min(avail.height() - 110.0)
+            .min(avail.height() - 110.0 - ROUND - GAP / 2.0)
             .clamp(200.0, 300.0);
         let left = Rect::from_min_size(avail.min, vec2(left_w, avail.height()));
         let right = Rect::from_min_size(
@@ -65,7 +73,7 @@ impl App {
 
         // left: a bordered tile with the breadcrumb + pie inside
         ui.painter().rect_filled(left, PANEL_R, pal().card);
-        let res = ui
+        let (res, add_slice, delete_slice) = ui
             .scope_builder(UiBuilder::new().max_rect(left.shrink(pad)), |ui| {
                 ui.horizontal_wrapped(|ui| {
                     let mut go: Option<usize> = None;
@@ -93,22 +101,81 @@ impl App {
                 });
                 let ring = items_at(&prof.items, &nav).unwrap_or(&[]);
                 // center the pie + hint in what is left under the breadcrumb
-                let spare = (ui.available_height() - pie_size - 28.0).max(0.0);
+                let spare = (ui.available_height() - pie_size - 28.0 - ROUND - GAP / 2.0).max(0.0);
                 ui.add_space(spare / 2.0);
                 let res = ui
-                    .vertical_centered(|ui| pie_designer(ui, ed, ctx, ring, accent_rgb, pie_size))
+                    .vertical_centered(|ui| {
+                        pie_designer(ui, ed, ctx, ring, accent_rgb, pie_size, show_labels)
+                    })
                     .inner;
+                ui.add_space(GAP / 2.0);
+
+                // add and delete, one round button each, right under the pie
+                let n = ring.len();
+                let can_add = n < MAX_ITEMS;
+                let can_delete = ed.sel.is_some_and(|i| i < n) && (n > 1 || !nav.is_empty());
+                let (row, _) =
+                    ui.allocate_exact_size(vec2(ui.available_width(), ROUND), Sense::hover());
+                let step = (ROUND + GAP) / 2.0;
+                let slot = |dx: f32| {
+                    Rect::from_center_size(
+                        pos2(row.center().x + dx, row.center().y),
+                        vec2(ROUND, ROUND),
+                    )
+                };
+                let (add_at, del_at) = (slot(-step), slot(step));
+                let add = ui
+                    .scope_builder(UiBuilder::new().max_rect(add_at), |ui| {
+                        round_button(ui, Look::Soft, symbols::PLUS, "Add a slice", can_add, ROUND)
+                    })
+                    .inner
+                    .clicked();
+                let del = ui
+                    .scope_builder(UiBuilder::new().max_rect(del_at), |ui| {
+                        round_button(
+                            ui,
+                            Look::Danger,
+                            symbols::TRASH,
+                            "Delete slice",
+                            can_delete,
+                            ROUND,
+                        )
+                    })
+                    .inner
+                    .clicked();
+                // a slice dragged over the delete button turns it red; dropping it there deletes it
+                ed.trash_rect = can_delete.then_some(del_at);
+                let over = ui
+                    .input(|i| i.pointer.latest_pos())
+                    .is_some_and(|p| del_at.expand(8.0).contains(p));
+                if can_delete && ed.drag.is_some() && over {
+                    ui.painter().circle_filled(
+                        del_at.center(),
+                        ROUND * 0.75,
+                        Color32::from_rgba_unmultiplied(214, 69, 69, 70),
+                    );
+                }
+
                 ui.add_space(GAP / 2.0);
                 ui.vertical_centered(|ui| {
                     ui.label(
-                        RichText::new("Click a slice to edit it. Use + to add one.")
+                        RichText::new("Click to edit. Drag to move or delete.")
                             .size(12.5)
                             .color(pal().muted),
                     )
                 });
-                res
+                (res, add, del)
             })
             .inner;
+        // the delete button acts on the selected slice, like a drop on it does
+        let res = match (delete_slice, ed.sel) {
+            (true, Some(i)) => Designer::Delete(i),
+            _ => res,
+        };
+        if add_slice {
+            ed.adding = true;
+            ed.sel = None;
+        }
         match res {
             Designer::Enter(i) => {
                 ed.nav.push(i);
@@ -117,9 +184,26 @@ impl App {
             Designer::Up => {
                 ed.sel = ed.nav.pop();
             } // select the submenu we came from
-            Designer::AddClicked => {
-                ed.adding = true;
-                ed.sel = None;
+            Designer::Move(from, to) => {
+                if let Some(ring) = ring_mut(&mut prof.items, &nav)
+                    && from < ring.len()
+                    && to < ring.len()
+                {
+                    let item = ring.remove(from);
+                    ring.insert(to, item);
+                    ed.sel = Some(to);
+                    ed.stop_recording();
+                }
+            }
+            Designer::Delete(i) => {
+                if let Some(ring) = ring_mut(&mut prof.items, &nav)
+                    && i < ring.len()
+                    && (ring.len() > 1 || !nav.is_empty())
+                {
+                    ring.remove(i);
+                    ed.sel = None;
+                    ed.stop_recording();
+                }
             }
             Designer::None => {}
         }

@@ -285,6 +285,25 @@ impl App {
                             .ink
                             .gamma_multiply(fade * if live { 0.85 } else { 0.45 })
                     };
+                    // a soft shadow under the icon, so it stands out from a plain white disc
+                    let weight =
+                        icon_shadow_weight(view.app_icon_shadow, !dark() && glass.is_none());
+                    if weight > 0.0 {
+                        let dim = fade * if live { 1.0 } else { 0.55 } * weight;
+                        // stacked, slightly larger and lower copies of the icon in black: the
+                        // alpha of the icon makes them a soft silhouette
+                        for (down, grow, alpha) in
+                            [(0.10, 1.07, 0.05), (0.07, 1.04, 0.07), (0.04, 1.0, 0.09)]
+                        {
+                            draw_texture(
+                                &painter,
+                                t,
+                                c + Vec2::new(0.0, core * down),
+                                core * 1.3 * grow,
+                                Color32::from_black_alpha(a(255.0 * alpha, dim)),
+                            );
+                        }
+                    }
                     draw_texture(&painter, t, c, core * 1.3, tint);
                 } else {
                     draw_icon(
@@ -312,5 +331,33 @@ impl App {
                     }
                 }
             });
+    }
+}
+
+/// How strong the shadow under the app's icon is: 0 for none, 1 for the soft one. `light_solid` is
+/// whether the center is a light, solid disc, which is where the icon needs it.
+pub(crate) fn icon_shadow_weight(mode: crate::config::IconShadow, light_solid: bool) -> f32 {
+    use crate::config::IconShadow;
+    match mode {
+        IconShadow::Off => 0.0,
+        IconShadow::Soft => 1.0,
+        IconShadow::Strong => 1.9,
+        IconShadow::Auto if light_solid => 1.0,
+        IconShadow::Auto => 0.0,
+    }
+}
+
+#[cfg(test)]
+mod shadow_tests {
+    use super::*;
+    use crate::config::IconShadow;
+
+    #[test]
+    fn the_shadow_follows_the_setting() {
+        assert_eq!(icon_shadow_weight(IconShadow::Off, true), 0.0);
+        assert_eq!(icon_shadow_weight(IconShadow::Auto, true), 1.0);
+        assert_eq!(icon_shadow_weight(IconShadow::Auto, false), 0.0);
+        assert_eq!(icon_shadow_weight(IconShadow::Soft, false), 1.0);
+        assert!(icon_shadow_weight(IconShadow::Strong, false) > 1.0);
     }
 }

@@ -25,7 +25,7 @@ use crate::platform;
 use crate::ui::appicon;
 use crate::ui::fonts;
 use crate::ui::settings::picker::spawn_file_picker;
-use crate::ui::settings::state::{Ed, ProfileSheet};
+use crate::ui::settings::state::{AppScan, Ed, PickFor, ProfileSheet};
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use crate::ui::symbols;
@@ -384,7 +384,262 @@ pub(super) fn profile_toolbar(
         Some(ProfileSheet::New) => new_profile_sheet(ctx, edit, ed, tx, accent),
         Some(ProfileSheet::Rename) => rename_sheet(ctx, edit, ed, accent),
         Some(ProfileSheet::Apps) => apps_sheet(ctx, edit, ed, tx, accent),
+        Some(ProfileSheet::Pick(for_)) => pick_app_sheet(ctx, edit, ed, tx, accent, for_),
         None => {}
+    }
+}
+
+/// Opens the list of installed apps for `for_`, and reads the apps again in the background so the
+/// list is current (the one read before stays on screen until the new one arrives).
+pub(in crate::ui::settings) fn open_picker(
+    ctx: &egui::Context,
+    ed: &mut Ed,
+    tx: &Sender<Msg>,
+    for_: PickFor,
+) {
+    open_sheet(ctx, ed, ProfileSheet::Pick(for_));
+    ed.app_query.clear();
+    if ed.installed_scan != AppScan::Reading {
+        ed.installed_scan = AppScan::Reading;
+        let (tx, ctx) = (tx.clone(), ctx.clone());
+        std::thread::spawn(move || {
+            let apps = platform::installed::installed_apps();
+            diag::log!("ui", "installed_apps", count = apps.len());
+            let _ = tx.send(Msg::InstalledApps(apps));
+            ctx.request_repaint();
+        });
+    }
+}
+
+/// The sheet that lists the installed apps with their icons and a search box, the same on every
+/// system. A click answers it and goes back to the dialog it came from. "Browse files" is still
+/// there for an app the list does not know (a portable program, an unusual folder).
+fn pick_app_sheet(
+    ctx: &egui::Context,
+    edit: &mut Config,
+    ed: &mut Ed,
+    tx: &Sender<Msg>,
+    accent: Color32,
+    for_: PickFor,
+) {
+    // the dialog this list came from; the editor of a slice is not a dialog, so it has none
+    let back = match for_ {
+        PickFor::New => Some(ProfileSheet::New),
+        PickFor::Add => Some(ProfileSheet::Apps),
+        PickFor::Action => None,
+    };
+    let profile = ed.profile;
+    // apps that are already chosen are shown with a check and cannot be picked twice
+    let taken: Vec<String> = match for_ {
+        PickFor::Add => edit
+            .profiles
+            .get(profile)
+            .map(|p| p.apps.clone())
+            .unwrap_or_default(),
+        PickFor::New => vec![ed.new_profile_app.clone()],
+        PickFor::Action => Vec::new(),
+    };
+    let is_taken =
+        |id: &str| !id.is_empty() && taken.iter().any(|t| platform::OS.app_ids_equal(t, id));
+
+    let size = Vec2::new(520.0, 580.0);
+    let bounds = ed.card;
+    let mut chosen: Option<platform::installed::InstalledApp> = None;
+    let mut browse = false;
+    let mut cancel = false;
+    let (floating, ()) = sheet(ctx, "pick_app", bounds, size, "Choose an app", |ui| {
+        let field = ui.add(
+            text_field(&mut ed.app_query)
+                .desired_width(ui.available_width())
+                .hint_text("Search apps"),
+        );
+        if wants_focus(ctx) {
+            field.request_focus();
+        }
+        ui.add_space(GAP);
+
+        let shown: Vec<usize> = ed
+            .installed
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| platform::installed::matches(a, &ed.app_query))
+            .map(|(i, _)| i)
+            .collect();
+        // the first hit is taken with Enter
+        if entered(ctx, &field)
+            && let Some(&i) = shown.first()
+            && !is_taken(&ed.installed[i].id)
+        {
+            chosen = Some(ed.installed[i].clone());
+        }
+
+        let list_h = (ui.available_height() - 54.0).max(120.0);
+        if shown.is_empty() {
+            ui.allocate_ui(Vec2::new(ui.available_width(), list_h), |ui| {
+                ui.centered_and_justified(|ui| {
+                    let text = if ed.installed_scan == AppScan::Reading && ed.installed.is_empty() {
+                        "Looking for installed apps\u{2026}"
+                    } else if ed.app_query.trim().is_empty() {
+                        "No installed apps were found. Use \u{201c}Browse files\u{201d}."
+                    } else {
+                        "No app matches your search."
+                    };
+                    muted(ui, text);
+                });
+            });
+        } else {
+            let row_h = 52.0;
+            egui::ScrollArea::vertical()
+                .max_height(list_h)
+                .auto_shrink([false, false])
+                .show_rows(ui, row_h, shown.len(), |ui, range| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    for k in range {
+                        let app = ed.installed[shown[k]].clone();
+                        let taken = is_taken(&app.id);
+                        let (row, resp) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), row_h),
+                            if taken {
+                                egui::Sense::hover()
+                            } else {
+                                egui::Sense::click()
+                            },
+                        );
+                        let inner = row.shrink2(Vec2::new(0.0, 2.0));
+                        if resp.hovered() && !taken {
+                            ui.painter().rect_filled(inner, CONTROL_R, pal().idle);
+                        }
+                        let icon = Rect::from_center_size(
+                            Pos2::new(inner.min.x + 12.0 + 18.0, inner.center().y),
+                            Vec2::splat(36.0),
+                        );
+                        avatar(ui.painter(), ctx, ed, icon, &app.id, accent);
+                        let tint = if taken { pal().muted } else { pal().text };
+                        ui.painter().text(
+                            Pos2::new(inner.min.x + 64.0, inner.center().y - 9.0),
+                            egui::Align2::LEFT_CENTER,
+                            clip(&app.name, 36),
+                            egui::FontId::new(14.0, fonts::semibold()),
+                            tint,
+                        );
+                        ui.painter().text(
+                            Pos2::new(inner.min.x + 64.0, inner.center().y + 10.0),
+                            egui::Align2::LEFT_CENTER,
+                            clip(&app.id, 48),
+                            egui::FontId::new(12.0, egui::FontFamily::Proportional),
+                            pal().muted,
+                        );
+                        if taken {
+                            fonts::paint_icon(
+                                ui.painter(),
+                                Pos2::new(inner.max.x - 20.0, inner.center().y),
+                                symbols::CHECK,
+                                16.0,
+                                accent_text(accent),
+                                false,
+                            );
+                        } else if resp
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .clicked()
+                        {
+                            chosen = Some(app);
+                        }
+                    }
+                });
+        }
+
+        to_bottom(ui, CONTROL_H);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            if button(
+                ui,
+                Look::Soft,
+                Some(symbols::FOLDER_OPEN),
+                "Browse files\u{2026}",
+            )
+            .on_hover_text("For an app that is not in the list")
+            .clicked()
+            {
+                browse = true;
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if button(ui, Look::Soft, None, "Back").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+    });
+
+    if let Some(app) = chosen {
+        match for_ {
+            PickFor::New => {
+                ed.new_profile_app = app.id;
+                if ed.new_profile_name.trim().is_empty() {
+                    ed.new_profile_name = app.name;
+                }
+            }
+            PickFor::Add => {
+                if let Some(p) = edit.profiles.get_mut(profile)
+                    && !p.apps.contains(&app.id)
+                {
+                    p.apps.push(app.id);
+                }
+            }
+            PickFor::Action => {
+                // the same message a chosen file gives, so the slice also takes the app's icon
+                if let Some(t) = ed.action_target.take() {
+                    let _ = tx.send(Msg::ActionAppPicked {
+                        profile: t.profile,
+                        path: t.path,
+                        slot: t.slot,
+                        app: platform::installed::action_text(&app),
+                    });
+                    ctx.request_repaint();
+                }
+            }
+        }
+        ed.profile_sheet = back;
+    } else if browse {
+        match for_ {
+            PickFor::New => spawn_file_picker(
+                tx.clone(),
+                ctx.clone(),
+                platform::FileKind::App,
+                "Choose an application",
+                |file| platform::bundle_id_of(&file).map(Msg::NewProfileAppPicked),
+            ),
+            PickFor::Add => spawn_file_picker(
+                tx.clone(),
+                ctx.clone(),
+                platform::FileKind::App,
+                "Choose an application",
+                move |file| {
+                    platform::bundle_id_of(&file).map(|bundle| Msg::AppPicked { profile, bundle })
+                },
+            ),
+            PickFor::Action => {
+                if let Some(t) = ed.action_target.take() {
+                    spawn_file_picker(
+                        tx.clone(),
+                        ctx.clone(),
+                        platform::FileKind::App,
+                        "Choose an application",
+                        move |app| {
+                            Some(Msg::ActionAppPicked {
+                                profile: t.profile,
+                                path: t.path,
+                                slot: t.slot,
+                                app,
+                            })
+                        },
+                    );
+                }
+            }
+        }
+        ed.profile_sheet = back;
+    } else if cancel || floating.close {
+        ed.action_target = None;
+        ed.profile_sheet = back;
     }
 }
 
@@ -458,23 +713,17 @@ fn new_profile_sheet(
             ui.spacing_mut().item_spacing.x = 8.0;
             let app = ui.add(
                 text_field(&mut ed.new_profile_app)
-                    .desired_width(ui.available_width() - 112.0)
+                    .desired_width(ui.available_width() - 134.0)
                     .hint_text(platform::OS.app_id_hint()),
             );
             if entered(ctx, &app) {
                 create = true;
             }
-            if button(ui, Look::Soft, Some(symbols::FOLDER_OPEN), "Pick\u{2026}")
-                .on_hover_text("Choose an installed application")
+            if button(ui, Look::Soft, Some(symbols::APP_WINDOW), "Choose app")
+                .on_hover_text("Pick from the installed apps")
                 .clicked()
             {
-                spawn_file_picker(
-                    tx.clone(),
-                    ctx.clone(),
-                    platform::FileKind::App,
-                    "Choose an application",
-                    |file| platform::bundle_id_of(&file).map(Msg::NewProfileAppPicked),
-                );
+                open_picker(ctx, ed, tx, PickFor::New);
             }
         });
         ui.add_space(6.0);
@@ -597,6 +846,7 @@ fn apps_sheet(
     let title = format!("Apps of \u{201c}{}\u{201d}", clip(&prof.name, 24));
     let mut drop_app: Option<usize> = None;
     let mut add_app: Option<String> = None;
+    let mut open_apps = false;
     let (floating, ()) = sheet(ctx, "profile_apps", bounds, size, &title, |ui| {
         ui.label(
             egui::RichText::new("This profile opens while one of these apps is in front.")
@@ -702,16 +952,7 @@ fn apps_sheet(
                         .on_hover_cursor(egui::CursorIcon::PointingHand)
                         .clicked()
                     {
-                        spawn_file_picker(
-                            tx.clone(),
-                            ctx.clone(),
-                            platform::FileKind::App,
-                            "Choose an application",
-                            move |file| {
-                                platform::bundle_id_of(&file)
-                                    .map(|bundle| Msg::AppPicked { profile, bundle })
-                            },
-                        );
+                        open_apps = true;
                     }
                 });
             });
@@ -743,6 +984,10 @@ fn apps_sheet(
     });
     if let Some(i) = drop_app {
         prof.apps.remove(i);
+    }
+    if open_apps {
+        open_picker(ctx, ed, tx, PickFor::Add);
+        return;
     }
     if let Some(id) = add_app
         && !id.is_empty()
@@ -799,12 +1044,22 @@ mod tests {
             .unwrap_or(0);
         let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1180.0, 740.0));
         ed.card = screen;
+        ed.installed = (0..40)
+            .map(|i| platform::installed::InstalledApp {
+                id: format!("app{i}"),
+                name: format!("App number {i}"),
+            })
+            .collect();
+        ed.installed_scan = AppScan::Done;
         let accent = Color32::from_rgb(90, 120, 94);
         for which in [
             None,
             Some(ProfileSheet::New),
             Some(ProfileSheet::Rename),
             Some(ProfileSheet::Apps),
+            Some(ProfileSheet::Pick(PickFor::New)),
+            Some(ProfileSheet::Pick(PickFor::Add)),
+            Some(ProfileSheet::Pick(PickFor::Action)),
         ] {
             ed.profile_sheet = which;
             for _ in 0..3 {

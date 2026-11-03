@@ -20,6 +20,9 @@ pub struct Entry {
     pub path: String,
     /// `Icon`: an icon name (looked up in the icon themes, see `icontheme`) or an absolute path.
     pub icon: Option<String>,
+    /// `NoDisplay=true`: the app is not meant to be listed in menus (URL handlers, helpers). It
+    /// still has windows, so the index keeps it; a list of apps to pick from leaves it out.
+    pub no_display: bool,
 }
 
 /// An app id in canonical form: trimmed, lower case, without a `.desktop` suffix.
@@ -85,6 +88,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
     let mut exec: Option<String> = None;
     let mut icon: Option<String> = None;
     let mut hidden = false;
+    let mut no_display = false;
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -108,6 +112,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
             "Exec" => exec = Some(value.to_string()),
             "Icon" if !value.is_empty() => icon = Some(value.to_string()),
             "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
+            "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
             _ => {}
         }
     }
@@ -125,6 +130,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
         exec_name: exec.as_deref().and_then(exec_program),
         path: path.to_string(),
         icon,
+        no_display,
     })
 }
 
@@ -137,6 +143,11 @@ pub struct Index {
 impl Index {
     pub fn new(entries: Vec<Entry>) -> Index {
         Index { entries }
+    }
+
+    /// Every installed app.
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
     }
 
     pub fn len(&self) -> usize {
@@ -273,6 +284,7 @@ mod tests {
             exec_name: None,
             path: format!("/usr/share/applications/{id}.desktop"),
             icon: None,
+            no_display: false,
         }
     }
 

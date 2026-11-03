@@ -39,6 +39,7 @@
 //! desktop-entry id on Linux (`firefox`, `org.mozilla.firefox`).
 
 pub mod desktops;
+pub mod installed;
 pub mod keymap;
 
 // Runs the file choosers that are separate programs: zenity and kdialog on Linux, osascript on macOS.

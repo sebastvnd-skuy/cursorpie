@@ -5,7 +5,8 @@
 //! startup and memory.
 
 use crate::config::{
-    AppGesture, AppIconStyle, Appearance, Config, DesktopMode, PieStyle, SideTarget, TargetApp,
+    AppGesture, AppIconStyle, Appearance, Config, DesktopMode, IconShadow, PieStyle, SideTarget,
+    TargetApp,
 };
 use crate::ui::app::App;
 use crate::ui::draw::rgb;
@@ -237,6 +238,42 @@ impl App {
                     AppIconStyle::Color,
                     "Full color",
                     "The app's own icon, in its own colors.",
+                    accent,
+                );
+            });
+            ui.add_enabled_ui(cfg.center_app_icon, |ui| {
+                ui.add_space(GAP / 2.0);
+                section_title(ui, "Shadow under the icon");
+                choice_row(
+                    ui,
+                    &mut cfg.app_icon_shadow,
+                    IconShadow::Auto,
+                    "Automatic",
+                    "A soft shadow on a plain light center, none where the icon already stands out.",
+                    accent,
+                );
+                choice_row(
+                    ui,
+                    &mut cfg.app_icon_shadow,
+                    IconShadow::Soft,
+                    "Soft",
+                    "Always a light shadow.",
+                    accent,
+                );
+                choice_row(
+                    ui,
+                    &mut cfg.app_icon_shadow,
+                    IconShadow::Strong,
+                    "Strong",
+                    "A deeper shadow for pale icons on a white center.",
+                    accent,
+                );
+                choice_row(
+                    ui,
+                    &mut cfg.app_icon_shadow,
+                    IconShadow::Off,
+                    "None",
+                    "No shadow.",
                     accent,
                 );
             });

@@ -73,6 +73,22 @@ pub enum AppIconStyle {
     Color,
 }
 
+/// A soft shadow under the app's icon in the center of the pie, so the icon stands out from a plain
+/// white disc.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum IconShadow {
+    /// A soft shadow while the center is a light, solid disc (the light appearance without glass),
+    /// none where the icon already stands out.
+    #[default]
+    Auto,
+    /// Always a soft shadow.
+    Soft,
+    /// Always a stronger shadow.
+    Strong,
+    /// Never.
+    Off,
+}
+
 /// Which pie the side buttons follow in an app that has a pie of its own, until you choose another.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
 pub enum SideTarget {
@@ -284,6 +300,8 @@ pub struct Config {
     pub center_app_icon: bool,
     /// With `center_app_icon`: the app's icon as a one-color silhouette or in its own colors.
     pub app_icon_style: AppIconStyle,
+    /// With `center_app_icon`: when the icon gets a shadow (see [`IconShadow`]).
+    pub app_icon_shadow: IconShadow,
     /// Each slice shows its name under its icon. Off: the pie shows icons only.
     pub show_labels: bool,
     /// Seconds without a pie or Settings on screen before the UI frees its caches and Settings

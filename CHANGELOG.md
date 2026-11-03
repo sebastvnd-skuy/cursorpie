@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## 0.7.5
+
+- **About links to the CursorPie website.** A **Website** button sits first among the links at the top of About,
+  and the **Project** panel has a **Website** row with the address.
+
+- **Add and delete a slice sit under the pie, each in its own circle.** They used to be in the far corner of the
+  editor, a long way from the pie. Now two round buttons, **+** and the trash, are right under the pie. The trash
+  deletes the selected slice (it is grayed out while no slice is selected) and is still where you drop a dragged
+  slice to delete it; it turns red while a slice is over it. The editor keeps only Move left and Move right.
+
+- **Pick... of an Open app action uses the same app list as Add app.** The button now opens the searchable list
+  of installed apps, with icons, that **Add app** in the profile's apps already used. **Browse files...** at the
+  bottom of the list is still there for an app that is not listed. A slice still takes the icon of the app you
+  choose, as before. The list stores the name of the app on macOS and its id on Windows and Linux.
+
+- **The Menu tab pie follows "Show labels".** With the names off in Behavior, the pie of the Menu tab shows icons
+  only, like the real pie.
+
+- **Drag slices in the Menu tab.** Drag a slice onto another one to move it there, or onto the trash button of the
+  editor to delete it (the trash turns red when the slice is over it). The "+" slice in the pie is gone: **+** now
+  sits next to the trash under the editor, and in the empty editor when no slice is selected.
+
+- **A slice that opens an app can wear that app's icon.** Select an **Open app** slice in the Menu tab and a new
+  row, **Icon of this app**, offers three looks: **Full color** (the app's own icon), **White** (a white glyph, for
+  dark and glass pies) and **Black** (a black glyph, for light pies). Choosing an app with **Pick...** puts its
+  color icon on a slice that still has the starting icon, and keeps the look of a slice that already shows an app's
+  icon. In `config.json` the icon of the slice is `appcolor:<app id>`, `app:<app id>` or `appblack:<app id>`.
+
 ## 0.7.4
 
 - **CursorPie looks like its website.** Settings, the welcome window and the pie now use the colors of the site: a

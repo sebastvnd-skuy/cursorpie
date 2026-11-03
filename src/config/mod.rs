@@ -63,6 +63,11 @@ mod tests {
             AppIconStyle::Glyph,
             "an old file keeps the silhouette"
         );
+        assert_eq!(
+            c.app_icon_shadow,
+            IconShadow::Auto,
+            "an old file gets the automatic shadow"
+        );
         assert!(c.show_labels, "an old file keeps the names");
         assert!(!c.side_forget);
         assert_eq!(c.desktop_mode, DesktopMode::SwitchToApp);

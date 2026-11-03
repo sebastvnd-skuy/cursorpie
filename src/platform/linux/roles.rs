@@ -120,6 +120,7 @@ mod tests {
             exec_name: None,
             path: format!("/usr/share/applications/{id}.desktop"),
             icon: None,
+            no_display: false,
         }
     }
 

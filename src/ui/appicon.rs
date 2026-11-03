@@ -1,4 +1,4 @@
-//! App icons for the center of a pie.
+//! App icons for the center of a pie, and for slices that open an app.
 //!
 //! The real icon comes from the OS (`platform::app_icon`: on macOS the image the Dock and Finder show, as a
 //! TIFF with one page per size; on Windows an RGBA bitmap). `load` picks the page that fits, decodes it and reduces it to a
@@ -9,9 +9,14 @@
 //! `appcolor:<bundle id>` (the icon in its own colors), see `PREFIX`, `PREFIX_COLOR` and
 //! `Ed::icon_for` (which caches the texture, so each app is read from the system only once). The
 //! setting `app_icon_style` decides which of the two the pie asks for, see [`icon_string`].
+//!
+//! A slice can use the same icons as its own icon (`Item::icon`): `appcolor:<id>` in full color,
+//! `app:<id>` as a white glyph and `appblack:<id>` as a black glyph, see [`SliceTone`]. Settings
+//! writes them for an "Open app" slice, see [`app_id_for_action`].
 
 use crate::config::AppIconStyle;
 use crate::platform;
+use crate::platform::installed::InstalledApp;
 use eframe::egui;
 use image::{Rgba, RgbaImage, imageops};
 use std::collections::BTreeMap;
@@ -26,6 +31,98 @@ pub const PREFIX: &str = "app:";
 /// Icon strings starting with this are the real icon of the app with that bundle id, in its own
 /// colors (not reduced to a white glyph).
 pub const PREFIX_COLOR: &str = "appcolor:";
+
+/// Icon strings starting with this are the real icon of the app with that bundle id as a black
+/// glyph (the same shape as the white one, in black), for slices on a light pie.
+pub const PREFIX_BLACK: &str = "appblack:";
+
+/// How the icon of an app is painted when it is the icon of a slice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SliceTone {
+    /// The app's own icon, in its own colors.
+    Color,
+    /// A white glyph (for dark and glass pies).
+    White,
+    /// A black glyph (for light pies).
+    Black,
+}
+
+impl SliceTone {
+    /// The tones in the order Settings shows them.
+    pub const ALL: [SliceTone; 3] = [SliceTone::Color, SliceTone::White, SliceTone::Black];
+
+    /// The name Settings shows.
+    pub fn label(self) -> &'static str {
+        match self {
+            SliceTone::Color => "Full color",
+            SliceTone::White => "White",
+            SliceTone::Black => "Black",
+        }
+    }
+
+    /// The icon string prefix of this tone. White and color share the prefixes of the center icon,
+    /// so a slice and the center of the same app share one cached texture.
+    fn prefix(self) -> &'static str {
+        match self {
+            SliceTone::Color => PREFIX_COLOR,
+            SliceTone::White => PREFIX,
+            SliceTone::Black => PREFIX_BLACK,
+        }
+    }
+}
+
+/// The icon string that makes a slice show the icon of `bundle` in `tone`.
+pub fn slice_icon_string(tone: SliceTone, bundle: &str) -> String {
+    format!("{}{bundle}", tone.prefix())
+}
+
+/// Splits an icon string made by [`slice_icon_string`] into its tone and bundle id. None for
+/// anything else (a text icon, an image file).
+pub fn parse_slice(icon: &str) -> Option<(SliceTone, &str)> {
+    let found = [SliceTone::Color, SliceTone::Black, SliceTone::White]
+        .into_iter()
+        .find_map(|t| icon.strip_prefix(t.prefix()).map(|b| (t, b)))?;
+    (!found.1.is_empty()).then_some(found)
+}
+
+/// Whether `icon` asks for the icon of an app (any of the three prefixes).
+pub fn is_app_icon(icon: &str) -> bool {
+    parse_slice(icon).is_some()
+}
+
+/// Whether a slice still has the icon a new "Open app" slice starts with (or none), so choosing an
+/// app may replace it without throwing away an icon the user picked.
+pub fn is_placeholder_icon(icon: &str) -> bool {
+    icon.trim().is_empty() || icon == "ico:app-window"
+}
+
+/// The id whose icon an "Open app" action shows: what `platform::app_icon` is asked for.
+///
+/// `app` is what the action stores: a picked file (its id is read from the file), an app id, a role
+/// such as `@browser` (Linux) or a name such as "Safari" (found among `installed`, the apps
+/// Settings already listed). None when the app cannot be told, which leaves the slice as it is.
+pub fn app_id_for_action(app: &str, installed: &[InstalledApp]) -> Option<String> {
+    let app = app.trim();
+    if app.is_empty() {
+        return None;
+    }
+    if app.contains('/') || app.contains('\\') {
+        return platform::bundle_id_of(app);
+    }
+    if let Some(a) = installed
+        .iter()
+        .find(|a| platform::OS.app_ids_equal(&a.id, app) || a.name.eq_ignore_ascii_case(app))
+    {
+        return Some(a.id.clone());
+    }
+    let mut tries = vec![app.to_string()];
+    if cfg!(windows) && !app.to_ascii_lowercase().ends_with(".exe") {
+        tries.push(format!("{app}.exe"));
+    }
+    tries
+        .into_iter()
+        .find(|id| platform::app_icon(id).is_some())
+}
 
 /// The icon string that asks for the icon of `bundle` in `style`.
 pub fn icon_string(style: AppIconStyle, bundle: &str) -> String {
@@ -65,15 +162,32 @@ pub fn bundle_for<'a>(apps: &'a [String], target: Option<&str>) -> Option<&'a st
 /// or its icon cannot be read. Failures are reported on stderr (once per attempt), so a missing
 /// icon can be diagnosed from `cargo run` instead of failing silently.
 pub fn load(bundle: &str, style: AppIconStyle) -> Option<egui::ColorImage> {
+    let tone = match style {
+        AppIconStyle::Glyph => SliceTone::White,
+        AppIconStyle::Color => SliceTone::Color,
+    };
+    load_tone(bundle, tone)
+}
+
+/// The icon of `bundle` in `tone`, ready to become a texture (see [`load`] for when it is None).
+pub fn load_tone(bundle: &str, tone: SliceTone) -> Option<egui::ColorImage> {
     let img = resize_straight(&native_image(bundle)?);
-    let img = match style {
-        AppIconStyle::Glyph => to_glyph(&img),
-        AppIconStyle::Color => img,
+    let img = match tone {
+        SliceTone::Color => img,
+        SliceTone::White => to_glyph(&img),
+        SliceTone::Black => to_black(&img),
     };
     Some(egui::ColorImage::from_rgba_unmultiplied(
         [img.width() as usize, img.height() as usize],
         img.as_raw(),
     ))
+}
+
+/// The texture image for an app icon string of any of the three prefixes of [`SliceTone`]. None for
+/// anything else, and when the icon cannot be read.
+pub fn load_string(icon: &str) -> Option<egui::ColorImage> {
+    let (tone, bundle) = parse_slice(icon)?;
+    load_tone(bundle, tone)
 }
 
 /// The icon of `bundle` as the system gives it, decoded to straight RGBA.
@@ -237,6 +351,18 @@ fn unpremultiply(px: &mut [u8]) {
             }
         }
     }
+}
+
+/// Black glyph version of an icon: the white glyph of [`to_glyph`] with its color turned black, its
+/// opacity kept.
+pub fn to_black(img: &RgbaImage) -> RgbaImage {
+    let mut out = to_glyph(img);
+    for p in out.pixels_mut() {
+        p[0] = 0;
+        p[1] = 0;
+        p[2] = 0;
+    }
+    out
 }
 
 /// White glyph version of an icon: white pixels whose opacity says how much that spot differs from
@@ -404,6 +530,72 @@ mod tests {
         assert_eq!(parse("~/icon.png"), None);
         assert_eq!(parse("ico:copy"), None);
         assert_eq!(parse("apple"), None, "only the prefixes with a colon count");
+    }
+
+    #[test]
+    fn a_slice_icon_string_says_the_tone_and_parses_back() {
+        for tone in SliceTone::ALL {
+            let s = slice_icon_string(tone, "com.example.App");
+            assert_eq!(parse_slice(&s), Some((tone, "com.example.App")));
+            assert!(is_app_icon(&s));
+        }
+        assert_eq!(slice_icon_string(SliceTone::Color, "x"), "appcolor:x");
+        assert_eq!(slice_icon_string(SliceTone::White, "x"), "app:x");
+        assert_eq!(slice_icon_string(SliceTone::Black, "x"), "appblack:x");
+        assert_eq!(parse_slice("appblack:"), None, "no app id");
+        assert_eq!(parse_slice("ico:copy"), None);
+        assert_eq!(parse_slice("~/icon.png"), None);
+        assert!(!is_app_icon("apple"));
+    }
+
+    #[test]
+    fn the_center_icon_strings_are_slice_icon_strings_too() {
+        let s = icon_string(AppIconStyle::Glyph, "x");
+        assert_eq!(parse_slice(&s), Some((SliceTone::White, "x")));
+        let s = icon_string(AppIconStyle::Color, "x");
+        assert_eq!(parse_slice(&s), Some((SliceTone::Color, "x")));
+    }
+
+    #[test]
+    fn the_black_glyph_keeps_the_shape_and_loses_the_color() {
+        let mut img = sample(64);
+        for (i, p) in img.pixels_mut().enumerate() {
+            if p[3] != 0 && i % 3 == 0 {
+                *p = Rgba([240, 240, 240, 255]);
+            }
+        }
+        let white = to_glyph(&img);
+        let black = to_black(&img);
+        assert_eq!(white.dimensions(), black.dimensions());
+        for (w, b) in white.pixels().zip(black.pixels()) {
+            assert_eq!(b[3], w[3], "same opacity");
+            assert_eq!(&b.0[..3], &[0, 0, 0], "black");
+        }
+    }
+
+    #[test]
+    fn only_the_starting_icon_of_a_slice_is_replaced_by_a_picked_app() {
+        assert!(is_placeholder_icon(""));
+        assert!(is_placeholder_icon("ico:app-window"));
+        assert!(!is_placeholder_icon("ico:copy"));
+        assert!(!is_placeholder_icon("~/Pictures/mine.png"));
+    }
+
+    #[test]
+    fn an_app_is_told_by_its_name_among_the_installed_apps() {
+        let installed = vec![InstalledApp {
+            id: "com.apple.Safari".into(),
+            name: "Safari".into(),
+        }];
+        assert_eq!(
+            app_id_for_action(" safari ", &installed).as_deref(),
+            Some("com.apple.Safari")
+        );
+        assert_eq!(
+            app_id_for_action("com.apple.Safari", &installed).as_deref(),
+            Some("com.apple.Safari")
+        );
+        assert_eq!(app_id_for_action("   ", &installed), None);
     }
 
     #[test]

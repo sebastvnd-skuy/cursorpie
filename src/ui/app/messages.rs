@@ -8,6 +8,7 @@ use crate::config::{
 };
 use crate::msg::Msg;
 use crate::platform;
+use crate::ui::appicon;
 use crate::ui::settings::Slot;
 use eframe::egui;
 use std::time::{Duration, Instant};
@@ -50,6 +51,10 @@ impl App {
                 self.hover = h;
             }
             Msg::NewProfileAppPicked(bundle) => self.ed.new_profile_app = bundle,
+            Msg::InstalledApps(apps) => {
+                self.ed.installed = apps;
+                self.ed.installed_scan = crate::ui::settings::AppScan::Done;
+            }
             Msg::ProfileImportPicked(file) => self.import_profile(&file),
             Msg::Notice(text) => self.say(text),
             Msg::MouseChanged { new, name, extra } => {
@@ -155,6 +160,9 @@ impl App {
                 slot,
                 app,
             } => {
+                // the icon of the picked app, for a slice that already shows an app's icon or
+                // still has the icon a new "Open app" slice starts with
+                let app_id = appicon::app_id_for_action(&app, &self.ed.installed);
                 if let Some(p) = self.edit.profiles.get_mut(profile)
                     && let Some(item) = item_at_mut(&mut p.items, &path)
                 {
@@ -162,7 +170,19 @@ impl App {
                         (ItemKind::Mode { extra, .. }, Slot::Extra(b)) => {
                             extra.insert(b, Action::OpenApp(app));
                         }
-                        (ItemKind::Run(a), Slot::Run) => *a = Action::OpenApp(app),
+                        (ItemKind::Run(a), Slot::Run) => {
+                            *a = Action::OpenApp(app);
+                            let tone = match appicon::parse_slice(&item.icon) {
+                                Some((tone, _)) => Some(tone),
+                                None if appicon::is_placeholder_icon(&item.icon) => {
+                                    Some(appicon::SliceTone::Color)
+                                }
+                                None => None,
+                            };
+                            if let (Some(tone), Some(id)) = (tone, app_id) {
+                                item.icon = appicon::slice_icon_string(tone, &id);
+                            }
+                        }
                         (ItemKind::Mode { back, .. }, Slot::Back) => *back = Action::OpenApp(app),
                         (ItemKind::Mode { forward, .. }, Slot::Forward) => {
                             *forward = Action::OpenApp(app)

@@ -98,7 +98,11 @@ fn fields(
                     .desired_width(w)
                     .hint_text(crate::platform::OS.open_app_hint()),
             );
-            if button(ui, Look::Soft, Some(symbols::FOLDER_OPEN), "Pick\u{2026}").clicked() {
+            // opens the list of installed apps, the same one as "Add app" in the profile's apps
+            if button(ui, Look::Soft, Some(symbols::APP_WINDOW), "Pick\u{2026}")
+                .on_hover_text("Choose from the installed apps")
+                .clicked()
+            {
                 out.pick_app = true;
             }
         }

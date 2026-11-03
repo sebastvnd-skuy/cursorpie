@@ -160,9 +160,10 @@ from behind other windows or minimized) and its footer says to Save or Cancel to
 
 - Choose, create, rename and delete profiles, list the apps each one applies to (type an id or use **Pick
   app...**), and **Share** a profile.
-- An interactive pie shows the ring you are editing. Click a slice to edit it, **+** to add one, a selected
-  submenu slice again to step into it, and the center to go back.
-- Per slice: name, icon, kind, action, and Move or Delete.
+- An interactive pie shows the ring you are editing. Click a slice to edit it, a selected
+  submenu slice again to step into it, and the center to go back. Two round buttons under the pie add a slice
+  (**+**) and delete the selected one (the trash); you can also drag a slice onto the trash.
+- Per slice: name, icon, kind, action (for **App**, **Pick...** opens the list of installed apps), and Move.
 - Ready-made slices on the **+** button: *side-button modes* (History, Brackets, Clipboard, Browser, Tabs, Zoom,
   Scroll, Edit), *quick actions* (Screenshot, Mission Ctrl, Spotlight, Emoji, Lock) and *custom* ones (Shortcut,
   Open app, Open URL, Command, Submenu).

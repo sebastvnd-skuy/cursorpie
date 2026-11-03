@@ -22,7 +22,7 @@ pub enum Tab {
 }
 
 /// Which action field of an item is being recorded.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
     Back,
     Forward,
@@ -71,6 +71,41 @@ pub enum ProfileSheet {
     Rename,
     /// The apps the current profile applies to.
     Apps,
+    /// The list of installed apps, searchable; it comes from one of the two dialogs above and goes
+    /// back to it.
+    Pick(PickFor),
+}
+
+/// Which dialog the app list was opened from, and so where its answer goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PickFor {
+    /// The app of a new profile.
+    New,
+    /// One more app for the current profile.
+    Add,
+    /// The app of an "Open app" action of a slice (see [`ActionTarget`]); it goes back to the editor.
+    Action,
+}
+
+/// The action field of a slice that the app list is answering (set by the **Pick...** button of the
+/// slice editor, used while the list is open with [`PickFor::Action`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActionTarget {
+    pub profile: usize,
+    pub path: Vec<usize>,
+    pub slot: Slot,
+}
+
+/// Where the list of installed apps stands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AppScan {
+    /// Not asked for yet.
+    #[default]
+    Idle,
+    /// A background thread is reading it (the list shown, if any, is the previous one).
+    Reading,
+    /// Read.
+    Done,
 }
 
 /// Editor-only state (kept apart from the edited config so both can be borrowed at once).
@@ -85,9 +120,20 @@ pub struct Ed {
     pub new_profile_app: String,
     /// the profile dialog that is open over the window, if any
     pub profile_sheet: Option<ProfileSheet>,
+    /// the installed apps the app list shows, and what is being typed in its search box
+    pub installed: Vec<crate::platform::installed::InstalledApp>,
+    pub installed_scan: AppScan,
+    pub app_query: String,
+    /// The action field the app list is choosing an app for
+    /// while the picker is open for an action.
+    pub action_target: Option<ActionTarget>,
     pub nav: Vec<usize>,
     pub sel: Option<usize>,
     pub adding: bool,
+    /// the slice of the ring that is being dragged in the pie (to move it, or to the trash)
+    pub drag: Option<usize>,
+    /// where the trash button of the slice editor was drawn last frame, the drop target of a drag
+    pub trash_rect: Option<egui::Rect>,
     /// the tiles of the "Add a slice" panel; `Some` only while the panel is showing
     pub add_catalog: Option<AddCatalog>,
     /// the icon picker is open (it temporarily replaces the inspector)
@@ -124,9 +170,15 @@ impl Ed {
             new_profile_name: String::new(),
             new_profile_app: String::new(),
             profile_sheet: None,
+            installed: Vec::new(),
+            installed_scan: AppScan::Idle,
+            app_query: String::new(),
+            action_target: None,
             nav: Vec::new(),
             sel: None,
             adding: false,
+            drag: None,
+            trash_rect: None,
             add_catalog: None,
             picking_icon: false,
             icon_query: String::new(),
@@ -156,6 +208,7 @@ impl Ed {
     pub fn close_sheet(&mut self) -> bool {
         let was = self.sheet_open();
         self.profile_sheet = None;
+        self.action_target = None;
         self.adding = false;
         self.add_catalog = None;
         self.picking_icon = false;

@@ -102,7 +102,7 @@ impl IconCache {
     /// Whether `icon` is already in the cache (a remembered failure counts). Costs a lookup and
     /// never decodes anything, so a screen can ask before it spends time on a load.
     pub fn contains(&self, icon: &str) -> bool {
-        if appicon::parse(icon).is_some() {
+        if appicon::is_app_icon(icon) {
             return self.lru.contains(icon);
         }
         icon_path(icon).is_some_and(|p| self.lru.contains(&*p.to_string_lossy()))
@@ -110,9 +110,9 @@ impl IconCache {
 
     /// The texture for an icon string. None for text icons and for images that cannot be loaded.
     pub fn get(&mut self, ctx: &egui::Context, icon: &str) -> Option<egui::TextureHandle> {
-        // "app:<bundle id>" / "appcolor:<bundle id>" = the real icon of an app, asked from the
-        // system (see `appicon`)
-        if let Some((style, bundle)) = appicon::parse(icon) {
+        // "app:<bundle id>" / "appcolor:<bundle id>" / "appblack:<bundle id>" = the real icon of
+        // an app, asked from the system (see `appicon`)
+        if appicon::is_app_icon(icon) {
             if let Some(e) = self.lru.get(icon) {
                 // a failure is not final: macOS may simply not have had the icon ready. Try again
                 // after a pause, but not on every frame (decoding is not free).
@@ -122,7 +122,7 @@ impl IconCache {
                     return e.tex.clone();
                 }
             }
-            let tex = appicon::load(bundle, style)
+            let tex = appicon::load_string(icon)
                 .map(|img| ctx.load_texture(icon, img, egui::TextureOptions::LINEAR));
             let failed_at = tex.is_none().then(Instant::now);
             self.lru.insert(

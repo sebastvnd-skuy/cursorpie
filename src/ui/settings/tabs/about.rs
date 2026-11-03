@@ -74,6 +74,7 @@ pub(in crate::ui::settings) fn about_tab(ui: &mut egui::Ui, accent: Color32) {
         ui.add_space(GAP);
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(8.0);
+            link_button(ui, symbols::GLOBE, "Website", WEBSITE_URL);
             link_button(ui, symbols::GITHUB_LOGO, "GitHub repository", REPO_URL);
             link_button(ui, symbols::BUG, "Report an issue", ISSUES_URL);
             link_button(ui, symbols::DOWNLOAD_SIMPLE, "Downloads", RELEASES_URL);
@@ -93,6 +94,7 @@ pub(in crate::ui::settings) fn about_tab(ui: &mut egui::Ui, accent: Color32) {
         link_row(ui, "Email", AUTHOR_EMAIL, &format!("mailto:{AUTHOR_EMAIL}"));
     });
     panel(ui, "Project", |ui| {
+        link_row(ui, "Website", "sebastvnd.github.io/cursorpie", WEBSITE_URL);
         link_row(ui, "Inspired by", INSPIRED_BY.0, INSPIRED_BY.1);
         info_row(ui, "License", |ui| muted(ui, LICENSE_NAME));
         info_row(ui, "Copyright", |ui| muted(ui, COPYRIGHT));

@@ -5,15 +5,20 @@
   <img src="icon/cursorpie_logo_black.png" alt="CursorPie" width="420">
 </picture>
 
-**Hold a mouse button. Flick. Release.**<br>
-A pie menu for your cursor on macOS, Windows and Linux.
+### Your actions, one gesture away.
+
+**Hold a mouse button. Flick toward an action. Release.**
+
+A configurable pie menu for your cursor — available on macOS, Windows and Linux.
+
+[**Visit the website**](https://sebastvnd.github.io/cursorpie/) · [Download latest release](https://github.com/sebastvnd/cursorpie/releases/latest) · [Explore the docs](https://sebastvnd.github.io/cursorpie/index.html?doc=docs/README.md)
 
 [![CI](https://github.com/sebastvnd/cursorpie/actions/workflows/ci.yml/badge.svg)](https://github.com/sebastvnd/cursorpie/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/sebastvnd/cursorpie?include_prereleases)](https://github.com/sebastvnd/cursorpie/releases)
 [![License: MIT](https://img.shields.io/github/license/sebastvnd/cursorpie)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 
-[Install](docs/INSTALL.md) · [User guide](docs/USER_GUIDE.md) · [Configuration](docs/CONFIGURATION.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+[Installation](docs/INSTALL.md) · [User guide](docs/USER_GUIDE.md) · [Configuration](docs/CONFIGURATION.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -21,56 +26,75 @@ A pie menu for your cursor on macOS, Windows and Linux.
 
 ## What is CursorPie?
 
-CursorPie is a small pie menu that waits in your menu bar or system tray. Hold the middle mouse button anywhere,
-flick toward a slice, release: the slice runs. A slice can send a keyboard shortcut, open an app, a link or a
-file, run a command, open a submenu, or turn your mouse's back and forward buttons into something more useful.
-Every app can have its own pie.
+CursorPie puts a radial menu right under your pointer. Hold the middle mouse button, move toward the action you need, then release. No hunting through menus and no need to remember a long list of shortcuts.
 
-It is written in Rust with [egui](https://github.com/emilk/egui) and inspired by
-[Kando](https://github.com/kando-menu/kando).
+A slice can send a keyboard shortcut, open an application, URL or file, run a command, switch a mouse-button mode, or open a submenu. You can keep a general menu and create a different profile for each application.
 
-## Who is it for?
-
-- **People with a multi-button mouse** who want their favorite actions under the cursor instead of in
-  their memory.
-- **Developers, designers and editors** who live in a few apps and want a different pie for each one:
-  undo and redo in the editor, tabs and zoom in the browser.
-- **Anyone who prefers a light, private tool.** No account, no network access, no telemetry.
-
-You need a mouse with a middle button (a clickable wheel is enough).
+Built with **Rust** and [egui](https://github.com/emilk/egui), CursorPie is inspired by [Kando](https://github.com/kando-menu/kando).
 
 ## Highlights
 
-- **Fast gesture.** Hold (500 ms by default) or flick, then release over a slice. Hold in the center to open Settings.
-- **Per-app profiles.** A general pie plus one pie for each app you choose.
-- **Side-button modes.** Put Undo/Redo, tab switching or zoom on the back and forward buttons, and switch between them from the pie.
-- **Flexible actions.** Send a shortcut, open an app, a URL or a file, run a shell command, or chain several in a sequence.
-- **Submenus.** Up to 8 slices per ring and 5 levels deep.
-- **Safe to experiment.** Undo and redo inside Settings, plus a backup of every earlier save.
-- **Easy to share.** Export one profile, icons included, as a single JSON file.
-- **Light on resources.** Nothing is drawn while idle, and cached icons are freed after a pause.
+- **A quick, natural gesture.** Hold for 500 ms by default, flick toward a slice, and release. Hold in the center to open Settings.
+- **A menu for every app.** Keep a general pie and create app-specific profiles for the tools you use most.
+- **Useful mouse buttons.** Assign actions to back, forward and other supported extra buttons with configurable modes.
+- **Actions that fit your workflow.** Trigger shortcuts, open apps, links and files, run shell commands, or chain actions into a sequence.
+- **Nested menus.** Organize up to 8 slices per ring and 5 levels of submenus.
+- **Room to experiment.** Undo and redo edits in Settings, with automatic backups of previous saves.
+- **Easy to share.** Export a profile, including its icons, as a single JSON file.
+- **Private and lightweight.** No account, network connection or telemetry. The menu stays out of the way while idle.
+
+A clickable mouse wheel is enough to get started. Some features and button options vary by operating system; see [Platform support](#platform-support).
 
 ## Download and install
 
-Ready-to-install packages are attached to each version published through CI. Once a version tag has been
-released, the links below always download the matching asset from the latest
-[GitHub Release](https://github.com/sebastvnd/cursorpie/releases/latest):
+Get the latest ready-to-install build from [GitHub Releases](https://github.com/sebastvnd/cursorpie/releases/latest):
 
-| System | Download |
+| Platform | Package |
 |---|---|
-| macOS 11+ (Intel and Apple silicon) | [Universal DMG](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-macos-universal.dmg) |
-| Windows 10/11 (recommended) | [Setup installer](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows-setup.exe) |
-| Windows (ZIP) | [ZIP bundle](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows.zip) |
-| Ubuntu 24.04+ (x86_64) | [Ubuntu package](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-ubuntu-24.04-x86_64.tar.gz) |
-| Fedora 44 (x86_64) | [Fedora package](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-fedora-44-x86_64.tar.gz) |
+| **macOS 11+** (Intel and Apple silicon) | [Universal DMG](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-macos-universal.dmg) |
+| **Windows 10/11** (recommended) | [Setup installer](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows-setup.exe) · [ZIP bundle](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-windows.zip) |
+| **Ubuntu 24.04+** (x86_64) | [Ubuntu package](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-ubuntu-24.04-x86_64.tar.gz) |
+| **Fedora 44** (x86_64) | [Fedora package](https://github.com/sebastvnd/cursorpie/releases/latest/download/CursorPie-fedora-44-x86_64.tar.gz) |
 
-For installation steps, including the Linux `install.sh` command and macOS permissions, see
-[docs/INSTALL.md](docs/INSTALL.md). CI also keeps short-lived build artifacts on each workflow run; public,
-ready-to-install downloads are published to GitHub Releases when a `v*` version tag is pushed.
+For step-by-step instructions, including the Linux `install.sh` script and macOS permissions, read the [installation guide](docs/INSTALL.md). Build artifacts from individual CI runs are temporary; public downloads are published with GitHub Releases when a version tag is pushed.
 
-## Quick start
+## Try it
 
-To build from source instead, install [Rust](https://rustup.rs) 1.88 or later:
+1. Install and launch CursorPie.
+2. Hold the **middle mouse button** for about half a second.
+3. Move the pointer toward a slice.
+4. Release the button to run the action.
+
+Hold the trigger in the center of the pie to open Settings and customize your menus. The [user guide](docs/USER_GUIDE.md) explains gestures, actions, profiles and settings in detail.
+
+## Platform support
+
+| Platform | Status | Notes |
+|---|---|---|
+| **macOS 11+** | Supported | Requires the Accessibility permission. The trigger can be the middle button or one of three extra mouse buttons. |
+| **Windows 10 (1809) / 11** | Supported · stable | No special permission required. The middle button is the only trigger; Windows exposes the back and forward buttons as extra buttons. |
+| **Linux (X11)** | Supported · experimental | x86_64 packages are provided for Ubuntu 24.04+ and Fedora 44. In a Wayland session, only X11/XWayland windows are supported; native Wayland windows are not detected. There is no tray icon yet. |
+
+Linux support is still being tested across distributions and desktop environments. Read [Known issues](docs/KNOWN_ISSUES.md) before installing, especially when using Wayland.
+
+## Documentation
+
+| Topic | Guide |
+|---|---|
+| Install a release or build from source | [Installation](docs/INSTALL.md) |
+| Learn gestures, slices, profiles and settings | [User guide](docs/USER_GUIDE.md) |
+| Read or edit `config.json` | [Configuration](docs/CONFIGURATION.md) |
+| Check current limitations | [Known issues](docs/KNOWN_ISSUES.md) |
+| Debug a problem | [Debugging](docs/DEBUGGING.md) |
+| Contribute or build the project | [Contributing](CONTRIBUTING.md) |
+| Browse design and platform notes | [Documentation index](docs/README.md) |
+| See what changed between versions | [Changelog](CHANGELOG.md) |
+
+The same guides are available in the [CursorPie website](https://sebastvnd.github.io/cursorpie/), which renders the Markdown files directly from the repository.
+
+## Build from source
+
+To compile CursorPie yourself, install [Rust](https://rustup.rs) 1.88 or later and follow the platform-specific prerequisites in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```sh
 git clone https://github.com/sebastvnd/cursorpie.git
@@ -78,58 +102,23 @@ cd cursorpie
 cargo run --release
 ```
 
-Then:
-
-1. Hold the **middle mouse button** for half a second. The pie opens under the cursor.
-2. Move toward a slice.
-3. Release to run it.
-
-Step-by-step installs, app bundles and installers, and the permission macOS asks for are in
-[docs/INSTALL.md](docs/INSTALL.md).
-
-## Platform support
-
-| Platform | Status | Good to know |
-|---|---|---|
-| macOS 11 or later | Supported | Needs the Accessibility permission. Any of four mouse buttons can be the trigger |
-| Windows 10 (1809) / 11 | Supported, stable | No permission needed. Only the middle button can be the trigger |
-| Linux, X11 session | Supported, experimental | No permission needed. Its behavior on different distributions and desktops is still being observed. Wayland only works over X11 and XWayland windows, and there is no tray icon yet |
-
-The full list of limits is in [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
-
-## Documentation
-
-| I want to... | Read |
-|---|---|
-| Install or build the app | [docs/INSTALL.md](docs/INSTALL.md) |
-| Learn every gesture, action and setting | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) |
-| Edit or share `config.json` | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
-| Know what does not work yet | [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) |
-| Fix a bug or add a feature | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Understand how the code works | Rust docs: run `cargo docs` |
-| See what changed | [CHANGELOG.md](CHANGELOG.md) |
-
-Design notes for each platform and for the interface are listed in [docs/README.md](docs/README.md).
-
-## Contributing
-
-Contributions are welcome. The short version:
+To run the checks used by CI:
 
 ```sh
 cargo tools hooks install   # once per clone
-cargo tools ci              # every check CI runs
+cargo tools ci              # format, lint, tests and documentation checks
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) explains the workflow, the project rules and how to open a pull request.
-Found a bug? [Open an issue](https://github.com/sebastvnd/cursorpie/issues).
+## Contributing
+
+Contributions, bug reports and ideas are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the project workflow, development setup and pull-request guidelines.
+
+Found a bug? [Open an issue](https://github.com/sebastvnd/cursorpie/issues) and include your operating system, desktop/session type (when relevant), and steps to reproduce it.
 
 ## Privacy
 
-CursorPie works entirely on your computer. It makes no network connections and collects no data. The event tap
-sees key events only so that Settings can capture a shortcut while you record one; otherwise they are passed on
-untouched and never stored or logged. Actions you configure yourself, such as opening a URL or running a
-command, do whatever you tell them to.
+CursorPie runs locally and makes no network connections. It has no account system or telemetry. Optional diagnostic logging is off by default, and ordinary release builds omit the diagnostic logger; see [Debugging](docs/DEBUGGING.md) for details. Actions you configure yourself — such as opening a URL or running a command — naturally perform the work you ask them to do.
 
 ## License
 
-[MIT](LICENSE). Built with egui / eframe, tray-icon, serde and image. Inspired by [Kando](https://github.com/kando-menu/kando).
+CursorPie is released under the [MIT License](LICENSE). It uses egui/eframe, tray-icon, serde and image, and is inspired by [Kando](https://github.com/kando-menu/kando).

@@ -52,6 +52,9 @@ pub enum Msg {
     Warm { general: usize, app: Option<usize> },
     /// An app was chosen in the "New profile" form; `0` is its bundle identifier.
     NewProfileAppPicked(String),
+    /// The installed apps were read (see `platform::installed`), for the app list of the profile
+    /// dialogs.
+    InstalledApps(Vec<crate::platform::installed::InstalledApp>),
     /// A profile file to import was chosen (its path).
     ProfileImportPicked(String),
     /// Show a short message in the Settings status bar (sent by helpers that cannot reach `App`).

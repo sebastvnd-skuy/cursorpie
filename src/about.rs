@@ -23,6 +23,8 @@ pub const AUTHOR_GITHUB_URL: &str = "https://github.com/sebastvnd";
 /// Contact address of the author.
 pub const AUTHOR_EMAIL: &str = "sebastvnd@gmail.com";
 
+/// The CursorPie website.
+pub const WEBSITE_URL: &str = "https://sebastvnd.github.io/cursorpie/";
 /// Source repository.
 pub const REPO_URL: &str = "https://github.com/sebastvnd/cursorpie";
 /// Where to report bugs and ideas.
