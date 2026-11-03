@@ -218,7 +218,8 @@ pub fn find(
     if icon.is_empty() {
         return Vec::new();
     }
-    if icon.starts_with('/') {
+    // `/…` is absolute on every platform; `Path::is_absolute` also covers `C:\…` on Windows
+    if icon.starts_with('/') || Path::new(icon).is_absolute() {
         let path = PathBuf::from(icon);
         if !path.is_file() {
             return Vec::new();
