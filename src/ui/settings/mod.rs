@@ -27,6 +27,7 @@
 
 mod action_editor;
 mod add_panel;
+mod brand;
 mod demo;
 mod icon_catalog;
 mod icon_picker;

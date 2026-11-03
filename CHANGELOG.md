@@ -2,12 +2,24 @@
 
 ## Unreleased
 
+- **CursorPie looks like its website.** Settings, the welcome window and the pie now use the colors of the site: a
+  cream page with paper-white panels and sage-green neutrals (and graphite with a faint sage tint in the dark
+  appearance, so the accent still stands out). A new **Sage** accent is the first swatch and the default of a new
+  install; the other accents are still there, and a saved accent is not changed. The logo is now the real artwork,
+  with the name in the sidebar, drawn in near black on the light appearance and near white on the dark one. Links and
+  the version badge in the accent are lightened or darkened until they can be read.
+
+- **App icons on Linux.** The pie can now show the real icon of an app in the middle of its own pie, in
+  both styles of **App icon in the pie**. CursorPie reads the `Icon=` of the app's desktop entry and finds it in
+  the icon themes (the user's theme, the ones it inherits from, `hicolor`, `pixmaps`, Flatpak and Snap). PNG
+  icons need nothing more; an icon that is only an SVG needs `rsvg-convert` (`librsvg2-tools`) and is skipped
+  without it. Roles such as `@browser` use the icon of the app that fills them.
+
 - **Choose how the app's icon looks in the middle of an app's pie.** Behavior has a new panel, **App icon in the
   pie**: **One color** (the silhouette in the ink of the pie, as before and still the default) or **Full color**
   (the app's own icon in its own colors). A small animation shows the icon flying into the pie and either keeping
   its colors or losing them. The setting is `app_icon_style` in `config.json`; it only applies while **Show the
-  app's icon in the center** is on. The icon in the **Look & feel** animation follows the choice too. The panel
-  is only shown on macOS and Windows: Linux does not read app icons yet.
+  app's icon in the center** is on. The icon in the **Look & feel** animation follows the choice too.
 
 - **The "Stop waiting" button is now a red circle with an X.** It sits under the "Waiting for the file chooser..."
   pill and shows "Stop waiting" as a tooltip when the pointer rests on it.

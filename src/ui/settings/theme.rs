@@ -1,10 +1,11 @@
 //! Look of the settings window: palette, geometry and the egui style applied to it.
 //!
 //! The look is modern flat, in the spirit of the Apple system apps, in a light and a dark palette
-//! (read through [`pal`]):
+//! (read through [`pal`]). The colors are those of the website (`assets/site.css`): sage-green
+//! neutrals, a cream page and paper-white panels, and a sage accent by default:
 //!
 //! - a light window with large rounded corners ([`CARD_RADIUS`]); a sidebar that names the
-//!   sections, and white panels (`card`) on a soft grey page (`bg`), separated by space and
+//!   sections, and paper panels (`card`) on a cream page (`bg`), separated by space and
 //!   one pale hairline, not by frames and not by shadows;
 //! - generous room: one spacing unit ([`GAP`]), a page padding of its own, and one control height
 //!   ([`CONTROL_H`]) for every button, field and list row;
@@ -19,6 +20,7 @@
 //! Change the constants here to re-theme. Other files must not hard-code a color or a radius.
 
 use crate::config::Appearance;
+use crate::ui::draw::contrast;
 use eframe::egui::{self, Color32, CornerRadius, Rect, Stroke, Vec2};
 
 pub use crate::ui::draw::on_accent;
@@ -63,45 +65,49 @@ pub struct Palette {
     pub keycap: Color32,
 }
 
-/// The light appearance: white panels on a soft grey page.
+/// The light appearance: paper-white panels on a cream page, with sage-green neutrals. These are the
+/// colors of the website (`assets/site.css`: `--page`, `--paper`, `--ink`...), so the app and the
+/// site look like one product.
 pub const LIGHT: Palette = Palette {
     dark: false,
-    bg: Color32::from_rgb(246, 246, 249),
-    sidebar: Color32::from_rgb(238, 238, 243),
-    card: Color32::WHITE,
-    idle: Color32::from_rgb(240, 240, 245),
-    hot: Color32::from_rgb(229, 229, 237),
-    input: Color32::from_rgb(243, 243, 247),
-    border: Color32::from_rgb(226, 226, 233),
-    divider: Color32::from_rgb(236, 236, 241),
-    text: Color32::from_rgb(28, 28, 32),
-    muted: Color32::from_rgb(98, 98, 108),
-    good: Color32::from_rgb(16, 104, 54),
-    bad: Color32::from_rgb(178, 24, 40),
-    scrim: Color32::from_rgba_premultiplied(18, 18, 24, 70),
-    track: Color32::from_rgb(214, 214, 223),
-    keycap: Color32::WHITE,
+    bg: Color32::from_rgb(245, 243, 236),
+    sidebar: Color32::from_rgb(238, 238, 229),
+    card: Color32::from_rgb(255, 254, 250),
+    idle: Color32::from_rgb(240, 240, 231),
+    hot: Color32::from_rgb(229, 236, 226),
+    input: Color32::from_rgb(244, 244, 236),
+    border: Color32::from_rgb(224, 225, 215),
+    divider: Color32::from_rgb(234, 235, 226),
+    text: Color32::from_rgb(41, 54, 47),
+    muted: Color32::from_rgb(88, 100, 92),
+    good: Color32::from_rgb(22, 101, 58),
+    bad: Color32::from_rgb(176, 36, 40),
+    scrim: Color32::from_rgba_premultiplied(11, 15, 13, 70),
+    track: Color32::from_rgb(211, 216, 204),
+    keycap: Color32::from_rgb(255, 254, 250),
 };
 
-/// The dark appearance: graphite panels on a near-black page, the way Apple's dark mode steps
-/// its surfaces.
+/// The dark appearance: graphite panels on a near-black page, the way Apple's dark mode steps its
+/// surfaces, with a faint sage tint in every neutral (a hair more green than blue and red). It is
+/// deliberately not the full green of the website's dark mode: the sage accent has to stand out
+/// from the surfaces, and the logo has to be seen on the sidebar.
 pub const DARK: Palette = Palette {
     dark: true,
-    bg: Color32::from_rgb(24, 24, 27),
-    sidebar: Color32::from_rgb(32, 32, 36),
-    card: Color32::from_rgb(40, 40, 45),
-    idle: Color32::from_rgb(54, 54, 60),
-    hot: Color32::from_rgb(64, 64, 72),
-    input: Color32::from_rgb(30, 30, 34),
-    border: Color32::from_rgb(62, 62, 69),
-    divider: Color32::from_rgb(54, 54, 60),
-    text: Color32::from_rgb(245, 245, 247),
-    muted: Color32::from_rgb(182, 182, 192),
-    good: Color32::from_rgb(88, 214, 130),
-    bad: Color32::from_rgb(255, 146, 138),
+    bg: Color32::from_rgb(27, 29, 28),
+    sidebar: Color32::from_rgb(34, 37, 35),
+    card: Color32::from_rgb(42, 46, 44),
+    idle: Color32::from_rgb(55, 60, 57),
+    hot: Color32::from_rgb(66, 72, 68),
+    input: Color32::from_rgb(32, 35, 33),
+    border: Color32::from_rgb(64, 70, 66),
+    divider: Color32::from_rgb(55, 60, 57),
+    text: Color32::from_rgb(244, 244, 239),
+    muted: Color32::from_rgb(184, 190, 185),
+    good: Color32::from_rgb(96, 208, 132),
+    bad: Color32::from_rgb(255, 160, 150),
     scrim: Color32::from_rgba_premultiplied(0, 0, 0, 120),
-    track: Color32::from_rgb(84, 84, 94),
-    keycap: Color32::from_rgb(82, 82, 92),
+    track: Color32::from_rgb(86, 93, 88),
+    keycap: Color32::from_rgb(84, 91, 86),
 };
 
 /// The palette in use. Settings and the pie call this every frame, so the appearance can change
@@ -128,10 +134,34 @@ pub fn apply_appearance(ctx: &egui::Context, appearance: Appearance) {
     crate::ui::draw::set_dark(resolve_dark(appearance, ctx.system_theme()));
 }
 
-/// The accents offered as swatches, as `(name, rgb)`. The first is the default of a new install.
-/// They are the system colors of Apple's light appearance: saturated enough to read as a color,
-/// not so much that a whole selected row hurts.
-pub const ACCENTS: [(&str, [u8; 3]); 7] = [
+/// `color`, moved toward `target` (the text color) just far enough that it shows up with at least
+/// `min`:1 contrast on every one of `surfaces`. A color that already does is returned as it is.
+/// It keeps a mark drawn in the user's accent, such as the logo, visible on a dark sidebar, where
+/// a sage deep enough to carry white text would sink into the panel.
+pub fn legible_on(color: Color32, target: Color32, surfaces: &[Color32], min: f32) -> Color32 {
+    for step in 0..=20 {
+        let c = color.lerp_to_gamma(target, step as f32 / 20.0);
+        if surfaces.iter().all(|s| contrast(c, *s) >= min) {
+            return c;
+        }
+    }
+    target
+}
+
+/// The accent as a color for text and thin marks (links, the version badge): lightened or darkened
+/// just enough to read at 4.5:1 on the page, the sidebar, the panels and the controls. The accent
+/// itself is chosen to carry white text on a fill, which a dark panel swallows as text.
+pub fn accent_text(accent: Color32) -> Color32 {
+    let p = pal();
+    legible_on(accent, p.text, &[p.bg, p.sidebar, p.card, p.idle], 4.5)
+}
+
+/// The accents offered as swatches, as `(name, rgb)`. The first is the default of a new install: the
+/// sage green of the website, deep enough to carry white text. The others are the system colors of
+/// Apple's light appearance: saturated enough to read as a color, not so much that a whole
+/// selected row hurts.
+pub const ACCENTS: [(&str, [u8; 3]); 8] = [
+    ("Sage", [90, 120, 94]),
     ("Indigo", [88, 86, 214]),
     ("Blue", [0, 122, 255]),
     ("Purple", [175, 82, 222]),
@@ -248,7 +278,7 @@ pub(in crate::ui::settings) fn style_settings(ui: &mut egui::Ui, accent: Color32
     v.override_text_color = None;
     v.selection.bg_fill = wash(accent, 0.28);
     v.selection.stroke = Stroke::new(1.5, accent);
-    v.hyperlink_color = accent;
+    v.hyperlink_color = accent_text(accent);
     // popups (combo boxes, menus) float above the window, so they keep a soft shadow
     v.window_corner_radius = PANEL_R;
     v.menu_corner_radius = CONTROL_R;
@@ -416,6 +446,40 @@ mod tests {
                 contrast(p.divider, p.card) > 1.05,
                 "{look}: a divider must be visible in a panel"
             );
+        }
+    }
+
+    #[test]
+    fn the_accent_is_lifted_only_where_it_would_sink() {
+        let sage = Color32::from_rgb(90, 120, 94);
+        // on the light surfaces the sage already shows: it is left alone
+        let light = [LIGHT.sidebar, LIGHT.card];
+        assert_eq!(legible_on(sage, LIGHT.text, &light, 4.0), sage);
+        // on the dark ones it is lightened until it does
+        let dark = [DARK.sidebar, DARK.card];
+        assert!(contrast(sage, DARK.card) < 4.0, "this is what the logo had");
+        let lifted = legible_on(sage, DARK.text, &dark, 4.0);
+        assert_ne!(lifted, sage);
+        for s in dark {
+            assert!(contrast(lifted, s) >= 4.0, "{lifted:?} on {s:?}");
+        }
+        assert!(lifted.g() > lifted.r(), "still green, not grey");
+        // an impossible demand ends at the target instead of looping
+        assert_eq!(legible_on(sage, DARK.text, &dark, 30.0), DARK.text);
+    }
+
+    #[test]
+    fn every_accent_can_be_read_as_text_in_both_appearances() {
+        for (look, p) in PALETTES {
+            let surfaces = [p.bg, p.sidebar, p.card, p.idle];
+            for (name, rgb) in ACCENTS {
+                let accent = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+                let text = legible_on(accent, p.text, &surfaces, 4.5);
+                for s in surfaces {
+                    let c = contrast(text, s);
+                    assert!(c >= 4.5, "{name} as text on {look} {s:?}: {c:.1}:1");
+                }
+            }
         }
     }
 

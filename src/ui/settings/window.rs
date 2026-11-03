@@ -226,20 +226,11 @@ impl App {
 
         // ---------------------------------------------------------------- sidebar
         let brand_y = side.min.y + 30.0;
-        let logo_x = if wide {
-            side.min.x + PAD + 14.0
-        } else {
-            side.center().x
-        };
-        draw_logo(&painter, egui::pos2(logo_x, brand_y + 14.0), 14.0, accent);
         if wide {
-            painter.text(
-                egui::pos2(side.min.x + PAD + 40.0, brand_y + 14.0),
-                egui::Align2::LEFT_CENTER,
-                APP_NAME,
-                egui::FontId::new(19.0, fonts::semibold()),
-                pal().text,
-            );
+            // the logo already has the name written in it
+            draw_wordmark(&painter, side.min.x + PAD, brand_y + 14.0, 30.0);
+        } else {
+            draw_logo(&painter, egui::pos2(side.center().x, brand_y + 14.0), 14.0);
         }
         ui.scope_builder(
             egui::UiBuilder::new().max_rect(egui::Rect::from_min_max(

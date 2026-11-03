@@ -325,7 +325,7 @@ impl Config {
             pie_hold_ms: 500,
             settings_hold_ms: 1200,
             pie_size: 200.0,
-            accent: [88, 86, 214],
+            accent: [90, 120, 94],
             trigger_button: 2,
             flick: false,
             sound: false,
@@ -462,7 +462,7 @@ mod tests {
         assert_eq!(c.pie_hold_ms, 500);
         assert_eq!(c.settings_hold_ms, 1200);
         assert_eq!(c.pie_size, 200.0);
-        assert_eq!(c.accent, [88, 86, 214]);
+        assert_eq!(c.accent, [90, 120, 94]);
         assert_eq!(c.trigger_button, 2);
         assert_eq!(c.double_click_ms, 260);
         assert_eq!(c.sleep_after_s, 60);

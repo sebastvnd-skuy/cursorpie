@@ -109,10 +109,11 @@ What exists in the code today, what differs from the design below, and what was 
 | Right button grabbed only while a pie is open | the right button is not grabbed at all; it reaches CursorPie while the trigger is held | an active grab reports every button; tested |
 | Extra mouse buttons as trigger (Appendix B) | only the middle button | the mapping needs real mice |
 | Extra mouse buttons in a side-button mode (Appendix B) | X buttons 10 to 20 are buttons 5 to 15, grabbed only while a mode uses them; the mice come from `/proc/bus/input/devices` (`platform/linux/inputdev.rs`) | not yet checked on real mice |
-| App icons, window hints, XShape fallback | none; the window uses winit's defaults | not done yet |
+| App icons | the `Icon=` of the desktop entry, found in the icon themes (`platform/linux/icontheme.rs`); PNG is read directly, SVG through `rsvg-convert` when it is installed | the lookup is tested with files on disk; not yet checked on a real desktop |
+| Window hints, XShape fallback | none; the window uses winit's defaults | not done yet |
 | Packages | a tarball with `install.sh` | `.deb`, `.rpm`, AppImage not done |
 
-**Not built:** everything Wayland (L5 to L7), the tray, keyboard-layout labels, app icons, the XShape
+**Not built:** everything Wayland (L5 to L7), the tray, keyboard-layout labels, the XShape
 fallback for a missing compositor, the `--doctor` report, Flatpak.
 
 **What was checked:**

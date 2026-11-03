@@ -3,16 +3,37 @@
 //! A hero panel on top (logo, name, version, link buttons), then one column of panels.
 
 use crate::about::*;
+use crate::platform;
 use crate::ui::fonts;
 use crate::ui::settings::theme::*;
 use crate::ui::settings::widgets::*;
 use crate::ui::symbols;
 use eframe::egui::{self, Color32, Vec2};
 
+/// Opens `url` (or a `mailto:` address) with the system's default handler.
+///
+/// This goes through [`platform::open_url`] (`xdg-open` on Linux, `ShellExecute` on Windows, `open` on
+/// macOS), not through egui's `Context::open_url`: CursorPie builds eframe with its default features
+/// off on Linux and Windows (see `Cargo.toml`), which drops eframe's `web_browser` feature, and
+/// without it egui's `open_url` does nothing at all. macOS keeps the default features, which is why
+/// the links worked only there. Only the link target is logged, and these targets are the project's
+/// own constants (see [`crate::about`]).
+fn open_link(url: &str) {
+    diag::log!("ui", "open_link");
+    platform::open_url(url);
+}
+
 /// One "label  link" row.
 fn link_row(ui: &mut egui::Ui, label: &str, text: &str, url: &str) {
     info_row(ui, label, |ui| {
-        ui.hyperlink_to(text, url);
+        if ui
+            .link(text)
+            .on_hover_text(url)
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .clicked()
+        {
+            open_link(url);
+        }
     });
 }
 
@@ -22,11 +43,11 @@ fn link_button(ui: &mut egui::Ui, icon: char, text: &str, url: &str) {
         .on_hover_text(url)
         .clicked()
     {
-        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+        open_link(url);
     }
 }
 
-/// Draws the About tab from the constants in [`crate::about`]. `accent` colors the logo.
+/// Draws the About tab from the constants in [`crate::about`]. `accent` colors the version badge.
 pub(in crate::ui::settings) fn about_tab(ui: &mut egui::Ui, accent: Color32) {
     // ------------------------------------------------------------ hero
     card().show(ui, |ui| {
@@ -35,15 +56,15 @@ pub(in crate::ui::settings) fn about_tab(ui: &mut egui::Ui, accent: Color32) {
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             let (rect, _) = ui.allocate_exact_size(Vec2::splat(88.0), egui::Sense::hover());
-            draw_logo(ui.painter(), rect.center(), 42.0, accent);
+            draw_logo(ui.painter(), rect.center(), 42.0);
             ui.add_space(GAP);
             ui.vertical(|ui| {
                 ui.add_space(6.0);
-                ui.label(fonts::title(APP_NAME, 30.0, pal().text));
+                ui.label(fonts::brand_name(APP_NAME, 34.0, pal().text));
                 ui.add_space(2.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    badge(ui, &format!("Version {VERSION}"), accent);
+                    badge(ui, &format!("Version {VERSION}"), accent_text(accent));
                     badge(ui, LICENSE_NAME, pal().muted);
                 });
                 ui.add_space(2.0);
@@ -83,7 +104,7 @@ pub(in crate::ui::settings) fn about_tab(ui: &mut egui::Ui, accent: Color32) {
         for (name, url, license) in CREDITS {
             row(ui, name, license, |ui| {
                 if icon_button(ui, symbols::ARROW_SQUARE_OUT, url, true).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(*url));
+                    open_link(url);
                 }
             });
         }

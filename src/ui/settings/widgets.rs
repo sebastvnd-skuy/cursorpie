@@ -19,6 +19,7 @@
 //! | [`panel`] | a titled white card holding rows; every tab is a stack of these |
 //! | [`sheet`], [`popover`] | what floats: a modal sheet over the window, and a small popup under a button |
 
+use super::brand;
 use super::theme::*;
 use crate::keys::Shortcut;
 use crate::ui::draw::ring_slice;
@@ -220,6 +221,7 @@ pub(in crate::ui::settings) fn link(
         text.size().x + ICON_GAP / 2.0 + arrow.size().x + 2.0,
         text.size().y.max(arrow.size().y),
     );
+    let accent = accent_text(accent);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, label));
     let hot = resp.hovered() || resp.has_focus();
@@ -1270,14 +1272,48 @@ pub(in crate::ui::settings) fn menu_item(
 
 // ------------------------------------------------------------------ brand and shortcuts
 
-/// The CursorPie logo: a ring of four arcs around a diamond, as on the poster. Drawn with the
-/// same `ring_slice` as the real pie, so there is no image file to ship.
-pub(in crate::ui::settings) fn draw_logo(
+/// The CursorPie mark (a ring of four arcs around a diamond), `radius` points from its center to the
+/// outer edge of the ring, in the text color of the appearance. The real artwork is used (see
+/// [`brand`]); if it cannot be loaded the same shape is drawn with `ring_slice`.
+pub(in crate::ui::settings) fn draw_logo(painter: &egui::Painter, center: Pos2, radius: f32) {
+    let color = pal().text;
+    let rect = Rect::from_center_size(center, Vec2::splat(radius * 2.0));
+    if !brand::paint(painter, brand::Art::Mark, rect, color) {
+        draw_logo_shape(painter, center, radius, color);
+    }
+}
+
+/// The CursorPie logo with its name, as one picture: `height` points high, its left edge at `left`
+/// and its middle at `center_y`, in the text color of the appearance. If the artwork cannot be
+/// loaded, the mark and the name in the interface font stand in.
+pub(in crate::ui::settings) fn draw_wordmark(
     painter: &egui::Painter,
-    center: Pos2,
-    radius: f32,
-    accent: Color32,
+    left: f32,
+    center_y: f32,
+    height: f32,
 ) {
+    let color = pal().text;
+    // the picture is 1260 x 307 px
+    let drawn = Rect::from_min_size(
+        Pos2::new(left, center_y - height / 2.0),
+        Vec2::new(height * 1260.0 / 307.0, height),
+    );
+    if brand::paint(painter, brand::Art::Wordmark, drawn, color) {
+        return;
+    }
+    let r = height / 2.0;
+    draw_logo_shape(painter, Pos2::new(left + r, center_y), r, color);
+    painter.text(
+        Pos2::new(left + height + 6.0, center_y),
+        egui::Align2::LEFT_CENTER,
+        "CursorPie",
+        FontId::new(19.0, fonts::brand()),
+        color,
+    );
+}
+
+/// The mark drawn by hand, for when the artwork is not there.
+fn draw_logo_shape(painter: &egui::Painter, center: Pos2, radius: f32, color: Color32) {
     use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
     let gap = 0.30; // radians cut out of the ring at each diagonal
     for i in 0..4 {
@@ -1290,7 +1326,7 @@ pub(in crate::ui::settings) fn draw_logo(
             radius,
             a0,
             a1,
-            accent,
+            color,
         ));
     }
     let d = radius * 0.24;
@@ -1301,7 +1337,7 @@ pub(in crate::ui::settings) fn draw_logo(
             center + Vec2::new(0.0, d),
             center + Vec2::new(-d, 0.0),
         ],
-        accent,
+        color,
         Stroke::NONE,
     ));
 }

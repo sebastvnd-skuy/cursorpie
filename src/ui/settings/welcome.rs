@@ -23,6 +23,7 @@
 //! The texts that differ between macOS and Windows are small pure functions of [`Os`], so a test
 //! can check both without running on both.
 
+use super::brand;
 use super::theme::*;
 use super::widgets::*;
 use crate::about::*;
@@ -33,7 +34,7 @@ use crate::ui::app::App;
 use crate::ui::draw::*;
 use crate::ui::fonts;
 use crate::ui::symbols;
-use eframe::egui::{self, Vec2};
+use eframe::egui::{self, Color32, Stroke, Vec2};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -227,19 +228,7 @@ impl App {
         let mut step = Step::None;
 
         // ---------------------------------------------------------------- top bar
-        draw_logo(
-            &painter,
-            egui::pos2(top.min.x + PAD + 14.0, top.center().y),
-            14.0,
-            accent,
-        );
-        painter.text(
-            egui::pos2(top.min.x + PAD + 40.0, top.center().y),
-            egui::Align2::LEFT_CENTER,
-            APP_NAME,
-            egui::FontId::new(19.0, fonts::semibold()),
-            pal().text,
-        );
+        draw_wordmark(&painter, top.min.x + PAD, top.center().y, 30.0);
         ui.scope_builder(
             egui::UiBuilder::new()
                 .max_rect(top.shrink2(Vec2::new(PAD, 0.0)))
@@ -256,22 +245,29 @@ impl App {
         );
 
         // ---------------------------------------------------------------- page
-        ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
-            ui.set_clip_rect(ui.clip_rect().intersect(body));
-            match page {
-                0 => intro_page(ui, accent),
-                1 => setup_page(ui),
-                _ => {
-                    if let Some(w) = self.welcome.as_mut()
-                        && ready_page(ui, w, accent)
-                    {
-                        step = Step::Finish {
-                            open_settings: true,
-                        };
+        // each page fades in and rises a few points when it appears
+        let enter = page_enter(&ctx, page);
+        let rise = (1.0 - enter) * 16.0;
+        ui.scope_builder(
+            egui::UiBuilder::new().max_rect(body.translate(Vec2::new(0.0, rise))),
+            |ui| {
+                ui.set_opacity(t * enter);
+                ui.set_clip_rect(ui.clip_rect().intersect(body));
+                match page {
+                    0 => intro_page(ui, accent),
+                    1 => setup_page(ui, accent),
+                    _ => {
+                        if let Some(w) = self.welcome.as_mut()
+                            && ready_page(ui, w, accent)
+                        {
+                            step = Step::Finish {
+                                open_settings: true,
+                            };
+                        }
                     }
                 }
-            }
-        });
+            },
+        );
 
         // ---------------------------------------------------------------- footer
         ui.scope_builder(
@@ -279,16 +275,18 @@ impl App {
                 .max_rect(foot.shrink2(Vec2::new(PAD, 0.0)))
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
             |ui| {
-                // page dots
-                ui.spacing_mut().item_spacing.x = 4.0;
+                // page dots: the current one stretches into a pill
+                ui.spacing_mut().item_spacing.x = 6.0;
                 for i in 0..PAGES {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
-                    let (r, color) = if i == page {
-                        (5.0, accent)
-                    } else {
-                        (3.5, pal().border)
-                    };
-                    ui.painter().circle_filled(rect.center(), r, color);
+                    let wide = ctx.animate_value_with_time(
+                        egui::Id::new(("welcome_dot", i)),
+                        if i == page { 22.0 } else { 8.0 },
+                        0.22,
+                    );
+                    let (rect, _) =
+                        ui.allocate_exact_size(Vec2::new(wide, 8.0), egui::Sense::hover());
+                    let color = if i == page { accent } else { pal().border };
+                    ui.painter().rect_filled(rect, PILL, color);
                 }
             },
         );
@@ -357,69 +355,217 @@ impl App {
     }
 }
 
+/// Eased 0..1 progress of the entrance of `page`, restarted every time the page changes.
+fn page_enter(ctx: &egui::Context, page: usize) -> f32 {
+    const DURATION: f64 = 0.45;
+    let now = ctx.input(|i| i.time);
+    let id = egui::Id::new("welcome_page_enter");
+    let since = ctx.data_mut(|d| {
+        let (shown, start) = d.get_temp_mut_or_insert_with(id, || (page, now));
+        if *shown != page {
+            *shown = page;
+            *start = now;
+        }
+        now - *start
+    });
+    let p = (since / DURATION).clamp(0.0, 1.0) as f32;
+    if p < 1.0 {
+        ctx.request_repaint();
+    }
+    1.0 - (1.0 - p).powi(3) // ease out
+}
+
+/// A small spaced-out label above a heading, in the accent color: "STEP 2 OF 3".
+fn eyebrow(ui: &mut egui::Ui, text: &str, accent: Color32) {
+    ui.label(fonts::title(text.to_uppercase(), 11.5, accent_text(accent)));
+    ui.add_space(4.0);
+}
+
 /// A big heading with a line of secondary text under it.
 fn heading(ui: &mut egui::Ui, title: &str) {
     ui.label(fonts::title(title, 28.0, pal().text));
     ui.add_space(GAP);
 }
 
-/// Page 1: what CursorPie is and the three-step gesture.
-fn intro_page(ui: &mut egui::Ui, accent: egui::Color32) {
-    ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(96.0), egui::Sense::hover());
-        draw_logo(ui.painter(), rect.center(), 46.0, accent);
-        ui.add_space(GAP);
-        ui.vertical(|ui| {
-            ui.add_space(14.0);
-            ui.label(fonts::title(
-                format!("Welcome to {APP_NAME}"),
-                28.0,
-                pal().text,
-            ));
-            muted(ui, TAGLINE);
-            ui.add_space(GAP / 2.0);
-            badge(ui, &format!("Version {VERSION}"), accent);
-        });
-    });
-    ui.add_space(GAP * 2.0);
-    muted(
-        ui,
-        "Three moves open anything. Try them once you finish this guide:",
+/// Seconds since the program started drawing, for the animations of the first page.
+fn clock(ctx: &egui::Context) -> f32 {
+    ctx.input(|i| i.time) as f32
+}
+
+/// The banner of the first page: pulsing rings around the mark, the name in the brand font (the
+/// lettering of the logo) and the version.
+fn hero(ui: &mut egui::Ui, accent: Color32, height: f32) {
+    let ctx = ui.ctx().clone();
+    let (rect, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), height),
+        egui::Sense::hover(),
     );
-    ui.add_space(GAP);
+    let painter = ui.painter().with_clip_rect(rect);
+    let time = clock(&ctx);
+    ctx.request_repaint_after(Duration::from_millis(33));
+
+    // the band: a tint of the accent, with a faint copy of the mark bleeding off the right edge
+    painter.rect_filled(rect, PANEL_R, wash(accent, 0.10));
+    painter.rect_stroke(
+        rect,
+        PANEL_R,
+        Stroke::new(1.0, wash(accent, 0.22)),
+        egui::StrokeKind::Inside,
+    );
+    let ghost = egui::Rect::from_center_size(
+        egui::pos2(rect.max.x - 56.0, rect.center().y + 8.0),
+        Vec2::splat(height * 1.9),
+    );
+    brand::paint(&painter, brand::Art::Mark, ghost, wash(accent, 0.09));
+
+    // rings that leave the mark and fade, three at a time
+    let c = egui::pos2(rect.min.x + 30.0 + 62.0, rect.center().y);
+    let r0 = (height * 0.5 - 8.0).min(54.0);
+    for k in 0..3 {
+        let phase = (time * 0.45 + k as f32 / 3.0).fract();
+        let r = r0 + phase * 20.0;
+        let a = (1.0 - phase).powi(2) * 0.5;
+        painter.circle_stroke(c, r, Stroke::new(1.5, wash(accent, a)));
+    }
+    painter.circle_filled(c, r0 - 2.0, pal().card);
+    painter.circle_stroke(c, r0 - 2.0, Stroke::new(1.0, wash(accent, 0.35)));
+    draw_logo(&painter, c, r0 * 0.58);
+
+    // the words
+    let x = c.x + r0 + 34.0;
+    painter.text(
+        egui::pos2(x, rect.center().y - 44.0),
+        egui::Align2::LEFT_CENTER,
+        "WELCOME TO",
+        egui::FontId::new(11.5, fonts::semibold()),
+        accent_text(accent),
+    );
+    painter.text(
+        egui::pos2(x - 2.0, rect.center().y - 10.0),
+        egui::Align2::LEFT_CENTER,
+        APP_NAME,
+        egui::FontId::new(52.0, fonts::brand()),
+        pal().text,
+    );
+    painter.text(
+        egui::pos2(x, rect.center().y + 28.0),
+        egui::Align2::LEFT_CENTER,
+        TAGLINE,
+        egui::FontId::new(14.0, egui::FontFamily::Proportional),
+        pal().muted,
+    );
+    ui.scope_builder(
+        egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
+            egui::pos2(x, rect.center().y + 42.0),
+            Vec2::new(260.0, 28.0),
+        )),
+        |ui| badge(ui, &format!("Version {VERSION}"), accent_text(accent)),
+    );
+}
+
+/// Page 1: what CursorPie is and the three-step gesture.
+fn intro_page(ui: &mut egui::Ui, accent: Color32) {
+    let ctx = ui.ctx().clone();
+    let avail = ui.available_height();
+    let hero_h = (avail - 190.0).clamp(132.0, 168.0);
+    hero(ui, accent, hero_h);
+
+    ui.add_space(GAP + 4.0);
+    ui.horizontal(|ui| {
+        ui.label(fonts::title("Three moves open anything", 15.0, pal().text));
+        ui.add_space(4.0);
+        muted(ui, "Try them once you finish this guide.");
+    });
+    ui.add_space(GAP - 2.0);
+
     let steps = gesture_steps(cfg().pie_hold_ms);
     let icons = [
         symbols::CURSOR_CLICK,
         symbols::ARROWS_OUT,
         symbols::CHECK_CIRCLE,
     ];
+    // the three steps light up one after the other, as if the gesture were being made
+    let active = ((clock(&ctx) / 1.4) as usize) % 3;
+    ui.spacing_mut().item_spacing.x = 22.0;
+    let painter = ui.painter().clone();
+    let mut arrows = Vec::new();
     ui.columns(3, |cols| {
-        for (col, (icon, (label, text))) in cols.iter_mut().zip(icons.into_iter().zip(steps)) {
+        for (i, (col, (icon, (label, text)))) in cols
+            .iter_mut()
+            .zip(icons.into_iter().zip(steps))
+            .enumerate()
+        {
             // columns lay out justified, which would stretch the words of the text
             let left = egui::Layout::top_down(egui::Align::Min);
-            card().show(col, |ui| {
+            let on = ctx.animate_bool_with_time(
+                egui::Id::new(("welcome_step_on", i)),
+                i == active,
+                0.35,
+            );
+            let shown = card().show(col, |ui| {
                 ui.with_layout(left, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.set_min_height(190.0);
+                    ui.set_min_height((ui.available_height() - 14.0).clamp(112.0, 150.0));
                     ui.add_space(GAP);
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(44.0), egui::Sense::hover());
-                    ui.painter()
-                        .circle_filled(rect.center(), 22.0, wash(accent, 0.12));
-                    fonts::paint_icon(ui.painter(), rect.center(), icon, 24.0, accent, true);
-                    ui.add_space(GAP);
+                    ui.horizontal(|ui| {
+                        let (rect, _) =
+                            ui.allocate_exact_size(Vec2::splat(42.0), egui::Sense::hover());
+                        let p = ui.painter();
+                        p.circle_filled(
+                            rect.center(),
+                            21.0,
+                            wash(accent, 0.12).lerp_to_gamma(accent, on),
+                        );
+                        fonts::paint_icon(
+                            p,
+                            rect.center(),
+                            icon,
+                            22.0,
+                            accent.lerp_to_gamma(on_accent(accent), on),
+                            true,
+                        );
+                        ui.add_space(4.0);
+                        ui.label(fonts::title(
+                            format!("0{}", i + 1),
+                            26.0,
+                            wash(accent, 0.28),
+                        ));
+                    });
+                    ui.add_space(8.0);
                     ui.label(fonts::title(label, 17.0, pal().text));
-                    ui.add_space(4.0);
+                    ui.add_space(3.0);
                     muted(ui, &text);
                     ui.add_space(GAP);
                 })
             });
+            let r = shown.response.rect;
+            painter.rect_stroke(
+                r,
+                PANEL_R,
+                Stroke::new(1.5, wash(accent, 0.55 * on)),
+                egui::StrokeKind::Inside,
+            );
+            if i < 2 {
+                arrows.push(egui::pos2(r.max.x + 11.0, r.center().y));
+            }
         }
     });
+    for at in arrows {
+        fonts::paint_icon(
+            ui.painter(),
+            at,
+            symbols::CARET_RIGHT,
+            16.0,
+            pal().muted,
+            false,
+        );
+    }
 }
 
 /// Page 2: the permission (macOS) or the tray (Windows), with the live status.
-fn setup_page(ui: &mut egui::Ui) {
+fn setup_page(ui: &mut egui::Ui, accent: Color32) {
     let os = platform::OS;
+    eyebrow(ui, &format!("Step 2 of {PAGES}"), accent);
     heading(ui, setup_title(os));
     ui.set_max_width(ui.available_width().min(640.0));
     muted(ui, setup_lead(os));
@@ -495,9 +641,24 @@ fn setup_page(ui: &mut egui::Ui) {
 }
 
 /// Page 3: tips and the launch-at-login box. Returns true when "Open Settings" was clicked.
-fn ready_page(ui: &mut egui::Ui, w: &mut Welcome, accent: egui::Color32) -> bool {
+fn ready_page(ui: &mut egui::Ui, w: &mut Welcome, accent: Color32) -> bool {
     let os = platform::OS;
-    heading(ui, "You're all set");
+    eyebrow(ui, &format!("Step 3 of {PAGES}"), accent);
+    ui.horizontal(|ui| {
+        ui.label(fonts::title("You're all set", 28.0, pal().text));
+        ui.add_space(6.0);
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(30.0), egui::Sense::hover());
+        ui.painter().circle_filled(rect.center(), 15.0, accent);
+        fonts::paint_icon(
+            ui.painter(),
+            rect.center(),
+            symbols::CHECK,
+            17.0,
+            on_accent(accent),
+            true,
+        );
+    });
+    ui.add_space(GAP);
     ui.set_max_width(ui.available_width().min(640.0));
     let hold = cfg().settings_hold_ms;
     panel(ui, "Good to know", |ui| {
@@ -586,7 +747,7 @@ mod tests {
                 };
                 let mut output = ctx.run_ui(input, |ui| match page {
                     0 => intro_page(ui, accent),
-                    1 => setup_page(ui),
+                    1 => setup_page(ui, accent),
                     _ => {
                         ready_page(ui, &mut w, accent);
                     }

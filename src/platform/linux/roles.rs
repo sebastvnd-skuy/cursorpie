@@ -119,6 +119,7 @@ mod tests {
             wm_class: None,
             exec_name: None,
             path: format!("/usr/share/applications/{id}.desktop"),
+            icon: None,
         }
     }
 
