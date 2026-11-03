@@ -4,18 +4,6 @@
 
 ## 0.7.6
 
-- New pie panel
-
-## 0.7.5
-
-- **About links to the CursorPie website.** A **Website** button sits first among the links at the top of About,
-  and the **Project** panel has a **Website** row with the address.
-
-- **Add and delete a slice sit under the pie, each in its own circle.** They used to be in the far corner of the
-  editor, a long way from the pie. Now two round buttons, **+** and the trash, are right under the pie. The trash
-  deletes the selected slice (it is grayed out while no slice is selected) and is still where you drop a dragged
-  slice to delete it; it turns red while a slice is over it. The editor keeps only Move left and Move right.
-
 - **Pick... of an Open app action uses the same app list as Add app.** The button now opens the searchable list
   of installed apps, with icons, that **Add app** in the profile's apps already used. **Browse files...** at the
   bottom of the list is still there for an app that is not listed. A slice still takes the icon of the app you
@@ -33,6 +21,16 @@
   dark and glass pies) and **Black** (a black glyph, for light pies). Choosing an app with **Pick...** puts its
   color icon on a slice that still has the starting icon, and keeps the look of a slice that already shows an app's
   icon. In `config.json` the icon of the slice is `appcolor:<app id>`, `app:<app id>` or `appblack:<app id>`.
+
+## 0.7.5
+
+- **About links to the CursorPie website.** A **Website** button sits first among the links at the top of About,
+  and the **Project** panel has a **Website** row with the address.
+
+- **Add and delete a slice sit under the pie, each in its own circle.** They used to be in the far corner of the
+  editor, a long way from the pie. Now two round buttons, **+** and the trash, are right under the pie. The trash
+  deletes the selected slice (it is grayed out while no slice is selected) and is still where you drop a dragged
+  slice to delete it; it turns red while a slice is over it. The editor keeps only Move left and Move right.
 
 ## 0.7.4
 
@@ -105,8 +103,8 @@
 - **Icons only.** A new switch in Settings, **Show names under the icons** (Behavior > Look & feel), hides
   the names in the pie so each slice shows just its icon, a little larger. It is on by default; the names stay
   in Settings, so you can still tell the slices apart while you edit them. Old config files keep the names.
-- **Settings that show what they do.** On **Behavior**, the panels *Trigger*, *Pie of the app in front*, *App
-  detection* and *Other Spaces / desktops / workspaces* now start with a small animation instead of only a
+- **Settings that show what they do.** On **Behavior**, the panels _Trigger_, _Pie of the app in front_, _App
+  detection_ and _Other Spaces / desktops / workspaces_ now start with a small animation instead of only a
   sentence: the button going down and the pie opening after your hold time, which pie a hold and a double-click
   open, which window the pie works on, and what "Open app" does to an app on another desktop. The animation
   follows the choice and the sliders as you change them, and it only runs while you can see it.
@@ -130,6 +128,7 @@
   type these roles in any "Open app" slice. If the system cannot name the app, the old command runs.
 
 ## 0.7.0
+
 - **Quit asks before it quits.** Pressing **Quit CursorPie** while Settings is open (sidebar, General, or the
   tray / menu bar icon) opens a sheet instead of quitting at once. With nothing unsaved it asks "Do you really
   want to quit?" (**Cancel** / **Quit CursorPie**). With unsaved changes it says so and offers **Keep editing**,
@@ -244,18 +243,18 @@
   says what was done. An image that cannot be read, or has more than 40 megapixels, is refused with a message.
   The "Mine" page tells you when images in the icons folder are not listed because they are too big.
 - **Fix bug pie draw center position.**
-- **Add debug/diag tools.** 
+- **Add debug/diag tools.**
 
 ## 0.5.0
 
-- **Open app follows the app to its desktop or Space.** An *Open app* slice for a program that is already
+- **Open app follows the app to its desktop or Space.** An _Open app_ slice for a program that is already
   running on another virtual desktop (Windows) or Space (macOS) now takes you there and brings its window to
   the front, instead of leaving you where you were. **Settings > Behavior > Other desktops / Other Spaces**
-  chooses: *Switch to the desktop where the app is* (the default), *Do nothing* (open the app on the current
-  desktop as before) and, on macOS, *Bring the app's window to this Space* (experimental: it relies on private
+  chooses: _Switch to the desktop where the app is_ (the default), _Do nothing_ (open the app on the current
+  desktop as before) and, on macOS, _Bring the app's window to this Space_ (experimental: it relies on private
   system calls and falls back to switching when macOS refuses them). On macOS the switch works with the
-  Mission Control shortcuts Control+Left / Right (on by default) even when the system setting *When switching
-  to an application, switch to a Space with open windows for the application* is off. If the app is not
+  Mission Control shortcuts Control+Left / Right (on by default) even when the system setting _When switching
+  to an application, switch to a Space with open windows for the application_ is off. If the app is not
   running, or has a window on the current desktop, nothing changes. On macOS the nearest Space with a window of
   the app is gone to directly, left or right and however many Spaces away, without stopping in between, and
   the window is raised and checked to be in front. How it works: `docs/OTHER_DESKTOPS.md`.
@@ -266,16 +265,16 @@
   XInput2 grabs and shortcuts are sent with XTest. `scripts/package-linux.sh` builds a tarball with an
   installer. Building needs the development files of libx11, libxi, libxtst and libxrandr (see
   `CONTRIBUTING.md`). The design and what is and is not built are in `docs/LINUX_MIGRATION.md`.
-- **Linux: Open app follows the app to its workspace.** The window manager does the switching: an *Open app*
+- **Linux: Open app follows the app to its workspace.** The window manager does the switching: an _Open app_
   slice for a program that is already running asks it to activate the app's window, and the usual window
-  managers go to the workspace that window is on. **Settings > Behavior > Other workspaces** offers *Switch*
-  (the default) and *Do nothing*; *Bring the window* does not exist on Linux and acts as *Switch*. An app that
+  managers go to the workspace that window is on. **Settings > Behavior > Other workspaces** offers _Switch_
+  (the default) and _Do nothing_; _Bring the window_ does not exist on Linux and acts as _Switch_. An app that
   has no window is started as before. How well this works depends on the window manager and has not been
   checked on real desktops.
 - **Linux: defaults and files.** Built-in shortcuts use Ctrl and the Super key (instead of Cmd), and redo is
   Ctrl+Shift+Z. The Launch and quick-action slices run shell commands that work on every desktop (a file
   manager through `xdg-open`, the first terminal and screenshot tool that is installed, `loginctl
-  lock-session`, Super+. for the emoji picker). Settings and backups are kept in `~/.config/cursorpie` (or
+lock-session`, Super+. for the emoji picker). Settings and backups are kept in `~/.config/cursorpie` (or
   `$XDG_CONFIG_HOME/cursorpie`), and exports go to your download folder as `user-dirs.dirs` names it, for
   example `~/Unduhan` on an Indonesian system. `config.json` keeps its format, so a file from macOS or Windows
   still opens (app ids from another OS are kept but do not match).
