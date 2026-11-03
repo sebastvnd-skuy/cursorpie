@@ -571,12 +571,6 @@ fn slider_fraction(v: f64, range: (f64, f64)) -> f32 {
     }
 }
 
-/// The value of `range` at `fraction` along the rail; whole numbers when `integral`.
-fn slider_value(fraction: f32, range: (f64, f64), integral: bool) -> f64 {
-    let v = range.0 + (range.1 - range.0) * f64::from(fraction.clamp(0.0, 1.0));
-    if integral { v.round() } else { v }
-}
-
 /// The "nice" numbers steps and anchors are taken from: 1, 2, 5, 10, 20, 50, 100, ... (and the
 /// tenths below one, for a slider of small fractional numbers). With `quarters`, 25, 250, ... too,
 /// which suit marks (0, 25, 50, 75, 100) but not steps (2.5 is no whole number).
@@ -1644,16 +1638,20 @@ mod tests {
         assert_eq!(slider_fraction(9999.0, range), 1.0, "clamped");
         assert_eq!(slider_fraction(5.0, (3.0, 3.0)), 0.0, "an empty range");
         for v in [150.0, 500.0, 1200.0, 1500.0] {
-            let back = slider_value(slider_fraction(v, range), range, true);
+            let back = slider_snap(slider_fraction(v, range), range, 50.0, true, true);
             assert_eq!(back, v, "{v} survives the round trip");
         }
         assert_eq!(
-            slider_value(0.5, (0.0, 3.0), true),
+            slider_snap(0.5, (0.0, 3.0), 1.0, true, true),
             2.0,
             "rounds to a whole number"
         );
-        assert_eq!(slider_value(0.5, (0.0, 3.0), false), 1.5);
-        assert_eq!(slider_value(7.0, (0.0, 10.0), true), 10.0, "clamped");
+        assert_eq!(slider_snap(0.5, (0.0, 3.0), 1.0, false, true), 1.5);
+        assert_eq!(
+            slider_snap(7.0, (0.0, 10.0), 1.0, true, true),
+            10.0,
+            "clamped"
+        );
     }
 
     #[test]
