@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.4
+
 - **CursorPie looks like its website.** Settings, the welcome window and the pie now use the colors of the site: a
   cream page with paper-white panels and sage-green neutrals (and graphite with a faint sage tint in the dark
   appearance, so the accent still stands out). A new **Sage** accent is the first swatch and the default of a new
