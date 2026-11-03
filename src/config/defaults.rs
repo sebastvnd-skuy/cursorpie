@@ -7,8 +7,8 @@
 //! as a parameter in its `_for` form (so tests cover both); the plain form uses the OS the build runs on.
 
 use super::{
-    Action, AppGesture, Appearance, CONFIG_VERSION, Config, DesktopMode, Item, PieStyle, Profile,
-    SideTarget, TargetApp,
+    Action, AppGesture, AppIconStyle, Appearance, CONFIG_VERSION, Config, DesktopMode, Item,
+    PieStyle, Profile, SideTarget, TargetApp,
 };
 use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT, Shortcut, key};
 use crate::platform::Os;
@@ -325,7 +325,7 @@ impl Config {
             pie_hold_ms: 500,
             settings_hold_ms: 1200,
             pie_size: 200.0,
-            accent: [88, 86, 214],
+            accent: [90, 120, 94],
             trigger_button: 2,
             flick: false,
             sound: false,
@@ -343,6 +343,7 @@ impl Config {
             inactive_color: [232, 86, 86],
             preview_ms: 900,
             center_app_icon: true,
+            app_icon_style: AppIconStyle::Glyph,
             show_labels: true,
             sleep_after_s: 60,
             appearance: Appearance::System,
@@ -461,7 +462,7 @@ mod tests {
         assert_eq!(c.pie_hold_ms, 500);
         assert_eq!(c.settings_hold_ms, 1200);
         assert_eq!(c.pie_size, 200.0);
-        assert_eq!(c.accent, [88, 86, 214]);
+        assert_eq!(c.accent, [90, 120, 94]);
         assert_eq!(c.trigger_button, 2);
         assert_eq!(c.double_click_ms, 260);
         assert_eq!(c.sleep_after_s, 60);

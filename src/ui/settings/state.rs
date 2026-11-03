@@ -62,6 +62,17 @@ impl AddCatalog {
     }
 }
 
+/// The dialogs of the profile toolbar (Menu tab). Each one is a centered sheet over the window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProfileSheet {
+    /// Name and app of a new profile.
+    New,
+    /// The name of the current profile.
+    Rename,
+    /// The apps the current profile applies to.
+    Apps,
+}
+
 /// Editor-only state (kept apart from the edited config so both can be borrowed at once).
 pub struct Ed {
     pub tab: Tab,
@@ -72,6 +83,8 @@ pub struct Ed {
     /// the "New profile" form: name and the app the profile belongs to
     pub new_profile_name: String,
     pub new_profile_app: String,
+    /// the profile dialog that is open over the window, if any
+    pub profile_sheet: Option<ProfileSheet>,
     pub nav: Vec<usize>,
     pub sel: Option<usize>,
     pub adding: bool,
@@ -110,6 +123,7 @@ impl Ed {
             new_app: String::new(),
             new_profile_name: String::new(),
             new_profile_app: String::new(),
+            profile_sheet: None,
             nav: Vec::new(),
             sel: None,
             adding: false,
@@ -132,14 +146,16 @@ impl Ed {
         self.icons_not_listed = found.not_listed;
     }
 
-    /// Whether a sheet (the "Add a slice" panel or the icon picker) is open over the window.
+    /// Whether a sheet (the "Add a slice" panel, the icon picker or a profile dialog) is open over
+    /// the window.
     pub fn sheet_open(&self) -> bool {
-        self.adding || self.picking_icon
+        self.adding || self.picking_icon || self.profile_sheet.is_some()
     }
 
     /// Closes the open sheet. Returns whether there was one.
     pub fn close_sheet(&mut self) -> bool {
         let was = self.sheet_open();
+        self.profile_sheet = None;
         self.adding = false;
         self.add_catalog = None;
         self.picking_icon = false;

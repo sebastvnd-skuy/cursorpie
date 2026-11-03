@@ -64,8 +64,7 @@ impl App {
             self.ed.stop_recording();
             self.ed.close_sheet();
             self.confirm_quit = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            self.raise_settings(ctx, "quit");
             ctx.request_repaint();
         } else {
             self.quit(ctx);

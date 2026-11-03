@@ -7,6 +7,7 @@ use crate::platform;
 use crate::tap::{PAUSED, TAP_ACTIVE};
 use crate::ui::app::App;
 use crate::ui::draw::rgb;
+use crate::ui::settings::picker::spawn_file_picker;
 use crate::ui::settings::widgets::*;
 use crate::ui::symbols;
 use eframe::egui;
@@ -130,16 +131,13 @@ impl App {
                 )
                 .clicked()
                 {
-                    let (tx, ctx) = (self.tx.clone(), ui.ctx().clone());
-                    std::thread::spawn(move || {
-                        if let Some(f) = platform::choose_file(
-                            platform::FileKind::Json,
-                            "Choose a CursorPie config",
-                        ) {
-                            let _ = tx.send(Msg::ImportPicked(f));
-                            ctx.request_repaint();
-                        }
-                    });
+                    spawn_file_picker(
+                        self.tx.clone(),
+                        ui.ctx().clone(),
+                        platform::FileKind::Json,
+                        "Choose a CursorPie config",
+                        |f| Some(Msg::ImportPicked(f)),
+                    );
                 }
                 if button(
                     ui,

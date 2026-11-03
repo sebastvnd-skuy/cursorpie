@@ -62,7 +62,11 @@ impl App {
                 }
             }
             Msg::Warm { general, app } => self.warm(ctx, general, app),
-            Msg::Refocus => ctx.send_viewport_cmd(egui::ViewportCommand::Focus),
+            Msg::Refocus => {
+                if self.settings_open {
+                    self.raise_settings(ctx, "chooser_closed");
+                }
+            }
             Msg::HidePie => {
                 diag::log!(
                     "ui",

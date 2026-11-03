@@ -1,23 +1,25 @@
 //! The functions every platform backend provides (see the table in `platform/mod.rs`), for Linux.
 //!
 //! This first release supports X11 sessions (and XWayland for the windows it can see). What it does
-//! not do yet, and why, is listed in `docs/LINUX_MIGRATION.md`: app icons, a tray icon and
-//! keyboard-layout labels fall back to the same behavior as the stub, and Wayland-native windows are
-//! invisible to it.
+//! not do yet, and why, is listed in `docs/LINUX_MIGRATION.md`: a tray icon and keyboard-layout
+//! labels fall back to the same behavior as the stub, and Wayland-native windows are invisible to
+//! it.
 
 use super::desktop_entry::Index;
+use super::icontheme::{self, Found};
 use super::launch::{self, Chooser, Launch};
 use super::roles::{self, Role};
 use super::{autostart, inputdev, x11, xdg, xlib};
 use crate::config::DesktopMode;
 use crate::geometry::Point;
 use crate::keys::Shortcut;
-use crate::platform::{FileKind, NativeIcon, ScreenRect, spawn_reaped};
+use crate::platform::{FileKind, NativeIcon, ScreenRect, chooser, spawn_reaped};
 use crate::tap::Kind;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -38,9 +40,125 @@ pub fn bundle_id_of(app_path: &str) -> Option<String> {
     launch::app_id_of_path(app_path)
 }
 
-/// Icons are not read yet; the pie shows its own glyph instead.
-pub fn app_icon(_bundle: &str) -> Option<NativeIcon> {
-    None
+/// The real icon of an app: the `Icon=` of its desktop entry, found in the icon themes (see
+/// [`icontheme`]). `bundle` is an app id or a role such as `@browser`. A PNG is read directly; an
+/// SVG needs `rsvg-convert` (see [`render_svg`]). None while the desktop entries have not been
+/// scanned yet (the icon is asked for again a little later), for an app without an entry or icon,
+/// and when no file can be read; the pie then shows its own glyph.
+pub fn app_icon(bundle: &str) -> Option<NativeIcon> {
+    let index = x11::index()?;
+    let app = match Role::parse(bundle) {
+        Some(role) => role_app(role, &index)?,
+        None => bundle.trim().to_string(),
+    };
+    let Some(icon) = index.entry_for(&app).and_then(|e| e.icon.clone()) else {
+        eprintln!("CursorPie: app icon for {bundle}: no desktop entry with an Icon= line");
+        return None;
+    };
+    let home = crate::config::home();
+    let data_home = std::env::var("XDG_DATA_HOME").ok();
+    let data_dirs = std::env::var("XDG_DATA_DIRS").ok();
+    let icon_dirs = xdg::icon_dirs(&home, data_home.as_deref(), data_dirs.as_deref());
+    let pixmaps = xdg::pixmap_dirs(&home, data_home.as_deref(), data_dirs.as_deref());
+    let themes = icon_themes(&home, &icon_dirs);
+    let found = icontheme::find(&icon, themes, &icon_dirs, &pixmaps, icontheme::WANT);
+    if found.is_empty() {
+        eprintln!(
+            "CursorPie: app icon for {bundle}: no PNG or SVG named {icon:?} in the icon themes"
+        );
+    }
+    found.iter().find_map(|f| match f {
+        Found::Png(path) => read_png(path),
+        Found::Svg(path) => render_svg(path),
+    })
+}
+
+/// The icon themes to search: the one the desktop uses, the ones it inherits from, `hicolor`. It
+/// is worked out once, so a theme changed while CursorPie runs is noticed after a restart.
+fn icon_themes(home: &Path, icon_dirs: &[PathBuf]) -> &'static [String] {
+    static THEMES: OnceLock<Vec<String>> = OnceLock::new();
+    THEMES.get_or_init(|| {
+        let config = xdg::config_home(home, std::env::var("XDG_CONFIG_HOME").ok().as_deref());
+        let read = |path: PathBuf| std::fs::read_to_string(path).ok();
+        // KDE and GTK write the theme to a file; GNOME keeps it in gsettings (which also answers
+        // on KDE, with GNOME's default), so it is asked last
+        let current = read(config.join("kdeglobals"))
+            .and_then(|t| icontheme::kde_theme(&t))
+            .or_else(|| {
+                read(config.join("gtk-3.0/settings.ini")).and_then(|t| icontheme::gtk_theme(&t))
+            })
+            .or_else(|| {
+                let out = Command::new("gsettings")
+                    .args(["get", "org.gnome.desktop.interface", "icon-theme"])
+                    .stdin(Stdio::null())
+                    .stderr(Stdio::null())
+                    .output()
+                    .ok()?;
+                if !out.status.success() {
+                    return None;
+                }
+                icontheme::gsettings_theme(&String::from_utf8_lossy(&out.stdout))
+            });
+        icontheme::theme_chain(current.as_deref(), |name| {
+            icon_dirs
+                .iter()
+                .find_map(|d| std::fs::read_to_string(d.join(name).join("index.theme")).ok())
+        })
+    })
+}
+
+/// The side of the biggest icon file that is read (an icon is shrunk to 128 px anyway).
+const MAX_ICON_SIDE: u32 = 2048;
+
+/// A PNG file as pixels.
+fn read_png(path: &Path) -> Option<NativeIcon> {
+    let (w, h) = image::image_dimensions(path).ok()?;
+    if w > MAX_ICON_SIDE || h > MAX_ICON_SIDE {
+        return None;
+    }
+    let img = image::open(path).ok()?.into_rgba8();
+    Some(NativeIcon::Rgba {
+        width: img.width(),
+        height: img.height(),
+        data: img.into_raw(),
+    })
+}
+
+/// An SVG file as pixels, drawn by `rsvg-convert` (package `librsvg2-tools` on Fedora,
+/// `librsvg2-bin` on Debian and Ubuntu) because CursorPie has no SVG renderer of its own. Without
+/// that program an icon that exists only as SVG is not shown; the one hint says so.
+fn render_svg(path: &Path) -> Option<NativeIcon> {
+    static HINTED: AtomicBool = AtomicBool::new(false);
+    let side = icontheme::WANT.to_string();
+    let out = match Command::new("rsvg-convert")
+        .args(["-w", &side, "-h", &side, "-a"])
+        .arg(path)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(out) => out,
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound && !HINTED.swap(true, Ordering::SeqCst) {
+                eprintln!(
+                    "CursorPie: some app icons are SVG only; install rsvg-convert \
+                     (librsvg2-tools) to show them"
+                );
+            }
+            return None;
+        }
+    };
+    if !out.status.success() {
+        return None;
+    }
+    let img = image::load_from_memory_with_format(&out.stdout, image::ImageFormat::Png)
+        .ok()?
+        .into_rgba8();
+    Some(NativeIcon::Rgba {
+        width: img.width(),
+        height: img.height(),
+        data: img.into_raw(),
+    })
 }
 
 /// There is no Dock to hide the app from.
@@ -130,6 +248,87 @@ pub fn post_mouse(_pos: Point, kind: Kind, button: i64) {
 pub fn activate_app(bundle: &str) {
     if let Some(c) = x11::conn() {
         c.activate(bundle);
+    }
+}
+
+/// How often [`raise_own_window`] looks for the window while the window manager does not list it.
+const RAISE_STEP: Duration = Duration::from_millis(25);
+/// How long [`raise_own_window`] keeps looking. A window is listed within a few milliseconds of
+/// being shown; a second is for a loaded machine.
+const RAISE_WAIT: Duration = Duration::from_millis(1000);
+/// How long after the request the diagnostic log looks at who has the focus.
+const RAISE_SETTLE: Duration = Duration::from_millis(200);
+
+/// Set while a thread of [`raise_own_window`] still looks for the window.
+static RAISE_WAITING: AtomicBool = AtomicBool::new(false);
+
+/// Brings CursorPie's own window (Settings, or the welcome window) to the front, on whichever
+/// workspace it is. Returns at once: the work is done on a thread of its own.
+///
+/// The toolkit's focus request cannot do this on X11: it is sent as an application, and a window
+/// manager that sees another program with the focus only flashes the taskbar (see
+/// [`toplevels::SOURCE_PAGER`](super::toplevels::SOURCE_PAGER)). This asks as a pager does, like
+/// "Open app" does for another app's window. The window may have been shown a moment ago and not be
+/// known to the window manager yet, so the request is repeated until it is listed. One thread
+/// waiting is enough: a request that comes while it waits is the same request.
+pub fn raise_own_window() {
+    if RAISE_WAITING.swap(true, Ordering::SeqCst) {
+        diag::log!("x11", "raise_own_merged");
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("cursorpie-raise".into())
+        .spawn(raise_own_and_watch);
+    if spawned.is_err() {
+        RAISE_WAITING.store(false, Ordering::SeqCst);
+    }
+}
+
+/// The body of the thread of [`raise_own_window`].
+fn raise_own_and_watch() {
+    let Some(conn) = x11::conn() else {
+        RAISE_WAITING.store(false, Ordering::SeqCst);
+        return;
+    };
+    let started = Instant::now();
+    let mut tries = 0u32;
+    let raised = loop {
+        tries += 1;
+        if let Some(r) = conn.raise_own() {
+            break Some(r);
+        }
+        if started.elapsed() >= RAISE_WAIT {
+            break None;
+        }
+        std::thread::sleep(RAISE_STEP);
+    };
+    RAISE_WAITING.store(false, Ordering::SeqCst);
+    // what the window manager was asked, next to what the window looked like when it was asked
+    diag::log!(
+        "x11",
+        "raise_own",
+        found = raised.is_some(),
+        tries = tries,
+        waited_ms = started.elapsed(),
+        window = raised.map(|r| r.window),
+        window_desktop = raised.and_then(|r| r.window_desktop),
+        current_desktop = raised.and_then(|r| r.current_desktop),
+        hidden = raised.map(|r| r.hidden),
+        was_active = raised.map(|r| r.was_active)
+    );
+    // ...and what it did about it: only worth the wait while the log is on
+    if let Some(r) = raised
+        && diag::enabled("x11")
+    {
+        std::thread::sleep(RAISE_SETTLE);
+        diag::log!(
+            "x11",
+            "raise_own_seen",
+            active_ours = conn.is_active(r.window),
+            current_desktop = conn.current_desktop(),
+            asked_from_desktop = r.current_desktop,
+            window_desktop = r.window_desktop
+        );
     }
 }
 
@@ -268,6 +467,13 @@ fn raise_or_open(a: &str) {
 
 /// Opens a link or a file with the default application.
 pub fn open_url(target: &str) {
+    // only the scheme is logged: the rest of a link can be personal
+    diag::log!(
+        "act",
+        "open_url",
+        scheme = target.split(':').next().unwrap_or(""),
+        xdg_open = on_path("xdg-open")
+    );
     spawn_reaped(detached("xdg-open").arg(target));
 }
 
@@ -303,22 +509,11 @@ pub fn choose_file(kind: FileKind, prompt: &str) -> Option<String> {
         eprintln!("CursorPie: install zenity or kdialog to choose files, or type the path");
         return None;
     };
-    let out = Command::new(tool.program())
-        .args(launch::chooser_args(tool, kind, prompt))
+    let mut cmd = Command::new(tool.program());
+    cmd.args(launch::chooser_args(tool, kind, prompt))
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let path = String::from_utf8(out.stdout).ok()?;
-    let path = path.trim();
-    if path.is_empty() {
-        None
-    } else {
-        Some(path.to_string())
-    }
+        .stderr(Stdio::null());
+    chooser::run(&mut cmd)
 }
 
 /// A soft hover sound through the sound theme, if `canberra-gtk-play` is installed. At most about

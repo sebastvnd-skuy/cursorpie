@@ -18,6 +18,8 @@ pub struct Entry {
     pub exec_name: Option<String>,
     /// Path of the `.desktop` file (what `gio launch` takes).
     pub path: String,
+    /// `Icon`: an icon name (looked up in the icon themes, see `icontheme`) or an absolute path.
+    pub icon: Option<String>,
 }
 
 /// An app id in canonical form: trimmed, lower case, without a `.desktop` suffix.
@@ -81,6 +83,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
     let mut name: Option<String> = None;
     let mut wm_class: Option<String> = None;
     let mut exec: Option<String> = None;
+    let mut icon: Option<String> = None;
     let mut hidden = false;
     for line in text.lines() {
         let line = line.trim();
@@ -103,6 +106,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
             "Name" => name = Some(value.to_string()),
             "StartupWMClass" if !value.is_empty() => wm_class = Some(value.to_string()),
             "Exec" => exec = Some(value.to_string()),
+            "Icon" if !value.is_empty() => icon = Some(value.to_string()),
             "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
             _ => {}
         }
@@ -120,6 +124,7 @@ pub fn parse(file_name: &str, path: &str, text: &str) -> Option<Entry> {
         wm_class,
         exec_name: exec.as_deref().and_then(exec_program),
         path: path.to_string(),
+        icon,
     })
 }
 
@@ -175,6 +180,25 @@ impl Index {
         None
     }
 
+    /// The installed entry that `app` stands for: `app` is what the user typed or picked, an app
+    /// id, a window class or a program name (a path is cut down to its file name).
+    pub fn entry_for(&self, app: &str) -> Option<&Entry> {
+        let key = name_key(app);
+        if key.is_empty() {
+            return None;
+        }
+        self.find(&key)
+            .or_else(|| {
+                self.canonical(&[key.as_str()])
+                    .and_then(|id| self.find(&id))
+            })
+            .or_else(|| {
+                self.entries
+                    .iter()
+                    .find(|e| e.exec_name.as_deref() == Some(key.as_str()))
+            })
+    }
+
     /// Every name a window of the app `app` may report, lower case. `app` is what the user typed or
     /// picked: an app id, a program name or a path. The result holds that name, and, when it names
     /// an installed entry, the entry's id, window class and program. The window manager's name for
@@ -185,17 +209,7 @@ impl Index {
         if key.is_empty() {
             return Vec::new();
         }
-        let entry = self
-            .find(&key)
-            .or_else(|| {
-                self.canonical(&[key.as_str()])
-                    .and_then(|id| self.find(&id))
-            })
-            .or_else(|| {
-                self.entries
-                    .iter()
-                    .find(|e| e.exec_name.as_deref() == Some(key.as_str()))
-            });
+        let entry = self.entry_for(app);
         let mut out = vec![key.clone()];
         if let Some(e) = entry {
             out.push(e.id.clone());
@@ -258,6 +272,7 @@ mod tests {
             wm_class: wm.map(str::to_string),
             exec_name: None,
             path: format!("/usr/share/applications/{id}.desktop"),
+            icon: None,
         }
     }
 
@@ -277,6 +292,41 @@ mod tests {
         assert_eq!(e.name, "Firefox", "the localized Name[de] is ignored");
         assert_eq!(e.wm_class.as_deref(), Some("firefox"));
         assert_eq!(e.path, "/p/Firefox.desktop");
+    }
+
+    #[test]
+    fn the_icon_of_an_entry_is_read() {
+        let text = "[Desktop Entry]\nType=Application\nName=A\nIcon=org.example.A\nIcon[de]=nope\n[Desktop Action x]\nIcon=other\n";
+        let e = parse("a.desktop", "/a", text).unwrap();
+        assert_eq!(e.icon.as_deref(), Some("org.example.A"));
+        let none = parse(
+            "b.desktop",
+            "/b",
+            "[Desktop Entry]\nType=Application\nName=B\nIcon=\n",
+        );
+        assert_eq!(none.unwrap().icon, None);
+    }
+
+    #[test]
+    fn an_entry_is_found_by_id_class_or_program() {
+        let mut firefox = entry("org.mozilla.firefox", Some("firefox"));
+        firefox.exec_name = Some("firefox-bin".into());
+        let idx = Index::new(vec![firefox, entry("gedit", None)]);
+        for app in [
+            "org.mozilla.firefox",
+            "Firefox.desktop",
+            "firefox",
+            "/usr/bin/firefox-bin",
+        ] {
+            assert_eq!(
+                idx.entry_for(app).map(|e| e.id.as_str()),
+                Some("org.mozilla.firefox"),
+                "{app}"
+            );
+        }
+        assert_eq!(idx.entry_for("gedit").map(|e| e.id.as_str()), Some("gedit"));
+        assert!(idx.entry_for("nothing").is_none());
+        assert!(idx.entry_for("  ").is_none());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Helpers that shell out to tools shipped with macOS (`open`, `osascript`, `mdls`, `afplay`).
 
-use crate::platform::{FileKind, spawn_reaped};
+use crate::platform::{FileKind, chooser, spawn_reaped};
 use std::process::Command;
 
 /// Uniform Type Identifier that `osascript` filters on.
@@ -17,16 +17,7 @@ pub fn choose_file(kind: FileKind, prompt: &str) -> Option<String> {
     let uti = uti(kind);
     let script =
         format!(r#"POSIX path of (choose file of type {{"{uti}"}} with prompt "{prompt}")"#);
-    let out = Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None; // cancelled
-    }
-    let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!p.is_empty()).then_some(p)
+    chooser::run(Command::new("osascript").arg("-e").arg(script))
 }
 
 /// CFBundleIdentifier of an .app bundle, via Spotlight metadata.

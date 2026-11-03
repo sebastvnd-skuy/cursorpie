@@ -108,6 +108,7 @@ mod tests {
             wm_class: None,
             exec_name: None,
             path: "/usr/share/applications/firefox.desktop".into(),
+            icon: None,
         }])
     }
 

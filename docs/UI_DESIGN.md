@@ -25,7 +25,7 @@ settings of a Mac, and follows from that:
 
 - **Calm and roomy.** Light surfaces, large rounded cards, no borders where a tint does the job, and
   space around everything. Nothing competes with the pie or with the thing you are editing.
-- **One accent.** The user picks the accent color (indigo by default, the color of the logo). It marks
+- **One accent.** The user picks the accent color (sage by default, the green of the website). It marks
   focus, the primary button and the selected entry, so it always means "this".
 - **One kind of popup.** Whatever opens on top of a page is either a *sheet* (a modal card over a dimmed
   window: adding a slice, choosing an icon, confirming a quit) or a *popover* (a small card under the button that opened it:
@@ -39,11 +39,12 @@ settings of a Mac, and follows from that:
 
 ## Fonts and icons
 
-Text is **Inter** (Regular for text, SemiBold for titles); icons are **Phosphor** (Regular and Fill).
-Both are open licenses (`assets/fonts/LICENSE-*.txt`), compiled into the binary and cut down to what the
-interface uses by `scripts/subset-fonts.py` (340 KB for the four files), so the app looks the same on every
-system and loads nothing at run time. `ui::fonts` registers three families: `Proportional` (Inter first,
-egui's fonts behind it as fallback for emoji and other scripts), `semibold` and `icons` / `icons_fill`.
+Text is **Inter** (Regular for text, SemiBold for titles); icons are **Phosphor** (Regular and Fill); the name "CursorPie" in headings (About, Welcome) is set in
+**Isometra Regular**, the lettering of the logo (`ui::fonts::brand_name`). All are open licenses (`assets/fonts/LICENSE-*.txt`), compiled into the binary and cut down to what the
+interface uses by `scripts/subset-fonts.py` (Isometra is kept whole), so the app looks the same on every
+system and loads nothing at run time. `ui::fonts` registers four families: `Proportional` (Inter first,
+egui's fonts behind it as fallback for emoji and other scripts), `semibold`, `brand` (Isometra) and
+`icons` / `icons_fill`.
 
 Icons are named in `ui::symbols` (`symbols::CHECK`, ...). A slice stores an icon as the string
 `ico:<name>`; `symbols::resolve` turns it into a glyph, and also maps the letter icons older versions
@@ -89,6 +90,15 @@ missing from either weight.
   on one side only.
 
 ### Palette
+
+The colors are the ones of the website (`assets/site.css`), so the app and the site look like one product:
+a cream page, paper-white panels and sage-green neutrals in the light appearance, and the sage green as the default
+accent (`ACCENTS[0]`, `[90, 120, 94]`: deep enough for white text). The dark appearance is graphite with only a faint
+sage tint, not the full green of the site's dark mode, so the accent stands out from the panels. The accent is
+chosen to carry white text on a fill, so when it is used as the color of text (links, the version badge) it goes through
+`theme::accent_text`, which lightens or darkens it until it reads at 4.5:1. The logo is the real artwork (`assets/cursorpie-mark.png`,
+`assets/cursorpie-logo-black.png`, see `brand.rs`) tinted with the text color: near black on the light appearance, near white
+on the dark one. The sidebar shows the wordmark, which has the name written in it.
 
 | Field of `pal()` | Use |
 |---|---|

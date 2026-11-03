@@ -22,6 +22,7 @@
 //! | `set_accessory_policy` | hide the Dock icon (macOS only, no-op elsewhere) |
 //! | `clear_window_frame` | strip the OS frame of the native window handle (Windows only, no-op elsewhere) |
 //! | `window_manager_may_recenter` | whether the window manager may ignore the position of a hidden window when it is shown again (X11 only) |
+//! | `raise_own_window` | bring CursorPie's own window (Settings) to the front, on whichever workspace it is (X11 only: the toolkit's own request is refused there, elsewhere it is enough) |
 //! | `cursor_pos`, `display_rects` | pointer position and display bounds, in logical points |
 //! | `is_trusted_cached`, `open_accessibility_settings`, `open_input_monitoring_settings` | input permission |
 //! | `mouse_devices` | the mice the OS lists and their extra buttons, see [`mouse`](crate::mouse) |
@@ -39,6 +40,10 @@
 
 pub mod desktops;
 pub mod keymap;
+
+// Runs the file choosers that are separate programs: zenity and kdialog on Linux, osascript on macOS.
+#[cfg(unix)]
+pub(crate) mod chooser;
 
 // The pure Linux helpers (session, desktop entries, window hit test, XDG paths) compile on every OS so
 // their tests run everywhere; the X11 backend inside is only compiled on Linux.

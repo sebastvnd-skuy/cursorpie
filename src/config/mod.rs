@@ -58,6 +58,11 @@ mod tests {
         assert_eq!(c.side_default, SideTarget::App);
         assert!(c.focus_target && c.side_adopt && c.right_click_switch && c.side_indicator);
         assert!(c.center_app_icon);
+        assert_eq!(
+            c.app_icon_style,
+            AppIconStyle::Glyph,
+            "an old file keeps the silhouette"
+        );
         assert!(c.show_labels, "an old file keeps the names");
         assert!(!c.side_forget);
         assert_eq!(c.desktop_mode, DesktopMode::SwitchToApp);

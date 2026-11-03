@@ -16,10 +16,10 @@ pub fn support_dir(home: &Path, xdg_config_home: Option<&str>) -> PathBuf {
     config_home(home, xdg_config_home).join("cursorpie")
 }
 
-/// The `applications` directories that may hold desktop entries, most specific first: the user's,
-/// the system's (`XDG_DATA_DIRS`, default `/usr/local/share:/usr/share`), then the Flatpak and Snap
-/// export directories.
-pub fn application_dirs(
+/// The data directories, most specific first: the user's (`XDG_DATA_HOME`, default
+/// `~/.local/share`), the system's (`XDG_DATA_DIRS`, default `/usr/local/share:/usr/share`), then
+/// the Flatpak and Snap export directories.
+fn data_bases(
     home: &Path,
     xdg_data_home: Option<&str>,
     xdg_data_dirs: Option<&str>,
@@ -39,14 +39,57 @@ pub fn application_dirs(
     bases.push(home.join(".local/share/flatpak/exports/share"));
     bases.push(PathBuf::from("/var/lib/flatpak/exports/share"));
     bases.push(PathBuf::from("/var/lib/snapd/desktop"));
+    bases
+}
+
+/// `<base>/<sub>` for each data directory, without repeats.
+fn data_subdirs(bases: Vec<PathBuf>, sub: &str) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for b in bases {
-        let apps = b.join("applications");
-        if !out.contains(&apps) {
-            out.push(apps);
+        let dir = b.join(sub);
+        if !out.contains(&dir) {
+            out.push(dir);
         }
     }
     out
+}
+
+/// The `applications` directories that may hold desktop entries, most specific first: the user's,
+/// the system's (`XDG_DATA_DIRS`, default `/usr/local/share:/usr/share`), then the Flatpak and Snap
+/// export directories.
+pub fn application_dirs(
+    home: &Path,
+    xdg_data_home: Option<&str>,
+    xdg_data_dirs: Option<&str>,
+) -> Vec<PathBuf> {
+    data_subdirs(
+        data_bases(home, xdg_data_home, xdg_data_dirs),
+        "applications",
+    )
+}
+
+/// The `icons` directories that may hold icon themes, most specific first: the user's, the old
+/// `~/.icons`, then the system's, Flatpak's and Snap's.
+pub fn icon_dirs(
+    home: &Path,
+    xdg_data_home: Option<&str>,
+    xdg_data_dirs: Option<&str>,
+) -> Vec<PathBuf> {
+    let mut dirs = data_subdirs(data_bases(home, xdg_data_home, xdg_data_dirs), "icons");
+    let old = home.join(".icons");
+    if !dirs.contains(&old) {
+        dirs.insert(1usize.min(dirs.len()), old);
+    }
+    dirs
+}
+
+/// The `pixmaps` directories, where older applications keep an icon that is in no theme.
+pub fn pixmap_dirs(
+    home: &Path,
+    xdg_data_home: Option<&str>,
+    xdg_data_dirs: Option<&str>,
+) -> Vec<PathBuf> {
+    data_subdirs(data_bases(home, xdg_data_home, xdg_data_dirs), "pixmaps")
 }
 
 /// The user's download directory, from the text of `~/.config/user-dirs.dirs`. It is localized
@@ -129,6 +172,30 @@ mod tests {
             1
         );
         assert!(!custom.iter().any(|p| p.starts_with("rel")));
+    }
+
+    #[test]
+    fn icon_and_pixmap_dirs_follow_the_data_dirs() {
+        let home = Path::new("/home/ann");
+        let icons: Vec<String> = icon_dirs(home, None, None).iter().map(|p| u(p)).collect();
+        assert_eq!(icons[0], "/home/ann/.local/share/icons");
+        assert_eq!(icons[1], "/home/ann/.icons");
+        assert_eq!(icons[2], "/usr/local/share/icons");
+        assert_eq!(icons[3], "/usr/share/icons");
+        assert!(icons.contains(&"/var/lib/flatpak/exports/share/icons".to_string()));
+        assert_eq!(icons.iter().filter(|p| *p == "/home/ann/.icons").count(), 1);
+        let pixmaps: Vec<String> = pixmap_dirs(home, Some("/h"), Some("/usr/share:/usr/share"))
+            .iter()
+            .map(|p| u(p))
+            .collect();
+        assert_eq!(pixmaps[0], "/h/pixmaps");
+        assert_eq!(
+            pixmaps
+                .iter()
+                .filter(|p| *p == "/usr/share/pixmaps")
+                .count(),
+            1
+        );
     }
 
     #[test]

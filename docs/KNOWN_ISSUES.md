@@ -79,7 +79,10 @@ something, say which distribution, desktop, session type and scaling you use.
   but not built.
 - No tray icon yet. Pause and Quit are in **Settings > General**, and Settings opens by holding the trigger in
   the middle of the pie.
-- No app icons in the pie, and no keyboard-layout labels on non-US layouts.
+- App icons in the pie come from the `Icon=` of the app's desktop entry. A PNG is read directly; an icon that
+  exists only as SVG (many GNOME apps) is drawn by `rsvg-convert`, which has to be installed (`librsvg2-tools` on
+  Fedora). Without it such an app shows the icon of the mode, as before. No keyboard-layout labels on non-US
+  layouts.
 - Only the middle button can be the trigger.
 - **Extra buttons of a mode** (button 5 and up) use the buttons the X server numbers 10 to 20. A mouse that maps its
   thumb buttons differently, or a button map changed with `xinput set-button-map`, may need a scan, and the scan

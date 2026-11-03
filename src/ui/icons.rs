@@ -1,7 +1,7 @@
 //! The icon texture cache shared by the pie and the Settings window.
 //!
 //! An icon string is either text / emoji (nothing to load), the path of an image file, or
-//! `app:<bundle id>` for the real icon of an app (see [`appicon`]). Loading an image means reading
+//! `app:<bundle id>` (or `appcolor:<bundle id>`) for the real icon of an app (see [`appicon`]). Loading an image means reading
 //! and scaling a file; loading an app icon means asking macOS for a multi-size TIFF and decoding
 //! it. Both are far too slow to do on the frame that opens the pie, so decoded textures are kept
 //! here:
@@ -102,7 +102,7 @@ impl IconCache {
     /// Whether `icon` is already in the cache (a remembered failure counts). Costs a lookup and
     /// never decodes anything, so a screen can ask before it spends time on a load.
     pub fn contains(&self, icon: &str) -> bool {
-        if icon.starts_with(appicon::PREFIX) {
+        if appicon::parse(icon).is_some() {
             return self.lru.contains(icon);
         }
         icon_path(icon).is_some_and(|p| self.lru.contains(&*p.to_string_lossy()))
@@ -110,8 +110,9 @@ impl IconCache {
 
     /// The texture for an icon string. None for text icons and for images that cannot be loaded.
     pub fn get(&mut self, ctx: &egui::Context, icon: &str) -> Option<egui::TextureHandle> {
-        // "app:<bundle id>" = the real icon of an app, asked from macOS (see `appicon`)
-        if let Some(bundle) = icon.strip_prefix(appicon::PREFIX) {
+        // "app:<bundle id>" / "appcolor:<bundle id>" = the real icon of an app, asked from the
+        // system (see `appicon`)
+        if let Some((style, bundle)) = appicon::parse(icon) {
             if let Some(e) = self.lru.get(icon) {
                 // a failure is not final: macOS may simply not have had the icon ready. Try again
                 // after a pause, but not on every frame (decoding is not free).
@@ -121,7 +122,7 @@ impl IconCache {
                     return e.tex.clone();
                 }
             }
-            let tex = appicon::load(bundle)
+            let tex = appicon::load(bundle, style)
                 .map(|img| ctx.load_texture(icon, img, egui::TextureOptions::LINEAR));
             let failed_at = tex.is_none().then(Instant::now);
             self.lru.insert(
@@ -173,7 +174,7 @@ pub fn icons_to_warm(c: &Config, profile: usize, target: Option<&str>) -> Vec<St
     if c.center_app_icon
         && let Some(b) = appicon::bundle_for(&p.apps, target)
     {
-        add(&format!("{}{}", appicon::PREFIX, b));
+        add(&appicon::icon_string(c.app_icon_style, b));
     }
     let ring = |items: &[Item], add: &mut dyn FnMut(&str)| {
         for it in items {
@@ -344,6 +345,15 @@ mod tests {
         };
         let w = icons_to_warm(&c, 0, Some("com.example.App"));
         assert!(w.contains(&"app:com.example.App".to_string()));
+        let colored = Config {
+            app_icon_style: crate::config::AppIconStyle::Color,
+            ..c.clone()
+        };
+        assert!(
+            icons_to_warm(&colored, 0, Some("com.example.App"))
+                .contains(&"appcolor:com.example.App".to_string()),
+            "the warm-up asks for the style that will be drawn"
+        );
         assert!(w.contains(&"~/a.png".to_string()) && w.contains(&"~/b.png".to_string()));
         assert_eq!(
             w.iter().filter(|s| *s == "~/a.png").count(),

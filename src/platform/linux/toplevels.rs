@@ -1,6 +1,38 @@
 //! Windows as the window manager reports them, and the decision "which app is under this point".
 //! Pure: the X11 backend gathers the list, this module decides.
 
+use std::os::raw::c_long;
+
+/// The "source indication" of a `_NET_ACTIVE_WINDOW` request (its first data word): who asks for the
+/// window to be activated. A window manager applies focus-stealing prevention to an *application*
+/// (`1`): while another program has the focus it does not raise the window or go to its workspace,
+/// it only flashes the taskbar. It does what a *pager* (`2`) asks, because a pager stands for the
+/// user. The toolkit's own `Focus` request is an application request, which is why Settings could
+/// not be brought forward with it.
+pub const SOURCE_PAGER: c_long = 2;
+
+/// The five data words of a `_NET_ACTIVE_WINDOW` client message that asks, the way a pager does, for
+/// a window to be activated: the source indication, a timestamp (`0`: now), the window that is
+/// active now (`0`: unknown) and two unused words.
+pub fn pager_request() -> [c_long; 5] {
+    [SOURCE_PAGER, 0, 0, 0, 0]
+}
+
+/// The data words of the `_NET_CURRENT_DESKTOP` client message that asks for workspace `desktop`
+/// to be shown (the second word is the timestamp, `0`: now).
+pub fn switch_desktop_request(desktop: u32) -> [c_long; 5] {
+    [desktop as c_long, 0, 0, 0, 0]
+}
+
+/// The workspace to go to before activating a window that is on `window`, when `current` is shown:
+/// `None` if the window is on every workspace, already on the shown one, or the shown one is unknown.
+pub fn desktop_to_switch_to(window: Option<u32>, current: Option<u32>) -> Option<u32> {
+    match (window, current) {
+        (Some(w), Some(c)) if w != c => Some(w),
+        _ => None,
+    }
+}
+
 /// One top-level window.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toplevel {
@@ -79,6 +111,38 @@ pub fn is_skipped_type(type_names: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_is_activated_as_a_pager_would_not_as_an_application() {
+        // winit's `Focus` says 1 ("application") with no timestamp: Mutter, KWin and Openbox then
+        // only flash the taskbar when another program has the focus. Only the pager's 2 is obeyed.
+        let data = pager_request();
+        assert_eq!(data[0], 2, "source indication");
+        assert_ne!(data[0], 1, "an application request is refused");
+        assert_eq!(data[1], 0, "no timestamp: now");
+        assert_eq!(&data[2..], [0, 0, 0], "nothing else is set");
+    }
+
+    #[test]
+    fn another_workspace_is_switched_to_before_activating() {
+        assert_eq!(desktop_to_switch_to(Some(0), Some(1)), Some(0));
+        assert_eq!(
+            desktop_to_switch_to(Some(1), Some(1)),
+            None,
+            "already shown"
+        );
+        assert_eq!(
+            desktop_to_switch_to(None, Some(1)),
+            None,
+            "on every workspace"
+        );
+        assert_eq!(
+            desktop_to_switch_to(Some(2), None),
+            None,
+            "shown one unknown"
+        );
+        assert_eq!(switch_desktop_request(3), [3, 0, 0, 0, 0]);
+    }
 
     fn win(app: &str, x: f64, y: f64, w: f64, h: f64) -> Toplevel {
         Toplevel {
@@ -177,5 +241,12 @@ mod tests {
         assert!(!is_skipped_type(&["_NET_WM_WINDOW_TYPE_NORMAL"]));
         assert!(!is_skipped_type(&["_NET_WM_WINDOW_TYPE_DIALOG"]));
         assert!(!is_skipped_type(&[]));
+    }
+
+    #[test]
+    fn desktop_request_preserves_the_protocol_value() {
+        for desktop in [0, 1, 3, u32::MAX] {
+            assert_eq!(switch_desktop_request(desktop)[0] as u32, desktop);
+        }
     }
 }

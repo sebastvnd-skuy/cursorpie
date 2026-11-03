@@ -277,7 +277,8 @@ pub struct PieColors {
     pub core: Color32,
 }
 
-/// The pie colors for the current appearance: frosted white, or smoked graphite.
+/// The pie colors for the current appearance: frosted paper white, or smoked graphite with a sage
+/// tint (the neutrals of the settings palette, see `ui::settings::theme`).
 pub fn pie_colors() -> PieColors {
     pie_colors_for(dark())
 }
@@ -286,17 +287,17 @@ pub fn pie_colors() -> PieColors {
 pub fn pie_colors_for(dark: bool) -> PieColors {
     if dark {
         PieColors {
-            slice: [46, 46, 52],
-            ghost: [36, 36, 41],
-            ink: Color32::from_rgb(240, 240, 246),
-            core: Color32::from_rgb(30, 30, 35),
+            slice: [47, 51, 49],
+            ghost: [37, 41, 39],
+            ink: Color32::from_rgb(244, 244, 239),
+            core: Color32::from_rgb(31, 34, 32),
         }
     } else {
         PieColors {
-            slice: [252, 252, 254],
-            ghost: [238, 238, 244],
-            ink: Color32::from_rgb(44, 44, 52),
-            core: Color32::from_rgb(255, 255, 255),
+            slice: [255, 254, 250],
+            ghost: [238, 238, 229],
+            ink: Color32::from_rgb(41, 54, 47),
+            core: Color32::from_rgb(255, 254, 250),
         }
     }
 }

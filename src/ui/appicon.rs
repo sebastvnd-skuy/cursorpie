@@ -5,9 +5,12 @@
 //! white glyph: everything that differs from the icon's background color is kept (in white, with
 //! its own transparency) and the background itself is dropped.
 //!
-//! Icons are asked for with the icon string `app:<bundle id>`, see `PREFIX` and `Ed::icon_for`
-//! (which caches the texture, so each app is read from macOS only once).
+//! Icons are asked for with the icon string `app:<bundle id>` (the white glyph) or
+//! `appcolor:<bundle id>` (the icon in its own colors), see `PREFIX`, `PREFIX_COLOR` and
+//! `Ed::icon_for` (which caches the texture, so each app is read from the system only once). The
+//! setting `app_icon_style` decides which of the two the pie asks for, see [`icon_string`].
 
+use crate::config::AppIconStyle;
 use crate::platform;
 use eframe::egui;
 use image::{Rgba, RgbaImage, imageops};
@@ -19,6 +22,30 @@ use tiff::tags::Tag;
 
 /// Icon strings starting with this are the real icon of the app with that bundle id.
 pub const PREFIX: &str = "app:";
+
+/// Icon strings starting with this are the real icon of the app with that bundle id, in its own
+/// colors (not reduced to a white glyph).
+pub const PREFIX_COLOR: &str = "appcolor:";
+
+/// The icon string that asks for the icon of `bundle` in `style`.
+pub fn icon_string(style: AppIconStyle, bundle: &str) -> String {
+    let prefix = match style {
+        AppIconStyle::Glyph => PREFIX,
+        AppIconStyle::Color => PREFIX_COLOR,
+    };
+    format!("{prefix}{bundle}")
+}
+
+/// Splits an icon string made by [`icon_string`] into its style and bundle id. None for anything
+/// else (a text icon, an image file).
+pub fn parse(icon: &str) -> Option<(AppIconStyle, &str)> {
+    if let Some(bundle) = icon.strip_prefix(PREFIX) {
+        Some((AppIconStyle::Glyph, bundle))
+    } else {
+        icon.strip_prefix(PREFIX_COLOR)
+            .map(|bundle| (AppIconStyle::Color, bundle))
+    }
+}
 
 /// Size (px) of the icon texture. The pie shows it at about a third of that.
 const SIZE: u32 = 128;
@@ -34,37 +61,44 @@ pub fn bundle_for<'a>(apps: &'a [String], target: Option<&str>) -> Option<&'a st
     apps.first().map(|a| a.as_str())
 }
 
-/// The icon of `bundle` as a white glyph, ready to become a texture. None if the app is not
-/// installed or its icon cannot be read. Failures are reported on stderr (once per attempt), so a
-/// missing icon can be diagnosed from `cargo run` instead of failing silently.
-pub fn load(bundle: &str) -> Option<egui::ColorImage> {
+/// The icon of `bundle` in `style`, ready to become a texture. None if the app is not installed
+/// or its icon cannot be read. Failures are reported on stderr (once per attempt), so a missing
+/// icon can be diagnosed from `cargo run` instead of failing silently.
+pub fn load(bundle: &str, style: AppIconStyle) -> Option<egui::ColorImage> {
+    let img = resize_straight(&native_image(bundle)?);
+    let img = match style {
+        AppIconStyle::Glyph => to_glyph(&img),
+        AppIconStyle::Color => img,
+    };
+    Some(egui::ColorImage::from_rgba_unmultiplied(
+        [img.width() as usize, img.height() as usize],
+        img.as_raw(),
+    ))
+}
+
+/// The icon of `bundle` as the system gives it, decoded to straight RGBA.
+fn native_image(bundle: &str) -> Option<RgbaImage> {
     let Some(icon) = platform::app_icon(bundle) else {
         eprintln!("CursorPie: app icon for {bundle}: the system returned no icon (app not found?)");
         return None;
     };
-    let img = match icon {
+    match icon {
         platform::NativeIcon::Tiff(data) => match decode_best(&data) {
-            Ok(img) => img,
+            Ok(img) => Some(img),
             Err(why) => {
                 eprintln!(
                     "CursorPie: app icon for {bundle}: cannot decode the TIFF ({} bytes): {why}",
                     data.len()
                 );
-                return None;
+                None
             }
         },
         platform::NativeIcon::Rgba {
             width,
             height,
             data,
-        } => RgbaImage::from_raw(width, height, data)?,
-    };
-    let img = resize_straight(&img);
-    let glyph = to_glyph(&img);
-    Some(egui::ColorImage::from_rgba_unmultiplied(
-        [glyph.width() as usize, glyph.height() as usize],
-        glyph.as_raw(),
-    ))
+        } => RgbaImage::from_raw(width, height, data),
+    }
 }
 
 /// Resizes to `SIZE` x `SIZE` in premultiplied space. Resizing straight RGBA mixes the (black)
@@ -357,6 +391,19 @@ mod tests {
                 .filter(|p| p[3] > 128)
                 .all(|p| p[2] >= 190 && p[1] >= 80)
         );
+    }
+
+    #[test]
+    fn the_icon_string_says_glyph_or_color_and_parses_back() {
+        for style in [AppIconStyle::Glyph, AppIconStyle::Color] {
+            let s = icon_string(style, "com.example.App");
+            assert_eq!(parse(&s), Some((style, "com.example.App")));
+        }
+        assert_eq!(icon_string(AppIconStyle::Glyph, "x"), "app:x");
+        assert_eq!(icon_string(AppIconStyle::Color, "x"), "appcolor:x");
+        assert_eq!(parse("~/icon.png"), None);
+        assert_eq!(parse("ico:copy"), None);
+        assert_eq!(parse("apple"), None, "only the prefixes with a colon count");
     }
 
     #[test]

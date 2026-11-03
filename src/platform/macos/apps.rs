@@ -143,6 +143,9 @@ pub fn window_manager_may_recenter() -> bool {
     false
 }
 
+/// The toolkit's focus request activates the app, also from another Space, so there is nothing more to ask.
+pub fn raise_own_window() {}
+
 /// Current cursor position in global coordinates.
 pub fn cursor_pos() -> Option<(f64, f64)> {
     let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState).ok()?;

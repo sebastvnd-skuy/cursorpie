@@ -2,6 +2,60 @@
 
 ## Unreleased
 
+- **CursorPie looks like its website.** Settings, the welcome window and the pie now use the colors of the site: a
+  cream page with paper-white panels and sage-green neutrals (and graphite with a faint sage tint in the dark
+  appearance, so the accent still stands out). A new **Sage** accent is the first swatch and the default of a new
+  install; the other accents are still there, and a saved accent is not changed. The logo is now the real artwork,
+  with the name in the sidebar, drawn in near black on the light appearance and near white on the dark one. Links and
+  the version badge in the accent are lightened or darkened until they can be read.
+
+- **App icons on Linux.** The pie can now show the real icon of an app in the middle of its own pie, in
+  both styles of **App icon in the pie**. CursorPie reads the `Icon=` of the app's desktop entry and finds it in
+  the icon themes (the user's theme, the ones it inherits from, `hicolor`, `pixmaps`, Flatpak and Snap). PNG
+  icons need nothing more; an icon that is only an SVG needs `rsvg-convert` (`librsvg2-tools`) and is skipped
+  without it. Roles such as `@browser` use the icon of the app that fills them.
+
+- **Choose how the app's icon looks in the middle of an app's pie.** Behavior has a new panel, **App icon in the
+  pie**: **One color** (the silhouette in the ink of the pie, as before and still the default) or **Full color**
+  (the app's own icon in its own colors). A small animation shows the icon flying into the pie and either keeping
+  its colors or losing them. The setting is `app_icon_style` in `config.json`; it only applies while **Show the
+  app's icon in the center** is on. The icon in the **Look & feel** animation follows the choice too.
+
+- **The "Stop waiting" button is now a red circle with an X.** It sits under the "Waiting for the file chooser..."
+  pill and shows "Stop waiting" as a tooltip when the pointer rests on it.
+
+## 0.7.3
+
+- **Linux: cancelling the file chooser ends the wait.** After Cancel or the close button, CursorPie could keep
+  showing "Waiting for the file chooser..." because it waited for the chooser's output to close, which a helper
+  the chooser leaves behind can hold open. It now waits for the chooser itself to end. The waiting screen also has
+  a **Stop waiting** button for a chooser that never answers or is lost behind other windows.
+- **macOS: the file chooser is handled the same way.** `osascript`, which shows the Finder's chooser, now goes
+  through the same code as zenity and kdialog on Linux: CursorPie waits for the chooser itself to end, not for
+  its output pipe to close. **Windows** needed no change: its chooser returns the moment you press Cancel or the
+  close button. The dimmed "Waiting for the file chooser..." screen and the **Stop waiting** button are the same
+  on every system.
+- **Settings waits calmly while a file chooser is open.** Choosing an app, an icon image or a config file opens
+  the system's own chooser beside Settings, and Settings stayed live under it: a second click opened a second
+  chooser, Esc closed Settings, and a press of the trigger pulled Settings over the chooser. Settings is now
+  dimmed with "Waiting for the file chooser..." until the chooser closes, then comes back to the front. **Import...**
+  now hands the focus back too.
+- **Linux: pressing the trigger while Settings is open brings it forward again.** With Settings open on another
+  workspace, or behind the app you were using, a press (or holding the trigger in the middle of the pie) only made
+  its taskbar button blink: the window manager refuses the focus request the toolkit sends. CursorPie now asks the
+  way a pager does, goes to the workspace Settings is on and raises it, as it already does on macOS. If it still
+  does not work on your desktop, start with `CURSORPIE_DEBUG=1` and run `cargo tools diag`: it says whether the
+  window manager refused the request.
+- **A website for CursorPie.** The repository now has a landing page (`index.html`) that detects your system and
+  links the matching download, and shows the project's Markdown documentation (install guide, user guide,
+  configuration, known issues, this changelog) in the browser, read straight from the files in the repository. It
+  is published to GitHub Pages by `.github/workflows/static.yml` on every push to `main`. See `README-WEBSITE.md`.
+- **The project now lives at `github.com/sebastvnd/cursorpie`.** The clone and download links in `docs/INSTALL.md`
+  and `CONTRIBUTING.md` point there, and the PNG logos and sample icons in `icon/` are no longer ignored by git.
+- **Windows: the build works again.** Asking the window manager for a workspace (Linux code that is also built and
+  tested on every system) converted a `u32` with `c_long::from`, which does not exist where `c_long` is 32 bits
+  wide, so the Windows build failed. It is now a plain cast, with a test that the workspace number survives it.
+
 ## 0.7.2
 
 - **More settings that show what they do, and bigger demos.** The animated demos have a taller stage (190 points

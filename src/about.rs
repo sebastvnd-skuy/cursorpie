@@ -42,6 +42,11 @@ pub const INSPIRED_BY: (&str, &str) = ("Kando", "https://github.com/kando-menu/k
 pub const CREDITS: &[(&str, &str, &str)] = &[
     ("Inter (font)", "https://rsms.me/inter/", "SIL OFL 1.1"),
     (
+        "Isometra (font)",
+        "https://github.com/field2/isometra",
+        "SIL OFL 1.1",
+    ),
+    (
         "Phosphor Icons",
         "https://github.com/phosphor-icons/core",
         "MIT",

@@ -276,10 +276,15 @@ impl App {
                     painter.circle_stroke(c, core, Stroke::new(1.0, edge));
                 }
                 if let Some(t) = app_tex.as_ref() {
-                    // the app's icon, a white glyph, tinted dark
-                    let tint = colors
-                        .ink
-                        .gamma_multiply(fade * if live { 0.85 } else { 0.45 });
+                    // the app's icon: a white glyph tinted with the ink, or its own colors (white
+                    // leaves the texture as it is, only fading and dimming it)
+                    let tint = if view.app_icon_color {
+                        Color32::WHITE.gamma_multiply(fade * if live { 1.0 } else { 0.55 })
+                    } else {
+                        colors
+                            .ink
+                            .gamma_multiply(fade * if live { 0.85 } else { 0.45 })
+                    };
                     draw_texture(&painter, t, c, core * 1.3, tint);
                 } else {
                     draw_icon(

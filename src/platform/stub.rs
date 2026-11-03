@@ -35,6 +35,8 @@ pub fn clear_window_frame(_handle: isize) {}
 pub fn window_manager_may_recenter() -> bool {
     false
 }
+/// There is no window.
+pub fn raise_own_window() {}
 /// No mice to list.
 pub fn mouse_devices() -> Vec<crate::mouse::Device> {
     Vec::new()

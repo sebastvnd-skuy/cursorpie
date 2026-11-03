@@ -1,15 +1,16 @@
-//! The fonts of the interface: Inter for text, Phosphor for icons.
+//! The fonts of the interface: Inter for text, Phosphor for icons, Isometra for the name.
 //!
-//! Three families are registered on startup ([`install`]):
+//! Four families are registered on startup ([`install`]):
 //!
 //! | Family | Font | Use |
 //! |---|---|---|
 //! | `Proportional` | Inter Regular, then egui's own fonts | all text; the fallbacks keep emoji and other scripts that Inter does not hold |
 //! | [`semibold`] | Inter SemiBold | titles and the names of things |
+//! | [`brand`] | Isometra Regular | the name "CursorPie", the lettering of the logo |
 //! | [`icons`] / [`icons_fill`] | Phosphor Regular / Fill | every icon, see [`symbols`](super::symbols) |
 //!
-//! The font files in `assets/fonts/` are cut down to what the interface needs (see
-//! `scripts/subset-fonts.py`), 340 KB for all four, and compiled into the binary: the app makes no
+//! The Inter and Phosphor files in `assets/fonts/` are cut down to what the interface needs (see
+//! `scripts/subset-fonts.py`), about 380 KB for all five (Isometra is kept whole), and compiled into the binary: the app makes no
 //! network connection and reads no font from the system, so it looks the same everywhere.
 
 use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily, FontId, RichText};
@@ -19,9 +20,12 @@ static INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.t
 static INTER_SEMIBOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-SemiBold.ttf");
 static ICONS_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Icons-Regular.ttf");
 static ICONS_FILL: &[u8] = include_bytes!("../../assets/fonts/Icons-Fill.ttf");
+static ISOMETRA: &[u8] = include_bytes!("../../assets/fonts/Isometra-Regular.ttf");
 
 /// Name of the family for titles.
 const SEMIBOLD: &str = "semibold";
+/// Name of the family for the brand name.
+const BRAND: &str = "isometra";
 /// Name of the family for outline icons.
 const ICONS: &str = "icons";
 /// Name of the family for filled icons (the selected entry of the sidebar).
@@ -30,6 +34,19 @@ const ICONS_FILL_NAME: &str = "icons-fill";
 /// Inter SemiBold: titles and the names of things.
 pub fn semibold() -> FontFamily {
     FontFamily::Name(SEMIBOLD.into())
+}
+
+/// Isometra Regular: the lettering of the logo, used wherever the name "CursorPie" is a heading.
+pub fn brand() -> FontFamily {
+    FontFamily::Name(BRAND.into())
+}
+
+/// The name of the app in the brand font. Isometra has one weight and wide, geometric capitals, so
+/// it is set a little smaller than a title of the same row would be.
+pub fn brand_name(text: impl Into<String>, size: f32, color: Color32) -> RichText {
+    RichText::new(text)
+        .font(FontId::new(size, brand()))
+        .color(color)
 }
 
 /// Phosphor Regular: outline icons.
@@ -88,6 +105,7 @@ pub fn definitions() -> FontDefinitions {
         ("Inter-SemiBold", INTER_SEMIBOLD),
         ("Icons-Regular", ICONS_REGULAR),
         ("Icons-Fill", ICONS_FILL),
+        ("Isometra", ISOMETRA),
     ] {
         defs.font_data
             .insert(name.to_owned(), Arc::new(FontData::from_static(bytes)));
@@ -104,8 +122,12 @@ pub fn definitions() -> FontDefinitions {
     text.extend(fallback.iter().cloned());
     let mut bold = vec!["Inter-SemiBold".to_owned()];
     bold.extend(text.iter().cloned());
-    defs.families.insert(FontFamily::Proportional, text);
+    defs.families.insert(FontFamily::Proportional, text.clone());
     defs.families.insert(semibold(), bold);
+    // Isometra first, Inter behind it for any character the name font lacks.
+    let mut name = vec!["Isometra".to_owned()];
+    name.extend(text.iter().cloned());
+    defs.families.insert(brand(), name);
     defs.families
         .insert(icons(), vec!["Icons-Regular".to_owned()]);
     defs.families
@@ -130,6 +152,7 @@ mod tests {
             FontFamily::Proportional,
             FontFamily::Monospace,
             semibold(),
+            brand(),
             icons(),
             icons_fill(),
         ] {
@@ -143,6 +166,11 @@ mod tests {
             defs.families[&FontFamily::Proportional][0],
             "Inter",
             "Inter leads the text family"
+        );
+        assert_eq!(
+            defs.families[&brand()][0],
+            "Isometra",
+            "Isometra leads the brand family"
         );
     }
 
@@ -169,6 +197,10 @@ mod tests {
                 assert!(fonts.has_glyph(&text, 'A'), "Inter has Latin");
                 assert!(fonts.has_glyph(&text, '\u{2026}'), "Inter has the ellipsis");
                 assert!(fonts.has_glyph(&text, '\u{203a}'), "Inter has the chevron");
+                let name = FontId::new(30.0, brand());
+                for c in "CursorPie".chars() {
+                    assert!(fonts.has_glyph(&name, c), "Isometra has {c:?}");
+                }
             });
         })
         .drop_without_applying_deltas();

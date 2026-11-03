@@ -561,6 +561,7 @@ pub fn slow(lines: &[String], min_ms: u64) -> Vec<String> {
 pub fn extra_findings(recs: &[Rec]) -> Vec<String> {
     let mut out = Vec::new();
     out.extend(program_findings(recs));
+    out.extend(raise_findings(recs));
 
     for (i, g) in gestures(recs).iter().enumerate() {
         if let Some(lag) = g.lag_ms()
@@ -617,6 +618,35 @@ pub fn extra_findings(recs: &[Rec]) -> Vec<String> {
             out.push(format!(
                 "a '{}' action waited {wait:.0} ms in the queue before the worker started it: an earlier action was still running",
                 text(r, "kind").unwrap_or("?")
+            ));
+        }
+    }
+    out
+}
+
+/// Findings about bringing Settings forward (`x11.raise_own`, `x11.raise_own_seen`): a window the
+/// window manager never listed, and a request it received but did not act on. Part of
+/// [`extra_findings`].
+fn raise_findings(recs: &[Rec]) -> Vec<String> {
+    let mut out = Vec::new();
+    for r in recs {
+        if is(r, "x11", "raise_own") && flag(r, "found") == Some(false) {
+            out.push(format!(
+                "Settings was asked to come forward, but the window manager listed no window of CursorPie in {:.0} ms ({:.0} tries): is it an EWMH window manager (`_NET_CLIENT_LIST_STACKING`)?",
+                num(r, "waited_ms").unwrap_or(0.0),
+                num(r, "tries").unwrap_or(0.0)
+            ));
+        } else if is(r, "x11", "raise_own_seen") && flag(r, "active_ours") == Some(false) {
+            let from = num(r, "asked_from_desktop");
+            let now = num(r, "current_desktop");
+            let wanted = num(r, "window_desktop");
+            let moved = from != now;
+            out.push(format!(
+                "Settings was asked to come forward (as a pager, from workspace {} to {}) and the window manager did not make it the active window; it {} (now on workspace {}): the window manager refused the request",
+                from.map_or("?".to_string(), |d| format!("{d:.0}")),
+                wanted.map_or("?".to_string(), |d| format!("{d:.0}")),
+                if moved { "did change workspace" } else { "stayed on the workspace" },
+                now.map_or("?".to_string(), |d| format!("{d:.0}"))
             ));
         }
     }
@@ -876,6 +906,32 @@ pub fn run(root: &Path, options: &Options) -> Result<ExitCode, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_refused_raise_of_settings_is_named() {
+        let log = [
+            r#"{"cat":"x11","ev":"raise_own","found":true,"tries":1,"waited_ms":2.0}"#,
+            r#"{"cat":"x11","ev":"raise_own_seen","active_ours":false,"current_desktop":1,"asked_from_desktop":1,"window_desktop":0}"#,
+            r#"{"cat":"x11","ev":"raise_own_seen","active_ours":true,"current_desktop":0,"asked_from_desktop":1,"window_desktop":0}"#,
+            r#"{"cat":"x11","ev":"raise_own","found":false,"tries":41,"waited_ms":1002.0}"#,
+        ];
+        let recs: Vec<Rec> = log
+            .iter()
+            .filter_map(|l| crate::diag::parse_line(l))
+            .collect();
+        let f = raise_findings(&recs);
+        assert_eq!(f.len(), 2, "{f:?}");
+        assert!(
+            f[0].contains("from workspace 1 to 0") && f[0].contains("stayed on the workspace"),
+            "{}",
+            f[0]
+        );
+        assert!(
+            f[1].contains("listed no window") && f[1].contains("41 tries"),
+            "{}",
+            f[1]
+        );
+    }
+
     use super::*;
 
     fn lines(text: &str) -> Vec<String> {

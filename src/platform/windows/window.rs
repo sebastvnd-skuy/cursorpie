@@ -149,3 +149,6 @@ pub fn clear_window_frame(handle: isize) {
 pub fn window_manager_may_recenter() -> bool {
     false
 }
+
+/// The toolkit's focus request is all there is to ask on Windows.
+pub fn raise_own_window() {}

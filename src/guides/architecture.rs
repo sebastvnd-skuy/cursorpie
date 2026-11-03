@@ -270,7 +270,7 @@
 //! | permission | `AXIsProcessTrusted` (Accessibility) | none | none (X11) | [`platform`](crate::platform) |
 //! | frontmost app | `NSWorkspace` | `GetForegroundWindow` + process image name | `_NET_ACTIVE_WINDOW` + `WM_CLASS`, mapped to a desktop-entry id | `platform::frontmost_bundle_id` |
 //! | app under the pointer | `CGWindowListCopyWindowInfo` + `NSRunningApplication` | `WindowFromPoint` | `_NET_CLIENT_LIST_STACKING` + window geometry, hit test in `platform/linux/toplevels.rs` | `platform::bundle_id_at` |
-//! | real app icon | `NSWorkspace.iconForFile` as TIFF, decoded by the `tiff` crate | `PrivateExtractIconsW` as RGBA | not built yet: the pie shows its own glyph | [`ui::appicon`](crate::ui::appicon) |
+//! | real app icon | `NSWorkspace.iconForFile` as TIFF, decoded by the `tiff` crate | `PrivateExtractIconsW` as RGBA | `Icon=` of the desktop entry through the icon themes (`platform/linux/icontheme.rs`), PNG read directly, SVG through `rsvg-convert` | [`ui::appicon`](crate::ui::appicon) |
 //! | give freed memory back | `malloc_zone_pressure_relief` | `SetProcessWorkingSetSize(-1, -1)` | `malloc_trim` (glibc only) | `platform::release_unused_memory` |
 //! | key labels on any layout | TIS + `UCKeyTranslate`, snapshot taken on the main thread | `MapVirtualKeyExW` + `ToUnicodeEx` | not built yet: the US/ANSI fallback table | [`platform::layout`](crate::platform::layout) |
 //! | tray icon | `tray-icon` / `muda` (menu bar) | `tray-icon` / `muda` (notification area) | not built yet: Pause and Quit are in Settings > General | [`ui::tray`](crate::ui::tray) |

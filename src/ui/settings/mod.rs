@@ -27,6 +27,7 @@
 
 mod action_editor;
 mod add_panel;
+mod brand;
 mod demo;
 mod icon_catalog;
 mod icon_picker;
@@ -42,5 +43,6 @@ mod welcome;
 mod widgets;
 mod window;
 
+pub use picker::choosing;
 pub use state::{Ed, Slot, Tab};
 pub use welcome::Welcome;
