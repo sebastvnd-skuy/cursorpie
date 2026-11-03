@@ -60,6 +60,7 @@ pub fn installed_apps() -> Vec<InstalledApp> {
 /// The desktop entries that are meant to be listed.
 #[cfg(target_os = "linux")]
 fn collect() -> Vec<InstalledApp> {
+    use crate::platform::linux::xdg;
     let home = crate::config::home();
     let dirs = xdg::application_dirs(
         &home,

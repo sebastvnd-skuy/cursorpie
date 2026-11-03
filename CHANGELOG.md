@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- **The name in Isometra.** "CursorPie" is now set in Isometra Regular, the lettering of the logo, in the
+  About tab, the welcome window and the fallback wordmark. Isometra is SIL OFL 1.1 and is listed under
+  "Built with" in About.
+
+- **A livelier welcome window.** The first page has a banner with the name, the version and rings that pulse
+  around the logo, and the three steps (Hold, Flick, Release) are numbered cards that light up one after the
+  other. Pages fade in, the page dots stretch, and pages 2 and 3 say "Step 2 of 3" and "Step 3 of 3". Pages 2
+  and 3 use two columns, so nothing is left empty or cut off, even on the smallest card.
+
+- **Fixed: the links in About did nothing on Linux and Windows.** "GitHub repository", "Report an issue",
+  "Downloads", the email link and the links under "Built with" used egui's `open_url`, which does nothing when
+  eframe is built without its `web_browser` feature, as it is on these two systems. They now use
+  `platform::open_url` (`xdg-open`, `ShellExecute`, `open`). The diagnostic log gets `ui/open_link` and
+  `act/open_url`.
+
+- **Sliders with anchors.** Every slider in Settings shows marks and round numbers under its rail and snaps to
+  them, so a round value is easy to land on. Hold Shift to move freely; the arrow keys move one step.
+
+- **A simpler profile toolbar in Menu.** The profile picker is a chip with the icon of the profile's app and a
+  list of every profile with its icon and number of apps. The apps button shows the real icons of the apps.
+  New, Rename and Apps open as dialogs in the middle of the window instead of small popups, and Rename, Export,
+  Import and Delete moved into one "..." menu. In the Apps dialog every app is a tile with its icon; hover a
+  tile to remove it.
+
+- **Choose an app from a list, the same on every system.** Where Settings asked for an app through the
+  system's file chooser, it now shows the installed apps with their icons and a search box. The list comes from
+  the desktop entries on Linux, the `.app` bundles on macOS and `App Paths` on Windows. "Browse files" is still
+  there for an app that is not listed. The diagnostic log records `installed_apps` with the number of apps found.
+
+- **Shadow under the app's icon.** The icon in the center of an app's pie gets a soft shadow on a plain light
+  center, so it stands out from the white. Behavior > App icon in the pie > Shadow under the icon lets you
+  choose Automatic (the default), Soft, Strong or None. A saved config without the setting gets Automatic.
+
 ## 0.7.6
 
 - **Pick... of an Open app action uses the same app list as Add app.** The button now opens the searchable list
