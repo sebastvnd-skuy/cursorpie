@@ -7,14 +7,17 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 ## All systems
 
 - Shortcut labels and the shifted-symbol display assume a US/ANSI layout. Key codes themselves are physical keys.
-- The back and forward side buttons are fixed to mouse buttons 4 and 5. Only the trigger button is configurable.
+- The back and forward side buttons are fixed: they are the mouse's back and forward buttons (buttons 3 and 4 in
+  [CONFIGURATION.md](CONFIGURATION.md#extra-mouse-buttons), X buttons 8 and 9 on Linux). Only the trigger button is
+  configurable.
 - With a per-app profile and the default gesture, a plain middle-click in that app is delivered after the
   double-click window (260 ms by default). Use classic mode, or a shorter window, if that bothers you.
 - The right-click that switches the side-button pie is swallowed only while a pie is open. Otherwise right-clicks
   pass through untouched.
 - "App under the pointer" looks at normal app windows (not the Dock, menu bar or desktop). Bringing it to the
   front activates the whole app, not one particular window.
-- Sequences cannot be edited in Settings yet, only in `config.json`.
+- Sequences cannot be created or edited in Settings yet, only in `config.json`. Settings shows how many steps a
+  sequence has and keeps it.
 - **Image icons have size limits.** An image over 4096 px on a side, or one that cannot be decoded, is not drawn: the slice shows `?`. The **Mine** page of the icon picker lists at most 120 images of 2 MB each and says how many it left out. Choosing a big image with **Image...** avoids all of this: CursorPie saves a smaller copy in the `icons` folder and tells you (see [USER_GUIDE.md](USER_GUIDE.md)).
 - **Import... refuses a config file over 4 MiB**, and Menu > Share refuses a profile file over 24 MiB.
 - Undo covers one Settings session. After you save and close, use **Settings > General > Backups** (the last

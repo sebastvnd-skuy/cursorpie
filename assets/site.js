@@ -157,6 +157,7 @@
     { file: 'docs/WINDOWS_MIGRATION.md', label: 'Windows migration' },
     { file: 'docs/OTHER_DESKTOPS.md', label: 'Other desktops' },
     { file: 'docs/UI_DESIGN.md', label: 'UI design' },
+    { file: 'docs/TRACKPAD_HAPTICS_PLAN.md', label: 'Trackpad and haptics plan' },
     { file: 'README.md', label: 'Project README' },
     { file: 'diag/README.md', label: 'Diagnostic crate notes' }
   ];

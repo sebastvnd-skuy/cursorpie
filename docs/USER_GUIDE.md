@@ -165,12 +165,15 @@ from behind other windows or minimized) and its footer says to Save or Cancel to
   (**+**) and delete the selected one (the trash); you can also drag a slice onto the trash.
 - Per slice: name, icon, kind, action (for **App**, **Pick...** opens the list of installed apps), and Move.
 - Ready-made slices on the **+** button: *side-button modes* (History, Brackets, Clipboard, Browser, Tabs, Zoom,
-  Scroll, Edit), *quick actions* (Screenshot, Mission Ctrl, Spotlight, Emoji, Lock) and *custom* ones (Shortcut,
-  Open app, Open URL, Command, Submenu).
+  Scroll, Edit), *quick actions* and *custom* ones (Shortcut, Open app, Open URL, Command, Submenu). The quick
+  actions depend on the system: Screenshot, Mission Ctrl, Spotlight, Emoji and Lock on macOS; Screenshot, Task
+  view, Search, Emoji and Lock on Windows; Screenshot, Files, Terminal, Emoji and Lock on Linux.
 
 **Behavior** holds the knobs.
 
 - Trigger button, hold times for the pie and for Settings, pie size, accent color.
+- Look: **Appearance** (System, Light or Dark, for Settings and the pie) and **Pie material** (*Solid* or *Glass*;
+  Glass has sliders for Clearness, Frost and Shine).
 - Whether holding opens the general pie or the app's own, and the double-click speed.
 - App detection: under the pointer or in front, and whether to bring it forward before sending shortcuts.
 - *Other desktops / Other Spaces*: what an Open app slice does when the app's window is elsewhere. Switch to it
@@ -178,7 +181,8 @@ from behind other windows or minimized) and its footer says to Save or Cancel to
   [OTHER_DESKTOPS.md](OTHER_DESKTOPS.md).
 - Side-button options: default pie, pick-to-follow, forget on app switch, right-click switching, ring colors,
   preview time.
-- Instant flick, hover sound, app icon in the pie center, launch at login, and **Memory** (free caches after an
+- Instant flick, hover sound, names under the icons, app icon in the pie center (with its look: glyph or color,
+  and its shadow), launch at login, and **Memory** (free caches after an
   idle time, on by default, 60 s).
 
 **General** shows the permission status (macOS) with shortcuts to System Settings, the config file location,
@@ -233,10 +237,11 @@ A fresh install comes with three profiles:
 | Profile | Apps | Slices |
 |---|---|---|
 | Default (general) | all apps without a profile | History (undo/redo), Clipboard (copy/paste), Brackets, and a *Launch* submenu with a file manager, terminal, browser and screenshot tool |
-| Browsers | Safari, Chrome, Firefox, Arc, Brave, Edge | Browser (back/forward), Tabs (previous/next), Zoom, Scroll (Page Up/Down) |
-| Code | VS Code, Xcode | History, Brackets, Edit (Return/Delete) |
+| Browsers | The common browsers of your system (on macOS Safari, Chrome, Firefox, Arc, Brave and Edge) | Browser (back/forward), Tabs (previous/next), Zoom, Scroll (Page Up/Down) |
+| Code | The code editors of your system (on macOS VS Code and Xcode; on Windows VS Code and Visual Studio; on Linux VS Code and its variants) | History, Brackets, Edit (Return/Delete) |
 
-The Launch submenu and the app ids adapt to your system (for example Finder on macOS, Explorer on Windows).
+The Launch submenu and the app ids adapt to your system (for example Finder on macOS, Explorer on Windows and the
+file manager, terminal and browser roles on Linux).
 
 ## Memory and performance
 

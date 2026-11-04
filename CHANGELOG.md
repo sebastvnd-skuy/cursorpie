@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **A plan for trackpad and haptic support on macOS.** `docs/TRACKPAD_HAPTICS_PLAN.md` describes how a hold on a
+  trackpad can open the pie, how an extra finger can switch the mode, how haptic feedback can be added and how
+  mouse and trackpad stay one input. It is a plan: nothing in it is implemented yet.
+
+- **Documentation brought in line with the code.** `docs/CONFIGURATION.md` lists `app_icon_shadow`, `appearance`,
+  `pie_style` and the three `glass_*` fields and gives the real default accent (`[90, 120, 94]`); `docs/USER_GUIDE.md`
+  describes Appearance and Pie material and the per-system quick actions and default profiles; `docs/INSTALL.md`
+  says the welcome window opens on Linux too; `CONTRIBUTING.md` lists the `diag-lint` CI step and the options of
+  `clean-logs` and `zip`; the release text no longer says that only "stable" tags publish assets, which the
+  workflow does not check.
+
 - **The name in Isometra.** "CursorPie" is now set in Isometra Regular, the lettering of the logo, in the
   About tab, the welcome window and the fallback wordmark. Isometra is SIL OFL 1.1 and is listed under
   "Built with" in About.
