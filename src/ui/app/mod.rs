@@ -113,6 +113,10 @@ pub struct App {
     pub history: History<Config>,
     pub ed: Ed,
     pub settings_anim: f32,
+    /// Set when the window is asked to become the Settings (or welcome) card: the window size it
+    /// was asked for and since when. Until the window really has that size nothing is drawn, see
+    /// [`App::window_settling`].
+    pub settings_wait: Option<(Vec2, Instant)>,
     /// Some(true) = closing and saving, Some(false) = closing without saving
     pub closing: Option<bool>,
     pub card_size: Vec2,
@@ -163,6 +167,7 @@ impl App {
             edit,
             ed: Ed::new(),
             settings_anim: 0.0,
+            settings_wait: None,
             closing: None,
             card_size: egui::vec2(CARD_SIZE[0], CARD_SIZE[1]),
             toast: None,

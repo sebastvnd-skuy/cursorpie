@@ -8,7 +8,7 @@ use crate::config::backup::Backup;
 use crate::config::{Config, Item, blank_items, items_at, presets, quick_actions};
 use crate::mouse::Scan;
 use crate::tap::RECORDING;
-use crate::ui::icons::IconCache;
+use crate::ui::icons::{IconCache, IconState};
 use eframe::egui;
 use std::sync::atomic::Ordering;
 
@@ -219,6 +219,12 @@ impl Ed {
     pub fn stop_recording(&mut self) {
         RECORDING.store(false, Ordering::SeqCst);
         self.recording = None;
+    }
+
+    /// Like [`Ed::icon_for`] for the icon of an app, but never waits for the system: while the
+    /// icon is being read on a worker thread the answer is [`IconState::Pending`].
+    pub fn app_icon_async(&mut self, ctx: &egui::Context, icon: &str) -> IconState {
+        self.icons.get_app_async(ctx, icon)
     }
 
     /// Cached texture for an image icon. None for text icons or images that fail to load.

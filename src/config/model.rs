@@ -63,6 +63,20 @@ pub enum AppGesture {
     DoubleClick,
 }
 
+/// What the extra click does while a pie opened by a trackpad hold is open (macOS trackpad, see
+/// `docs/TRACKPAD_HAPTICS_PLAN.md`).
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum TouchClickAction {
+    /// The same as the right-click: the side buttons now follow the other pie; the pie stays open.
+    #[default]
+    SwitchPie,
+    /// The hovered *Mode* slice becomes the active mode of its profile, without closing the pie.
+    /// Over any other slice the click does nothing.
+    PickHovered,
+    /// The click is swallowed and does nothing.
+    Nothing,
+}
+
 /// How the app's icon looks in the center of an app's own pie.
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
 pub enum AppIconStyle {
@@ -318,6 +332,23 @@ pub struct Config {
     pub glass_frost: u8,
     /// Glass only: how bright the rim and the sheen are, in percent.
     pub glass_shine: u8,
+    /// Trackpad (macOS) or precision touchpad (Windows): touching and holding opens the pie. Off:
+    /// the touch source never starts (on macOS the private touch framework is never loaded, on
+    /// Windows nothing is registered with Raw Input).
+    pub touch_trigger: bool,
+    /// Trackpad: how many fingers hold (1 or 2); the extra click is one more finger.
+    pub touch_fingers: u8,
+    /// Trackpad: how little the holding finger may move, in millimeters on the surface, before the
+    /// hold stops counting.
+    pub touch_still_mm: f32,
+    /// Trackpad: what the extra click does while the pie is open.
+    pub touch_click_action: TouchClickAction,
+    /// Trackpad: no hold is armed this soon after a key press, in ms (0 = off).
+    pub touch_typing_guard_ms: u64,
+    /// Haptic ticks on a trackpad (macOS), when the pie opens, the slice changes and the mode switches.
+    pub haptics: bool,
+    /// With `haptics`: also a tick when the hovered slice changes.
+    pub haptic_hover: bool,
 }
 
 impl Config {

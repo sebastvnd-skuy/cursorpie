@@ -91,27 +91,50 @@ pub fn setup_title(os: Os) -> &'static str {
     }
 }
 
-/// Explanation under the heading of the second page.
+/// The sentence under the heading of the second page: what the page is about, in one line.
 pub fn setup_lead(os: Os) -> &'static str {
     match os {
-        Os::Mac => {
-            "macOS only lets an app watch the mouse after you allow it. Open System Settings, go to \
-             Privacy & Security > Accessibility and switch CursorPie on (macOS may also ask for Input \
-             Monitoring). If CursorPie is not in the list, press + and add it from Applications. \
-             This page notices the change by itself; there is nothing to restart."
-        }
+        Os::Mac => "Do this once, in System Settings:",
         Os::Windows => {
-            "CursorPie has no window of its own: look for its pie icon next to the clock (click the ^ \
-             arrow if you do not see it). Right-click it for Settings, Pause and Quit. Windows asks \
-             for no permission. Programs that run as administrator only react if CursorPie runs as \
-             administrator too."
+            "CursorPie has no window of its own: look for its pie icon next to the clock."
         }
-        Os::Linux => {
-            "X11 asks for no permission. CursorPie has no tray icon on Linux yet: hold the trigger in \
-             the center of the pie to open Settings, and quit from the bottom of Settings. In a \
-             Wayland session it only sees X11 and XWayland windows, so log in with an X11 session for \
-             full support."
+        Os::Linux => "X11 asks for no permission.",
+    }
+}
+
+/// What to do, one short step each, under [`setup_lead`]. On macOS they are numbered.
+pub fn setup_steps(os: Os) -> &'static [&'static str] {
+    match os {
+        Os::Mac => &[
+            "Open Privacy & Security > Accessibility.",
+            "Switch CursorPie on. Not listed? Press + and choose it in Applications.",
+            "If macOS asks for Input Monitoring, allow that too.",
+        ],
+        Os::Windows => &[
+            "Click the ^ arrow next to the clock if you do not see the icon.",
+            "Right-click the icon for Settings, Pause and Quit.",
+            "Windows asks for no permission. Programs that run as administrator only react if \
+             CursorPie runs as administrator too.",
+        ],
+        Os::Linux => &[
+            "CursorPie has no tray icon on Linux yet: hold the trigger in the center of the pie \
+             to open Settings.",
+            "Quit from the bottom of Settings.",
+            "In a Wayland session it only sees X11 and XWayland windows, so log in with an X11 \
+             session for full support.",
+        ],
+    }
+}
+
+/// A line of small print for the right column of the second page, shown while the permission is
+/// still missing. Empty where nothing needs saying.
+pub fn setup_note(os: Os) -> &'static str {
+    match os {
+        Os::Mac => {
+            "macOS only lets an app watch the mouse after you allow it. This page notices the \
+             change by itself; there is nothing to restart."
         }
+        Os::Windows | Os::Linux => "",
     }
 }
 
@@ -167,6 +190,11 @@ impl App {
     /// Draws the welcome window: animation, top bar, current page, footer.
     pub fn welcome_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+
+        // the window is still becoming the card: an empty frame, the animation waits
+        if self.window_settling(&ctx) {
+            return;
+        }
 
         // open / close animation (the same as Settings)
         let dt = ctx.input(|i| i.stable_dt).min(0.05);
@@ -596,6 +624,49 @@ fn two_columns(ui: &egui::Ui, left_frac: f32) -> (egui::Rect, egui::Rect) {
     (left, right)
 }
 
+/// A short list, one item per row: a round badge (the number of the step, or a dot) and the text
+/// wrapped beside it. Each item is laid out as a whole, so a line never runs under the badge and
+/// the rows are spaced evenly.
+fn step_list(ui: &mut egui::Ui, accent: Color32, items: &[&str], numbered: bool) {
+    const BADGE: f32 = 22.0;
+    const TEXT_X: f32 = BADGE + 12.0;
+    let width = ui.available_width();
+    for (i, item) in items.iter().enumerate() {
+        if i > 0 {
+            ui.add_space(8.0);
+        }
+        let text = ui.painter().layout(
+            (*item).to_owned(),
+            egui::FontId::proportional(14.0),
+            pal().text,
+            (width - TEXT_X).max(80.0),
+        );
+        let h = text.size().y.max(BADGE);
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, h), egui::Sense::hover());
+        let painter = ui.painter();
+        let c = egui::pos2(rect.min.x + BADGE / 2.0, rect.min.y + BADGE / 2.0);
+        painter.circle_filled(c, BADGE / 2.0, wash(accent, 0.14));
+        if numbered {
+            painter.text(
+                c,
+                egui::Align2::CENTER_CENTER,
+                (i + 1).to_string(),
+                egui::FontId::new(12.0, fonts::semibold()),
+                accent_text(accent),
+            );
+        } else {
+            painter.circle_filled(c, 3.0, accent_text(accent));
+        }
+        // the first line is as high as the badge, so the text starts a little above its top
+        let top = rect.min.y + ((BADGE - 17.0) / 2.0).max(0.0);
+        painter.galley(
+            egui::pos2(rect.min.x + TEXT_X, top).round(),
+            text,
+            Color32::PLACEHOLDER,
+        );
+    }
+}
+
 /// Page 2: the permission (macOS) or the tray (Windows), with the live status.
 fn setup_page(ui: &mut egui::Ui, accent: Color32, os: Os) {
     eyebrow(ui, &format!("Step 2 of {PAGES}"), accent);
@@ -608,11 +679,13 @@ fn setup_page(ui: &mut egui::Ui, accent: Color32, os: Os) {
         running
     };
     // the explanation on the left, the live status on the right: nothing is left empty or cut off
-    let (left, right) = two_columns(ui, 0.56);
+    let (left, right) = two_columns(ui, 0.5);
     ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
         ui.add_space(4.0);
         muted(ui, setup_lead(os));
-        ui.add_space(GAP + 4.0);
+        ui.add_space(GAP - 2.0);
+        step_list(ui, accent, setup_steps(os), os.needs_permission());
+        ui.add_space(GAP);
         if os.needs_permission() && !ready {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::splat(8.0);
@@ -641,42 +714,40 @@ fn setup_page(ui: &mut egui::Ui, accent: Color32, os: Os) {
     });
     ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
         panel(ui, "Status", |ui| {
+            // the control of each row is as wide as its pill: the label keeps the rest and is
+            // never broken in two ("Accessibilit" / "y")
             if os.needs_permission() {
                 let granted = platform::is_trusted_cached();
-                info_row(ui, "Accessibility", |ui| {
-                    status(
-                        ui,
-                        granted,
-                        if granted {
-                            "Granted"
-                        } else {
-                            "Not granted yet"
-                        },
-                    );
-                });
+                let text = if granted {
+                    "Granted"
+                } else {
+                    "Not granted yet"
+                };
+                let w = status_width(ui, text) + 2.0;
+                row_wide(ui, "Accessibility", "", w, |ui| status(ui, granted, text));
             }
             let name = if os.needs_permission() {
                 "Event tap"
             } else {
                 "Mouse hook"
             };
-            info_row(ui, name, |ui| {
-                status(
-                    ui,
-                    running,
-                    if running {
-                        "Running"
-                    } else {
-                        "Not running (retrying every 2 s)"
-                    },
-                );
-            });
+            let text = if running { "Running" } else { "Not running" };
+            // the pill says the state; the way out goes in small print under the name
+            let hint = if running { "" } else { "Retrying every 2 s" };
+            let w = status_width(ui, text) + 2.0;
+            row_wide(ui, name, hint, w, |ui| status(ui, running, text));
         });
         if ready {
             ui.horizontal(|ui| {
                 status(ui, true, "Ready");
                 muted(ui, "CursorPie can see your mouse.");
             });
+        } else if !setup_note(os).is_empty() {
+            ui.add(egui::Label::new(
+                egui::RichText::new(setup_note(os))
+                    .size(13.0)
+                    .color(pal().muted),
+            ));
         }
     });
 }
@@ -738,10 +809,35 @@ mod tests {
     #[test]
     fn both_systems_have_their_own_setup_page() {
         assert_ne!(setup_title(Os::Mac), setup_title(Os::Windows));
-        assert!(setup_lead(Os::Mac).contains("Accessibility"));
+        assert!(
+            setup_steps(Os::Mac)
+                .iter()
+                .any(|s| s.contains("Accessibility"))
+        );
         assert!(setup_title(Os::Windows).contains("system tray"));
-        assert!(setup_lead(Os::Windows).contains("administrator"));
+        assert!(
+            setup_steps(Os::Windows)
+                .iter()
+                .any(|s| s.contains("administrator"))
+        );
+        assert!(
+            !setup_steps(Os::Windows)
+                .iter()
+                .any(|s| s.contains("Accessibility"))
+        );
         assert!(!setup_lead(Os::Windows).contains("Accessibility"));
+    }
+
+    #[test]
+    fn every_setup_step_is_one_short_sentence_or_two() {
+        // a wall of text is what the steps replaced: keep each one easy to take in at a glance
+        for os in [Os::Mac, Os::Windows, Os::Linux] {
+            assert!(setup_lead(os).len() < 90, "{os:?}");
+            assert!(setup_note(os).len() < 160, "{os:?}");
+            for step in setup_steps(os) {
+                assert!(step.len() < 160, "{os:?}: {step}");
+            }
+        }
     }
 
     #[test]
@@ -766,9 +862,13 @@ mod tests {
     #[test]
     fn linux_has_its_own_setup_page_and_no_tray_tip() {
         assert!(setup_title(Os::Linux).contains("X11"));
-        let lead = setup_lead(Os::Linux);
-        assert!(lead.contains("no tray icon"), "{lead}");
-        assert!(!lead.contains("Accessibility"));
+        let steps = setup_steps(Os::Linux);
+        assert!(
+            steps.iter().any(|s| s.contains("no tray icon")),
+            "{steps:?}"
+        );
+        assert!(!steps.iter().any(|s| s.contains("Accessibility")));
+        assert!(!setup_lead(Os::Linux).contains("Accessibility"));
         let t = tips(Os::Linux, 1200);
         assert_eq!(t.len(), 3);
         assert!(t.iter().all(|x| !x.contains("icon.")), "{t:?}");

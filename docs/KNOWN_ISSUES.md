@@ -33,6 +33,17 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
   buttons it has, and it will not notice that you changed mouse.
 - Ad-hoc signed builds may need the Accessibility permission again after each rebuild. Sign with a stable
   identity (`SIGN_ID`) to avoid that.
+- **Trackpad** (off by default): it uses Apple's private `MultitouchSupport` framework, which Apple may change in any
+  release (the feature turns itself off and says so), so it cannot be in a Mac App Store build. With *Fingers to hold*
+  = 2, macOS may take the third finger for Look up or three-finger drag unless you turn those off. The surface of a
+  Magic Mouse is not used. Haptic ticks need a Force Touch trackpad and the system's haptic setting on. **Not yet
+  verified on a Mac:** see the manual checklist in [TRACKPAD_HAPTICS_PLAN.md](TRACKPAD_HAPTICS_PLAN.md#manual-verification-checklist).
+- **Trackpad on Linux (X11)** (off by default): the touchpad is read from `/dev/input`, so the user must be in the
+  `input` group (Settings says so when not). No haptic ticks. The click of the extra finger is swallowed by grabbing
+  the left and right buttons while a hold runs; a click that is not the extra one reaches the app a moment late, like
+  a side-button click. Touchpads that report no finger count or no size (some virtual or very old ones) are skipped.
+  Wayland sessions are not covered. **Not yet verified on real hardware:** the parser, the recognizer and the X grab
+  logic are tested, the device thread and the permissions are not.
 - **Launch at login** points at the executable that was running when you enabled it. Toggle it off and on again
   if you move the app.
 - **Other Spaces** tries three ways, each only when the previous one did not bring a window of the app onto the
@@ -53,6 +64,12 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 
 ## Windows
 
+- **Touchpad** (off by default): only a Windows *precision* touchpad can open the pie; an older touchpad that Windows
+  treats as a plain mouse cannot be read. It is read through Raw Input, so no driver and no permission is needed. With
+  *Fingers to hold* = 2, Windows may take the third finger for its three-finger gestures unless you set them to
+  *Nothing*. A tap followed by a hold may start a Windows tap-and-drag and click the app under the pie unless *Tap
+  twice and drag to multi-select* is off. No haptic ticks. **Not yet verified on Windows:** see the manual checklist
+  in [TRACKPAD_HAPTICS_PLAN.md](TRACKPAD_HAPTICS_PLAN.md#windows-precision-touchpad).
 - Only the middle button can be the trigger. Windows reports only the middle, back and forward buttons, so a
   mode can use only those two side buttons, and CursorPie cannot tell two mice apart, only mice with a different
   number of buttons.

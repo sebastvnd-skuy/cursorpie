@@ -88,6 +88,8 @@ pub fn choose_file(_kind: FileKind, _prompt: &str) -> Option<String> {
 }
 /// Silent.
 pub fn tick() {}
+/// No haptics.
+pub fn haptic(_kind: crate::platform::HapticKind) {}
 
 /// Never enabled.
 pub fn launch_at_login_enabled() -> bool {

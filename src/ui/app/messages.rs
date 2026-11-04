@@ -50,6 +50,7 @@ impl App {
                 }
                 self.hover = h;
             }
+            Msg::Haptic(kind) => platform::haptic(kind),
             Msg::NewProfileAppPicked(bundle) => self.ed.new_profile_app = bundle,
             Msg::InstalledApps(apps) => {
                 self.ed.installed = apps;

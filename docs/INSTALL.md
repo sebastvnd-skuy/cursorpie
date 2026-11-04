@@ -178,6 +178,18 @@ Good to know:
 - A minimal system may lack libraries the window toolkit loads at run time (OpenGL, libxkbcommon-x11, libxcursor).
 - Install `zenity` or `kdialog` to use the file chooser buttons.
 
+## Trackpad hold (optional)
+
+Touching and holding a trackpad can open the pie instead of the middle button. It is off by default: turn on *Open
+the pie with a trackpad hold* in **Settings > Behavior > Trackpad** and press Save.
+
+- **macOS:** works with any trackpad and needs the same Accessibility permission as the mouse.
+- **Windows:** needs a *precision* touchpad (most laptops since Windows 10). No permission is needed.
+- **Linux (X11):** your user must be in the `input` group: `sudo usermod -aG input $USER`, then log out and in.
+  If nothing happens, run `cursorpie --touchpad-debug` in a terminal.
+
+The [user guide](USER_GUIDE.md#trackpad-macos-windows-and-linux-x11) explains the gesture and its settings.
+
 ## First launch
 
 On every system a short welcome window opens the first time. It shows the gesture, then the one thing to

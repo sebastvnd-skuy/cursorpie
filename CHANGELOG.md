@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## 0.8.0
+
+- **README, website and docs now say that the trackpad works on all three systems.** The README (tagline,
+  highlights, "Try it", platform table and a new *Trackpad* section), the website (description, hero, steps, feature
+  card, platform cards and FAQ), `docs/INSTALL.md` (a new *Trackpad hold* section with the `input` group on Linux) and
+  the plan's title and summary describe trackpad hold on macOS, Windows (precision touchpad) and Linux (X11).
+
+- **Trackpad hold and haptics on macOS (off by default).** `docs/TRACKPAD_HAPTICS_PLAN.md` is implemented: with
+  *Settings > Behavior > Trackpad* on, touching and holding opens the pie, moving the finger hovers a slice and
+  lifting runs it; one more finger that clicks or taps switches the mode (or picks the hovered mode, or does
+  nothing); the pie ticks on a Force Touch trackpad. Mouse and trackpad are one input: the same state machine
+  (`Gesture` now records its `Source`), the same timings and profiles. New config fields `touch_trigger`,
+  `touch_fingers`, `touch_still_mm`, `touch_click_action`, `touch_typing_guard_ms`, `haptics`, `haptic_hover`
+  (an old file loads unchanged). The touches come from Apple's private `MultitouchSupport.framework`, loaded at run
+  time only while the feature is on and checked before it is trusted. The recognizer and the rest of the core are
+  tested on every OS; the macOS layer has not been run on a Mac yet. The `touch` category is added to the diagnostic log.
+
+- **Trackpad hold on Linux (X11), off by default.** The same feature as on macOS and Windows, for a touchpad under
+  X11: hold to open the pie, move to a slice, lift to run it, one more finger to click. The fingers are read from
+  `/dev/input/event*` (libinput hides them from X), only while *Open the pie with a trackpad hold* is on, which needs
+  the `input` group; Settings says so when it is missing. While a hold runs the left and right buttons are grabbed so
+  the extra click never reaches the app (any other click is sent again at its release), and the typing guard listens
+  for key presses (not which key). No haptic ticks on Linux. The reader repeats the last frame every 20 ms because
+  resting fingers send no events. The parser, device detection and grab logic are tested; the device thread has not
+  been run on a real touchpad yet. New `touch` log events: `device_open`, `device_closed`, `x_grabs`. **`cursorpie --touchpad-debug [seconds]`** checks the
+  chain (session, saved switch, `input` group, why each device was taken or left out, permission, surface size) and then
+  shows the fingers and the recognizer's decisions live, ending with what to fix.
+
 ## 0.7.7
 
 - **A quieter top bar in Settings.** Undo and Redo buttons are gone (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z still

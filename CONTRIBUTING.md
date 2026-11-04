@@ -286,7 +286,7 @@ diag/          the diagnostic log (`CURSORPIE_DEBUG=1`): a crate of its own, no 
 scripts/       packaging: bundle.sh and make-dmg.sh (macOS), package-windows.ps1, package-linux.sh
 installer/     Inno Setup script of the Windows Setup wizard
 packaging/     Linux desktop entry
-icon/          the logo and sample icons (the in-app logo is drawn in code, see src/ui/settings/widgets.rs)
+assets/       app icons for macOS, Windows and Linux; logos, fonts and the editable brand artwork
 docs/          user documentation and design records
 ```
 
@@ -351,6 +351,25 @@ The tool prints these at the end of every run, with a `WARNING:` where something
    `BUNDLE_ID` equal in `src/about.rs` and `scripts/bundle.sh`.
 
 If `check` reports a mismatch, someone changed the version by hand: undo that change and run the tool instead.
+
+### Publishing to crates.io
+
+The app depends on the `cursorpie-diag` crate in `diag/` (`path` plus `version`). `cargo publish` packs only
+the root package, and crates.io must already know every dependency, so `diag` goes first. Otherwise cargo says
+`no matching package named cursorpie-diag found`.
+
+```bash
+cargo login                           # once, with a token from crates.io
+cargo publish -p cursorpie-diag --dry-run
+cargo publish -p cursorpie-diag       # first: only when diag/ changed or was never published
+cargo publish --dry-run               # wait a minute so the index sees it, then check the app's package
+cargo package --list                  # what goes into the package (the website files are excluded)
+cargo publish
+```
+
+`cursorpie-diag` has its own version (`diag/Cargo.toml`). The release tool never changes it: raise it by hand
+when `diag/` changes, publish it, and then require that version in the `diag = { ... version = "..." }` line of
+the root `Cargo.toml`. A published version cannot be replaced, only yanked.
 
 ## Reporting bugs
 

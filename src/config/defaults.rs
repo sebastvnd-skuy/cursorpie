@@ -8,7 +8,7 @@
 
 use super::{
     Action, AppGesture, AppIconStyle, Appearance, CONFIG_VERSION, Config, DesktopMode, IconShadow,
-    Item, PieStyle, Profile, SideTarget, TargetApp,
+    Item, PieStyle, Profile, SideTarget, TargetApp, TouchClickAction,
 };
 use crate::keys::{MOD_ALT, MOD_CMD, MOD_CTRL, MOD_SHIFT, Shortcut, key};
 use crate::platform::Os;
@@ -352,6 +352,13 @@ impl Config {
             glass_clear: 60,
             glass_frost: 45,
             glass_shine: 60,
+            touch_trigger: false,
+            touch_fingers: 1,
+            touch_still_mm: 2.0,
+            touch_click_action: TouchClickAction::SwitchPie,
+            touch_typing_guard_ms: 400,
+            haptics: true,
+            haptic_hover: true,
         }
     }
 }

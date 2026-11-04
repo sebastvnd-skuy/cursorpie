@@ -25,6 +25,7 @@ use crate::msg::Msg;
 use crate::platform;
 use crate::ui::appicon;
 use crate::ui::fonts;
+use crate::ui::icons::IconState;
 use crate::ui::settings::picker::spawn_file_picker;
 use crate::ui::settings::state::{AppScan, Ed, PickFor, ProfileSheet};
 use crate::ui::settings::theme::*;
@@ -76,13 +77,18 @@ fn avatar(
     accent: Color32,
 ) {
     let key = appicon::icon_string(AppIconStyle::Color, bundle);
-    if let Some(tex) = ed.icon_for(ctx, &key) {
+    // the icon is read off the UI thread: scrolling a long list must not wait for the system
+    let state = ed.app_icon_async(ctx, &key);
+    if let IconState::Ready(tex) = &state {
         let whole = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
         painter.image(tex.id(), rect, whole, Color32::WHITE);
         return;
     }
     let radius = (rect.width() * 0.28).round() as u8;
     painter.rect_filled(rect, CornerRadius::same(radius), wash(accent, 0.14));
+    if matches!(state, IconState::Pending) {
+        return; // the icon follows in a moment: a plain tile, not a letter that then changes
+    }
     let letter: String = app_label(bundle).chars().take(1).collect();
     painter.text(
         rect.center(),

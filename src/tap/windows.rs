@@ -12,6 +12,9 @@
 //! * Coordinates are physical pixels and are converted to logical points with the monitor scale.
 //! * Windows silently removes a low-level hook whose callback takes too long (about 300 ms by
 //!   default). The callback therefore only does atomic loads and short locks, like the macOS tap.
+//! * A precision touchpad is read by its own thread (`touch::precision`, started by [`spawn`]). The
+//!   hook only helps it in one way: while a touchpad pie is open, a left click (or the right click
+//!   of a two-finger tap) may be the extra finger's click and is swallowed (`touch::extra`).
 
 use super::{Ev, Gesture, Kind, Verdict, dispatch};
 use crate::actions::SYNTH_TAG;
@@ -30,8 +33,8 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, MSG, MSLLHOOKSTRUCT,
     SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP,
-    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN,
-    WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
 /// What the hook callbacks need. Hooks have no user-data pointer, so it lives in a static.
@@ -60,6 +63,16 @@ pub(super) fn classify_mouse(msg: u32, mouse_data: u32) -> Option<(Kind, i64)> {
         WM_XBUTTONDOWN => x_button().map(|b| (Kind::Down, b)),
         WM_XBUTTONUP => x_button().map(|b| (Kind::Up, b)),
         WM_MOUSEMOVE => Some((Kind::Drag, 0)),
+        _ => None,
+    }
+}
+
+/// The left button, which `classify_mouse` leaves out: `Some` for its press and release. It is only
+/// looked at while a touchpad pie is open (the extra finger's click, see `touch::extra`).
+pub(super) fn classify_left(msg: u32) -> Option<Kind> {
+    match msg {
+        WM_LBUTTONDOWN => Some(Kind::Down),
+        WM_LBUTTONUP => Some(Kind::Up),
         _ => None,
     }
 }
@@ -102,8 +115,13 @@ fn on_mouse(ctx: &Ctx, msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
     if info.dwExtraInfo == SYNTH_TAG as usize {
         return false; // our own replay
     }
-    let Some((kind, mut button)) = classify_mouse(msg, info.mouseData) else {
-        return false;
+    let (kind, mut button) = match classify_mouse(msg, info.mouseData) {
+        Some(c) => c,
+        // a left click is none of our business unless a touchpad pie is open: one atomic read
+        None => match classify_left(msg) {
+            Some(kind) if super::touch::extra::interested(kind) => (kind, super::LEFT_BUTTON),
+            _ => return false,
+        },
     };
     let is_move = kind == Kind::Drag;
     if is_move {
@@ -191,9 +209,11 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
 pub fn spawn(notifier: Notifier) {
     let state = Arc::new(Mutex::new(Gesture::Idle));
     let _ = CTX.set(Ctx {
-        state,
+        state: state.clone(),
         notifier: notifier.clone(),
     });
+    // the precision touchpad is a second source of the same gesture (idle until `touch_trigger` is on)
+    super::touch::start(state, notifier.clone());
     std::thread::Builder::new()
         .name("cursorpie-tap".into())
         .spawn(move || {
@@ -283,6 +303,19 @@ mod tests {
         assert_eq!(classify_mouse(0x0201, 0), None, "WM_LBUTTONDOWN");
         assert_eq!(classify_mouse(0x0202, 0), None, "WM_LBUTTONUP");
         assert_eq!(classify_mouse(0x020A, 0), None, "WM_MOUSEWHEEL");
+    }
+
+    #[test]
+    fn the_left_button_is_only_a_candidate_for_the_extra_click() {
+        assert_eq!(classify_left(WM_LBUTTONDOWN), Some(Kind::Down));
+        assert_eq!(classify_left(WM_LBUTTONUP), Some(Kind::Up));
+        assert_eq!(classify_left(WM_MBUTTONDOWN), None);
+        assert_eq!(
+            classify_left(WM_RBUTTONDOWN),
+            None,
+            "the right button has its own path"
+        );
+        assert_eq!(classify_left(WM_MOUSEMOVE), None);
     }
 
     #[test]

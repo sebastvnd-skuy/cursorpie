@@ -49,6 +49,7 @@ A set variable wins over the file, so `CURSORPIE_DEBUG=0` silences a `debug` fil
 | `sys` | the monitors and the pointer as the platform reports them at start |
 | `x11` | the display scale chosen for the pointer coordinates; bringing Settings forward: `raise_own` (the window the window manager listed, its workspace and the one shown) and, 200 ms later, `raise_own_seen` (whether it became the active window and which workspace is shown) |
 | `tap` | the session type, the button grabs, every press and release (position from the event **and** from the X server), the verdict, the hold timer (`hold_open`, or `hold_cancelled` when it gave up), the double-click window, which profile a press resolved to (`resolve`: whether a target app was found, never which), the slice that was selected, the side buttons, the mice (`mouse_look`: how many are connected and whether it was a new one, a returning one or the same; `mouse_scan`: how many buttons a scan found; never a name), and whether the input hook runs (`hook`: `running`, or why not: `blocked` on macOS, `refused` on Windows, `no_x_server` or `grab_failed` on Linux) |
+| `touch` | the trackpad source (macOS, Windows and Linux, off unless `touch_trigger` is on): `framework` (macOS: whether the system's touch library loaded), `source` (`running`, `stopped`; Windows also `refused`, `no_window`), `layout` (Windows: finger slots and the size in mm of a touchpad whose descriptor was read), `devices` (on Linux also `denied`: touchpads found but not readable, so the `input` group is missing; how many trackpads were seen and started), `device_open` and `device_closed` (Linux: one touchpad's reader and its size in mm), `x_grabs` (Linux: the left and right buttons are grabbed for a hold, or let go), `device_skipped` (a device that is not trackpad-sized: its size in mm; on Windows a touchpad whose descriptor is not understood: `why`), `arm` (a hold was armed: `elapsed_ms`, `double`, `started`), `open`, `release`, `cancel` (`why`: `slid`, `too_many_fingers`, `stale`, `device_lost`), `extra_click` (`via`: `press`, `tap`, `tap_click`), `extra_action` (the action and whether it did something) and `haptic` (which tick, whether it played). Counts and decisions only: never a finger position |
 | `ui` | the message that opens the pie, the position the pie asks for, the monitor it picked, the cursor fallback; closing the pie, opening and closing Settings (`close_settings` is timed: saving; `raise_settings` says why Settings was brought forward; `chooser_open`, `chooser_busy`, `chooser_closed` (with `waited_ms`) and `chooser_abandoned` (the user pressed Stop waiting) follow the native file chooser), importing a config, and the timed `warm` (icon loading) and `sleep` (freeing memory) |
 | `win` | where the toolkit says the window really is, for two seconds after a window was placed |
 | `cfg` | loading `config.json` (outcome, size, time) and every save of it (`ok`, and the error kind when it failed: a failed save is otherwise silent) |
@@ -165,7 +166,28 @@ The full reference (every function, the switch, the line format, how to test cod
 of the crate: `cargo docs`, crate `cursorpie_diag`. Another program of the workspace can use the same log with
 `diag::Builder::new("name")...init()`; the environment variables and the file names follow the name.
 
+## The touchpad does nothing (Linux)
+
+`cursorpie --touchpad-debug [seconds]` (default 20) prints why, without starting the app (stop a running
+CursorPie first). It checks, in order, and marks each line `[ok]`, `[..]` (information) or `[!!]` (a problem):
+
+1. the session (`XDG_SESSION_TYPE`, `DISPLAY`, `WAYLAND_DISPLAY`) and the saved `touch_trigger` (the switch must be
+   on **and saved**);
+2. the groups of this session (`input`), and whether `/etc/group` lists you in it before you logged in again;
+3. every device of `/proc/bus/input/devices` that has anything to do with touch, and why it was taken as a touchpad or
+   left out (a touchscreen, a virtual device, no finger count, no finger positions);
+4. for each touchpad: whether `/dev/input/eventN` can be opened (permission), and the size of the surface in mm;
+5. live: each change of the fingers with their position in mm and, as `-> recognizer:`, what the hold logic decides
+   (`HoldArmed`, `HoldOpen`, `Release`, `Cancel(..)`) with your config (hold time, how still, typing guard).
+
+It ends with `[->]` lines naming the broken link. The positions are printed to the terminal only because you ran
+it; the app never logs them. If this says everything works but the pie does not open, run the app with
+`CURSORPIE_DEBUG=1` and read the `touch` and `tap` lines (`touch`: `devices`, `device_open`, `arm`, `open`, `cancel`,
+`x_grabs`).
+
 ## Facts for a bug report
+
+Linux touchpad: paste the output of `cursorpie --touchpad-debug` as well.
 
 `cargo tools info` prints the OS, the desktop session variables, the tool versions and the number of logs, as a
 block to paste into the issue.

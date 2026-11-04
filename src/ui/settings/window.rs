@@ -155,6 +155,11 @@ impl App {
     pub fn settings_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
 
+        // the window is still becoming the card: an empty frame, the animation waits
+        if self.window_settling(&ctx) {
+            return;
+        }
+
         // open / close animation
         let dt = ctx.input(|i| i.stable_dt).min(0.05);
         let target = if self.closing.is_some() { 0.0 } else { 1.0 };

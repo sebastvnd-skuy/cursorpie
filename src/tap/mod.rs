@@ -9,6 +9,7 @@
 //! |---|---|
 //! | pause | the top of `dispatch` |
 //! | key down / up | `keyboard`: only used to record a shortcut in Settings |
+//! | a click while a trackpad pie is open | `touch::extra`: one more finger clicks (macOS trackpad, Windows precision touchpad) |
 //! | right button | `right_click`: switches the side-button pie while a pie is open |
 //! | side buttons (3, 4) and the extra buttons a mode uses (5 and up) | `side_buttons`: run the active mode's actions |
 //! | any extra button while Settings scans the mouse | the top of `dispatch`: reported and swallowed |
@@ -28,6 +29,19 @@ mod resolve;
 mod right_click;
 mod side_buttons;
 mod trigger;
+// The trackpad source runs on macOS, Windows and Linux; its portable core is built and tested everywhere.
+#[cfg_attr(
+    not(any(target_os = "macos", windows, target_os = "linux", test)),
+    allow(dead_code)
+)]
+mod touch;
+
+pub use touch::Status as TouchStatus;
+
+/// What the touch source is doing, for the Trackpad panel of Settings.
+pub fn touch_status() -> TouchStatus {
+    touch::status()
+}
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -63,6 +77,8 @@ use gesture::Gesture;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Button number of the left button (only the trackpad's extra click looks at it).
+const LEFT_BUTTON: i64 = touch::extra::LEFT_BUTTON;
 /// Button number of the right button.
 const RIGHT_BUTTON: i64 = 1;
 /// Button number of the "back" side button.
@@ -115,6 +131,13 @@ pub(crate) enum Ev {
     Mouse { kind: Kind, button: i64, pos: Point },
 }
 
+/// `cursorpie --touchpad-debug [seconds]` (Linux): prints why the touchpad does or does not work
+/// and shows the fingers live. `true` = it ran, so the app must not start.
+#[cfg(target_os = "linux")]
+pub fn touchpad_debug_from_args() -> bool {
+    touch::touchpad_debug_from_args()
+}
+
 /// Starts the hook on its own thread (retrying while the OS refuses it).
 pub fn spawn(notifier: Notifier) {
     native::spawn(notifier);
@@ -138,8 +161,19 @@ pub(crate) fn dispatch(
         return Verdict::Keep;
     }
     match ev {
-        Ev::Key { down, code, mods } => keyboard::handle_key(notifier, down, code, mods),
+        Ev::Key { down, code, mods } => {
+            if down {
+                touch::note_key(); // the typing guard of the trackpad hold
+            }
+            keyboard::handle_key(notifier, down, code, mods)
+        }
         Ev::Mouse { kind, button, pos } => {
+            // a click while a trackpad pie is open may be the extra click (one more finger)
+            if (button == LEFT_BUTTON || button == RIGHT_BUTTON)
+                && let Some(v) = touch::extra::handle(state, notifier, kind)
+            {
+                return v;
+            }
             if button == RIGHT_BUTTON {
                 return right_click::handle_right(state, notifier, kind);
             }
@@ -174,6 +208,8 @@ pub(crate) fn dispatch(
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) fn reset(state: &Arc<Mutex<Gesture>>, notifier: &Notifier) {
     *lock(state) = Gesture::Idle;
+    touch::extra::clear();
+    touch::ACTIVE.store(false, Ordering::SeqCst);
     SWALLOW_KEY.store(-1, Ordering::SeqCst);
     notifier.send(Msg::HidePie);
 }
@@ -275,7 +311,7 @@ mod tests {
         let _s = serial();
         PAUSED.store(true, Ordering::SeqCst);
         let (n, rx) = notifier();
-        let st = Arc::new(Mutex::new(Gesture::InSettings));
+        let st = Arc::new(Mutex::new(Gesture::InSettings(gesture::Source::Mouse)));
         let ev = Ev::Mouse {
             kind: Kind::Down,
             button: 2,

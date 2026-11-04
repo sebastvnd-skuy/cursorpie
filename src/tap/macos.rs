@@ -58,6 +58,8 @@ pub fn spawn(notifier: Notifier) {
         .name("cursorpie-tap".into())
         .spawn(move || {
             let state = Arc::new(Mutex::new(Gesture::Idle));
+            // the trackpad source (idle until "touch_trigger" is switched on) shares the gesture
+            super::touch::start(state.clone(), notifier.clone());
             let mut warned = false;
             loop {
                 let (st, n) = (state.clone(), notifier.clone());
@@ -72,6 +74,11 @@ pub fn spawn(notifier: Notifier) {
                         CGEventType::RightMouseDown,
                         CGEventType::RightMouseUp,
                         CGEventType::RightMouseDragged,
+                        // only the trackpad's extra click looks at the left button, and only while
+                        // a trackpad pie is open (see `handle`: one atomic read otherwise)
+                        CGEventType::LeftMouseDown,
+                        CGEventType::LeftMouseUp,
+                        CGEventType::LeftMouseDragged,
                         CGEventType::KeyDown,
                         CGEventType::KeyUp,
                     ],
@@ -146,6 +153,9 @@ fn translate(etype: CGEventType, event: &CGEvent) -> Option<Ev> {
         CGEventType::RightMouseDown => mouse(Kind::Down, super::RIGHT_BUTTON),
         CGEventType::RightMouseUp => mouse(Kind::Up, super::RIGHT_BUTTON),
         CGEventType::RightMouseDragged => mouse(Kind::Drag, super::RIGHT_BUTTON),
+        CGEventType::LeftMouseDown => mouse(Kind::Down, super::LEFT_BUTTON),
+        CGEventType::LeftMouseUp => mouse(Kind::Up, super::LEFT_BUTTON),
+        CGEventType::LeftMouseDragged => mouse(Kind::Drag, super::LEFT_BUTTON),
         CGEventType::OtherMouseDown => other(Kind::Down),
         CGEventType::OtherMouseUp => other(Kind::Up),
         CGEventType::OtherMouseDragged => other(Kind::Drag),
@@ -169,6 +179,18 @@ fn handle(
             unsafe { CGEventTapEnable(port as CFMachPortRef, true) };
         }
         reset(state, notifier);
+        return CallbackResult::Keep;
+    }
+    // a left click or drag is none of our business unless a trackpad pie is open: one atomic read
+    let left = match etype {
+        CGEventType::LeftMouseDown => Some(Kind::Down),
+        CGEventType::LeftMouseUp => Some(Kind::Up),
+        CGEventType::LeftMouseDragged => Some(Kind::Drag),
+        _ => None,
+    };
+    if let Some(kind) = left
+        && !super::touch::extra::interested(kind)
+    {
         return CallbackResult::Keep;
     }
     if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA) == SYNTH_TAG {

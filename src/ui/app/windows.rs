@@ -11,6 +11,15 @@ use eframe::egui::{self, Pos2, Vec2};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
+/// Longest the card waits for the window to take its size (see [`App::window_settling`]).
+const SETTLE_MAX: Duration = Duration::from_millis(300);
+
+/// Whether a window of `size` (None = the system did not say) is the size `want`, give or take
+/// the rounding to whole pixels. An unknown size counts as arrived: there is nothing to wait for.
+fn has_size(size: Option<Vec2>, want: Vec2) -> bool {
+    size.is_none_or(|s| (s.x - want.x).abs() <= 2.0 && (s.y - want.y).abs() <= 2.0)
+}
+
 impl App {
     /// Applies the edited config and writes it to disk (with a backup), without closing Settings:
     /// the config is sanitized and stored, and the launch-at-login setting is applied.
@@ -47,6 +56,7 @@ impl App {
         self.welcome = None;
         self.closing = None;
         self.settings_anim = 0.0;
+        self.settings_wait = None;
         self.pie_open = false;
         self.anim = 0.0;
         self.visible = false;
@@ -79,6 +89,40 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         platform::raise_own_window();
+    }
+
+    /// Whether the window is still on its way to the size the card was given. While it is, the
+    /// caller draws nothing and returns, and the open animation has not started.
+    ///
+    /// The pie is a small window that is already on screen when a held trigger opens Settings
+    /// (and a hidden one when the menu bar opens it). The commands that resize and move it are
+    /// carried out by the system a moment after the frame that sent them, so the first frames of
+    /// the card would be drawn into a window that still has the old size: the card cut off, or
+    /// stretched when the window grows, and then a jump. Worst on the first open, when the
+    /// frames are slowest (nothing is cached yet and the larger drawing surface is created).
+    /// Drawing nothing keeps the transparent window empty until it has arrived.
+    ///
+    /// Only macOS needs this (the window there is resized while it is visible); elsewhere it is
+    /// always false. A window that never reaches the size (the system clamped it) is let go of
+    /// after [`SETTLE_MAX`].
+    pub fn window_settling(&mut self, ctx: &egui::Context) -> bool {
+        let Some((want, since)) = self.settings_wait else {
+            return false;
+        };
+        let size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
+        if !cfg!(target_os = "macos") || has_size(size, want) || since.elapsed() >= SETTLE_MAX {
+            diag::log!(
+                "ui",
+                "window_settled",
+                waited_ms = since.elapsed(),
+                arrived = has_size(size, want)
+            );
+            self.settings_wait = None;
+            ctx.request_repaint(); // draw the card now
+            return false;
+        }
+        ctx.request_repaint_after(Duration::from_millis(8));
+        true
     }
 
     /// Turns the window into Settings, centered on the display that contains `at`.
@@ -155,6 +199,7 @@ impl App {
             h = win_sz.y
         );
         crate::debug::expect_window(top_left.x, top_left.y);
+        self.settings_wait = Some((win_sz, Instant::now()));
 
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(win_sz));
         ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
@@ -400,5 +445,26 @@ impl App {
             "quit" => self.request_quit(ctx),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_has_arrived_when_it_has_the_size_asked_for() {
+        let want = Vec2::new(1260.0, 820.0);
+        assert!(has_size(Some(Vec2::new(1260.0, 820.0)), want));
+        assert!(
+            has_size(Some(Vec2::new(1259.0, 821.0)), want),
+            "pixel rounding"
+        );
+        assert!(
+            !has_size(Some(Vec2::new(400.0, 400.0)), want),
+            "still the pie"
+        );
+        assert!(!has_size(Some(Vec2::new(1260.0, 400.0)), want));
+        assert!(has_size(None, want), "nothing to compare: do not wait");
     }
 }

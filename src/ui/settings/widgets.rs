@@ -850,6 +850,15 @@ pub(in crate::ui::settings) fn status(ui: &mut egui::Ui, ok: bool, text: &str) {
     );
 }
 
+/// The width a [`status`] pill needs for `text`: what a row gives its control so the pill is not
+/// squeezed (and the label beside it is not, either).
+pub(in crate::ui::settings) fn status_width(ui: &egui::Ui, text: &str) -> f32 {
+    galley(ui, text, text_font(13.0, true), Color32::PLACEHOLDER)
+        .size()
+        .x
+        + 32.0
+}
+
 /// A line of secondary text.
 pub(in crate::ui::settings) fn muted(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).color(pal().muted));

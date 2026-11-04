@@ -159,7 +159,7 @@ Non-goals (first Linux release)
 - BSDs and other Unixes. They keep the stub.
 - Remote sessions without local input devices (RDP, VNC, `xrdp`, SSH X forwarding): best effort only.
 - TTY/console use.
-- Touchpads as a trigger (they have no middle button; same as macOS).
+- Touchpads as a trigger: now an opt-in feature on X11, see [TRACKPAD_HAPTICS_PLAN.md](TRACKPAD_HAPTICS_PLAN.md#linux-x11) and *Trackpad* in the user guide. Wayland: still no.
 - GNOME Wayland parity without an extension (see [Support tiers](#support-tiers)).
 - A Flatpak with Wayland capture. A sandbox cannot grab `/dev/input` devices without broad device access.
 

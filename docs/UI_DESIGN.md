@@ -132,7 +132,7 @@ Skip), a page in the middle and a footer (page dots, Back, Next or Get started).
 - It is a mode of the Settings window, not a second window: `App::welcome` is `Some` and
   `settings_open` is true, so the pie stays hidden while it is open.
 - The only text that depends on the OS lives in pure functions of `Os` (`setup_title`, `setup_lead`,
-  `tips`), so a test covers both systems.
+  `setup_steps`, `tips`), so a test covers both systems.
 - Esc and Skip close it without applying anything; Get started and Open Settings also apply the
   launch-at-login box. Either way it is remembered as shown.
 

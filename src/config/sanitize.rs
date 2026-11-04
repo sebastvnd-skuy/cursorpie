@@ -118,6 +118,15 @@ impl Config {
         if !matches!(self.trigger_button, 2 | 5 | 6 | 7) {
             self.trigger_button = 2;
         }
+        if !matches!(self.touch_fingers, 1 | 2) {
+            self.touch_fingers = 1;
+        }
+        self.touch_still_mm = if self.touch_still_mm.is_finite() {
+            self.touch_still_mm.clamp(0.5, 6.0)
+        } else {
+            Config::default().touch_still_mm
+        };
+        self.touch_typing_guard_ms = self.touch_typing_guard_ms.min(2000);
         self
     }
 }
@@ -125,6 +134,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::TouchClickAction;
 
     fn parse(json: &str) -> Config {
         crate::config::parse_config(json).expect("valid config")
@@ -144,6 +154,46 @@ mod tests {
             (wild.glass_clear, wild.glass_frost, wild.glass_shine),
             (100, 100, 100)
         );
+    }
+
+    #[test]
+    fn the_trackpad_settings_are_off_by_default_and_old_files_load_unchanged() {
+        let old = parse(r#"{"version":2}"#);
+        assert!(!old.touch_trigger, "the trackpad trigger is opt-in");
+        assert_eq!(old.touch_fingers, 1);
+        assert_eq!(old.touch_still_mm, 2.0);
+        assert_eq!(old.touch_click_action, TouchClickAction::SwitchPie);
+        assert_eq!(old.touch_typing_guard_ms, 400);
+        assert!(old.haptics && old.haptic_hover);
+        assert_eq!(
+            old,
+            Config {
+                version: old.version,
+                ..Config::default()
+            }
+        );
+    }
+
+    #[test]
+    fn the_trackpad_settings_are_clamped() {
+        let wild = parse(
+            r#"{"version":2,"touch_trigger":true,"touch_fingers":7,"touch_still_mm":99.0,"touch_typing_guard_ms":99999,"touch_click_action":"PickHovered"}"#,
+        );
+        assert!(wild.touch_trigger);
+        assert_eq!(
+            wild.touch_fingers, 1,
+            "an unsupported count falls back to 1"
+        );
+        assert_eq!(wild.touch_still_mm, 6.0);
+        assert_eq!(wild.touch_typing_guard_ms, 2000);
+        assert_eq!(wild.touch_click_action, TouchClickAction::PickHovered);
+        let tiny = parse(r#"{"version":2,"touch_fingers":2,"touch_still_mm":0.0}"#);
+        assert_eq!((tiny.touch_fingers, tiny.touch_still_mm), (2, 0.5));
+        let nan = Config {
+            touch_still_mm: f32::NAN,
+            ..Config::default()
+        };
+        assert_eq!(nan.sanitize().touch_still_mm, 2.0);
     }
 
     #[test]

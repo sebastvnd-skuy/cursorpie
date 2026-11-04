@@ -106,6 +106,10 @@
 //!
 //! Notes:
 //!
+//! * Every non-idle state carries its `Source` (`Mouse` or `Touch`). A trackpad hold (macOS, Windows and Linux X11, see
+//!   `tap/touch/`) feeds the same states through `trigger::touch_press`, `touch_move`, `touch_release`
+//!   and `touch_cancel`; a trackpad gesture that ends early replays no click, and the mouse trigger
+//!   passes through while a trackpad gesture runs.
 //! * A quick click must still reach the app, so the press is *swallowed* and, if it turns out to
 //!   be a click, **replayed** with [`actions::post_mouse`](crate::actions::post_mouse). Replayed
 //!   events carry [`SYNTH_TAG`](crate::actions::SYNTH_TAG) so the tap ignores them.

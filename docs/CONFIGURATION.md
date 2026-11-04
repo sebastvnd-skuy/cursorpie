@@ -91,6 +91,13 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
   "glass_clear": 60,
   "glass_frost": 45,
   "glass_shine": 60,
+  "touch_trigger": false,
+  "touch_fingers": 1,
+  "touch_still_mm": 2.0,
+  "touch_click_action": "SwitchPie",
+  "touch_typing_guard_ms": 400,
+  "haptics": true,
+  "haptic_hover": true,
   "profiles": [
     {
       "name": "Default",
@@ -160,6 +167,12 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
 | `appearance` | `"System"` (default), `"Light"` or `"Dark"`: the look of Settings and the pie |
 | `pie_style` | `"Solid"` (default) or `"Glass"`: opaque slices, or see-through frosted ones (always smoked dark) |
 | `glass_clear`, `glass_frost`, `glass_shine` | Glass style only, in percent (0 to 100, larger values are clamped): how see-through the slices are (default 60), how frosted (default 45) and how bright the rim and sheen are (default 60) |
+| `touch_trigger` | macOS trackpad, Windows precision touchpad and Linux (X11) touchpad: a hold opens the pie (default `false`; while it is off the system's touch library is never loaded on macOS, nothing is registered with Windows and `/dev/input` is never opened on Linux). See [the user guide](USER_GUIDE.md#trackpad-macos-windows-and-linux-x11) |
+| `touch_fingers` | `1` (default) or `2`: how many fingers hold; the extra click is one more. Other values become `1` |
+| `touch_still_mm` | 0.5 to 6.0 (default `2.0`): how far, in millimeters on the trackpad, the holding finger may move before the hold counts |
+| `touch_click_action` | `"SwitchPie"` (default, like the right-click), `"PickHovered"` (the hovered Mode slice becomes the active mode) or `"Nothing"`: what the extra click does |
+| `touch_typing_guard_ms` | 0 to 2000 (default `400`, `0` = off): no hold is armed this soon after a key press |
+| `haptics`, `haptic_hover` | macOS only (ignored on Windows and Linux): trackpad ticks when the pie opens and the mode switches (default on), and when the hovered slice changes (default on, needs `haptics`) |
 | `sleep_after_s` | Seconds without a pie or Settings before cached icons and the Settings copy are freed (10 to 3600, `0` = never) |
 | `apps` | App ids: bundle identifiers on macOS, executable names on Windows, desktop-entry ids on Linux. An empty list marks the general profile; only the first such profile is kept, all others need at least one app |
 | `active` | Path of the active side-button mode, as indices (`[3, 1]` = slice 1 inside slice 3) |

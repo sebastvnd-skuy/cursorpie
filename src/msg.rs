@@ -68,6 +68,9 @@ pub enum Msg {
     },
     /// An extra button (its button number) was pressed while Settings scans the mouse.
     ButtonScanned(i64),
+    /// Play one haptic tick on the trackpad (a trackpad hold only; see
+    /// [`tap::touch::haptic`](crate::tap)). Handled on the UI thread: AppKit is not called from the tap.
+    Haptic(crate::platform::HapticKind),
     /// An app was chosen for an "Open app" action of the slice at `path` (`slot` = which action).
     ActionAppPicked {
         profile: usize,

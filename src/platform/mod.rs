@@ -29,6 +29,7 @@
 //! | `press_shortcut`, `post_mouse`, `activate_app` | input injection (used by [`actions`](crate::actions)) |
 //! | `open_app`, `reveal_app`, `open_url`, `run_shell`, `open_path`, `reveal_in_file_manager` | launching things; `reveal_app` is `open_app` that also goes to, or fetches, the app's desktop (see [`desktops`]) |
 //! | `choose_file`, `tick` | file chooser and hover sound |
+//! | `haptic` | one haptic tick on a trackpad (macOS only, no-op elsewhere), see [`HapticKind`] |
 //! | `launch_at_login_enabled`, `set_launch_at_login` | start with the user session |
 //! | `ensure_installed`, `handle_command_line`, `single_instance` | Windows install step, `--uninstall`, one running copy (no-ops elsewhere) |
 //! | `release_unused_memory` | give freed pages back to the OS |
@@ -196,6 +197,20 @@ impl Os {
         }
     }
 
+    /// Whether this OS can open the pie with a hold on a trackpad (the Trackpad panel of Settings is
+    /// shown only where it can): a Mac trackpad, a Windows precision touchpad, or a Linux (X11)
+    /// touchpad.
+    pub const fn has_trackpad(self) -> bool {
+        matches!(self, Os::Mac | Os::Windows | Os::Linux)
+    }
+
+    /// Whether this OS can give haptic feedback on a trackpad (the haptic switches of the Trackpad
+    /// panel are shown only where it can). Only macOS: Windows and Linux touchpads have no public
+    /// haptic call.
+    pub const fn has_haptics(self) -> bool {
+        matches!(self, Os::Mac)
+    }
+
     /// Whether this build shows a tray / menu bar icon at all. The first Linux release has none:
     /// Settings opens by holding the trigger in the center of the pie, and quits from its footer.
     pub const fn has_tray(self) -> bool {
@@ -295,6 +310,17 @@ pub enum NativeIcon {
     },
 }
 
+/// A haptic pattern for a trackpad (macOS: `NSHapticFeedbackManager`; other systems ignore it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HapticKind {
+    /// A firm confirmation: "it is open".
+    LevelChange,
+    /// A soft detent: the hovered slice changed.
+    Alignment,
+    /// A plain click: the mode switched.
+    Generic,
+}
+
 /// A display's bounds in logical points: `(x, y, width, height)`, in the same space as the pointer.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScreenRect {
@@ -355,6 +381,11 @@ mod tests {
         assert_eq!(Os::Linux.trigger_buttons(), &[2]);
         assert!(!Os::Linux.has_tray());
         assert!(Os::Mac.has_tray() && Os::Windows.has_tray());
+        // a Mac trackpad, a Windows precision touchpad and a Linux (X11) touchpad can open the pie
+        // by touch (docs/TRACKPAD_HAPTICS_PLAN.md); only the Mac one ticks
+        assert!(Os::Mac.has_trackpad() && Os::Windows.has_trackpad() && Os::Linux.has_trackpad());
+        assert!(Os::Mac.has_haptics());
+        assert!(!Os::Windows.has_haptics() && !Os::Linux.has_haptics());
         assert!(Os::Linux.startup_hint().contains("autostart"));
         assert!(Os::Linux.app_id_hint().contains("desktop id"));
     }

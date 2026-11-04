@@ -1,6 +1,11 @@
-# Trackpad and haptics on macOS: design and plan
+# Trackpad and haptics: design and plan (macOS, with Windows and Linux X11 sections)
 
-**Status: plan only. Nothing in this document is implemented, and no code was written for it.** It says how to
+**Status: implemented in code (phases T1 to T5 and T7), and for Linux X11 (see [Linux (X11)](#linux-x11)); the native layers are not yet verified on a Mac or on a Linux touchpad.** The
+portable core (recognizer, bridge, extra click, haptic limiter, config, Settings panel) is unit tested on every OS.
+The code that talks to `MultitouchSupport.framework`, the added `LeftMouse*` events of the tap and the haptic call
+compile only on macOS and were written without a Mac: spikes S1 to S10 and the manual checklist below are still to
+be run, and not implemented: the live finger demo in Settings, the *tap, then hold* trigger style, `touch_zone`,
+actuator waveforms (all in "later"). The rest of this document is the design it follows. It says how to
 let a Mac trackpad open and drive the pie, how to give haptic feedback on it, and how to keep the mouse and the
 trackpad one seamless experience. Every statement about a macOS API is a **design assumption** until the
 [spikes](#phase-0-spikes) answer it on a real Mac; the CI runners cannot touch a trackpad.
@@ -12,6 +17,7 @@ feature on.
 ## Contents
 
 - [Summary](#summary)
+- [Linux (X11)](#linux-x11)
 - [Goals and non-goals](#goals-and-non-goals)
 - [What the user will experience](#what-the-user-will-experience)
 - [How the code works today](#how-the-code-works-today)
@@ -27,6 +33,7 @@ feature on.
 - [Manual verification checklist](#manual-verification-checklist)
 - [Security and privacy](#security-and-privacy)
 - [Documentation changes](#documentation-changes)
+- [Windows Precision Touchpad](#windows-precision-touchpad)
 - [Open decisions for the maintainer](#open-decisions-for-the-maintainer)
 - [References](#references)
 
@@ -47,7 +54,7 @@ feature on.
 4. **Haptics use the public `NSHapticFeedbackManager`.** It needs no private call, is ignored by the system when
    no finger touches the trackpad, and so is harmless with a mouse. A private actuator API exists for richer
    waveforms; it is a later, optional step.
-5. **Everything is off by default** and macOS only. Windows and Linux are untouched.
+5. **Everything is off by default.** macOS first; Windows (precision touchpad) and Linux X11 were added afterwards, so all three systems are covered.
 
 ## Goals and non-goals
 
@@ -67,8 +74,7 @@ feature on.
 
 - No code is written by this document. It is the research and the plan.
 - No support for the Magic Mouse's touch surface in the first release (see [Open decisions](#open-decisions-for-the-maintainer)).
-- No Windows Precision Touchpad or Linux libinput work. The recognizer is written to be portable so that it can
-  be reused, but those systems need their own design.
+- No Wayland touchpad work. Linux X11 has a design, in [Linux (X11)](#linux-x11); the Windows Precision Touchpad has one, in [Windows Precision Touchpad](#windows-precision-touchpad).
 - No custom gestures (swipes, pinches, rotations) and no replacement of the system's own trackpad gestures.
 - No Mac App Store build. CursorPie is distributed as a DMG, and a private framework is not allowed in the store.
 
@@ -470,6 +476,65 @@ When the work lands, in the same pull requests as the code:
 | `CHANGELOG.md` | One entry per phase that changes behavior |
 | Welcome window and **Behavior** tab text | Mentions of the trackpad on macOS only |
 
+## Windows Precision Touchpad
+
+**Status: implemented in code, not yet run on a Windows laptop.** The pure half (`src/tap/touch/ptp.rs`) is unit
+tested on every OS; the Win32 half (`src/tap/touch/precision.rs`) is type-checked with `--features check-windows` and
+has to be verified by hand (checklist below). Everything in the recognizer, the bridge, the extra click, the
+config fields and the Settings panel is the same as on macOS; only the source of the fingers differs.
+
+**Source.** A Windows Precision Touchpad (PTP) is a HID device on the *Digitizer / Touch Pad* usage page (`0x0D`/`0x05`).
+Unlike on macOS this is a **public** interface: `RegisterRawInputDevices` with `RIDEV_INPUTSINK | RIDEV_DEVNOTIFY` on a
+hidden window of its own thread delivers one `WM_INPUT` per report, also in the background. The descriptor
+(`GetRawInputDeviceInfo(RIDI_PREPARSEDDATA)`, `HidP_GetValueCaps`) says where each finger slot's X, Y, Contact ID, Tip Switch
+and Confidence are, and `HidP_GetUsageValue` / `HidP_GetUsages` read them. Hybrid mode (more fingers than slots in a
+report) is put together by `ptp::Assembler`. Palm rejection is the device's own *Confidence* bit; the optional contact
+width and height are not used. The surface size in millimeters comes from the physical range and unit of X and Y.
+
+**What is shared / what differs.**
+
+| | macOS | Windows |
+|---|---|---|
+| Source | private `MultitouchSupport.framework`, loaded at run time | Raw Input, public |
+| Devices | trackpads (size filter) | precision touchpads (usage page), older touchpads are plain mice and are not seen |
+| Extra click | `LeftMouse*` in the event tap | `WM_LBUTTONDOWN/UP` (and the right click of a two-finger tap) in the `WH_MOUSE_LL` hook, only while a touch pie is open |
+| Pointer position | read from the system in the touch thread | the same (`platform::cursor_pos`) |
+| Haptics | `NSHapticFeedbackManager` | none (the Settings switches are hidden) |
+| Off | devices stopped, framework idle | `RIDEV_REMOVE`, nothing registered |
+
+**Windows-only obstacles.**
+
+| Obstacle | Solution |
+|---|---|
+| Windows' own gestures take the extra finger (two-finger tap is a right click, three-finger gestures) | classify by finger count, swallow the click while the touch pie is open (as on macOS); the panel names the Windows settings to change |
+| A tap followed by a hold starts Windows' tap-and-drag and presses the left button under the pie | documented; turn off *Tap twice and drag to multi-select* (S-W5 checks if CursorPie can do better) |
+| Report layouts differ between vendors | nothing is hard-coded: the layout is read from the descriptor, and a device whose descriptor is not understood is ignored and logged (`touch/device_skipped`, `why = no_layout`) |
+| A resting finger may stop producing reports | assumed not (the PTP requirements ask for a steady report rate while a contact is present); if it does, the recognizer's stale rule cancels the hold after 500 ms (S-W2) |
+| The physical size is missing or in an odd unit | `(0, 0)` is passed and the recognizer assumes a typical trackpad (130 x 90 mm) |
+| Hot-plug, sleep | `WM_INPUT_DEVICE_CHANGE` and a 5 s count; the registration is renewed after a long gap between ticks |
+
+**Spikes** (throwaway programs or `CURSORPIE_DEBUG=1` runs on a Windows laptop):
+
+| # | Question | Pass condition |
+|---|---|---|
+| W1 | Does `RegisterRawInputDevices` for `0x0D`/`0x05` with `RIDEV_INPUTSINK` deliver `WM_INPUT` to a hidden top-level window while another app is in front? | reports arrive, one per ~8 ms while touching |
+| W2 | Does a still finger keep producing reports? | yes, on at least two laptops (otherwise the stale rule must be loosened for this source) |
+| W3 | Does `layout_from_caps` accept the descriptor of the test devices (5 slots, count, mm size)? | `touch/layout` is logged with the right size |
+| W4 | Does Windows' default setup (tap to click, two-finger tap right-click) still deliver the click of the extra finger to the hook while a pie is open? | the extra click runs once per tap or press |
+| W5 | Does a tap-then-hold click the app under the pie, and can the left press be swallowed instead of asking the user to change a setting? | decided from the result |
+
+**Manual checklist (Windows).**
+
+- [ ] Settings > Behavior > Trackpad shows *Precision touchpad found.* with the switch on and Saved; *No precision touchpad found* on a PC without one.
+- [ ] Touch and hold one finger: the pie opens under the pointer after the hold time; moving the finger hovers a slice; lifting runs it; lifting in the center cancels.
+- [ ] Sliding a finger before the hold time moves the pointer as usual and opens nothing; scrolling and tapping are unchanged.
+- [ ] A palm resting on the pad opens nothing; a hand resting while typing opens nothing.
+- [ ] With the pie open, a second finger tapped or pressed switches the mode once, and the app under the pie gets no click or right-click.
+- [ ] Fingers to hold = 2 with the three-finger gestures set to *Nothing* behaves the same.
+- [ ] The middle button of a mouse still works at any time, and a mouse right-click still switches the mode during a touch hold.
+- [ ] Switching the feature off and Saving stops the source (`touch/source stopped` in the log); no `WM_INPUT` work happens afterwards.
+- [ ] Unplugging or disabling the touchpad mid-hold ends the gesture; sleep and wake keep working.
+
 ## Open decisions for the maintainer
 
 1. **What does "switch the mode" mean?** This plan proposes `SwitchPie` (like the right-click) as the default and
@@ -482,7 +547,7 @@ When the work lands, in the same pull requests as the code:
 5. **Magic Mouse's touch surface:** in scope later, or never?
 6. **Private actuator waveforms:** in scope later, or only the public haptic API?
 7. **Tap-then-hold** as a safer trigger style: worth planning now?
-8. Whether the Windows precision touchpad and Linux touchpads deserve the same design, using the portable recognizer.
+8. Whether Linux touchpads deserve the same design, using the portable recognizer. (Windows has it now, see below.)
 
 ## References
 
@@ -498,3 +563,25 @@ Read while writing this plan; the behavior of every item is still to be confirme
 - mactic: actuator functions of the private framework: github.com/MatMercer/mactic
 - BetterTouchTool community thread on three-finger tap conflicts with system settings: community.folivora.ai/t/tip-tap-middle-to-middleclick-action-not-reliable/45198
 - `objc2-app-kit` bindings for `NSHapticFeedback`: docs.rs/objc2-app-kit
+
+## Linux (X11)
+
+The portable core (recognizer, bridge, extra click, config) is reused unchanged; Linux adds a native source and a
+little X work. No haptics (no standard Linux interface), so `Os::has_haptics` is Mac only.
+
+- **Why evdev.** With libinput, X11 clients get no touch positions from a touchpad, so `src/tap/touch/evdev.rs`
+  reads `/dev/input/eventN` (multitouch protocol B) directly. This needs the `input` group; without it the status
+  says `NoPermission` and nothing else changes. Touchpads are found in `/proc/bus/input/devices`
+  (`platform/linux/inputdev.rs`): they have `BTN_TOOL_FINGER` and `ABS_MT_POSITION_X/Y`, no `INPUT_PROP_DIRECT`, and
+  are not a program's virtual device. The surface size in mm comes from the axis resolution.
+- **Frames.** A resting finger sends no events, so a reader repeats the last frame every 20 ms while a finger is
+  down; the recognizer's timers (arm, tap) then work as on macOS. A thread per device feeds one `Sink`; a device
+  that vanishes cancels its gesture. Devices are rescanned every 5 s (hot plug) and nothing is opened while
+  `touch_trigger` is off.
+- **Extra click.** X grabs the left and right buttons (`XIGrabButton`) only while a touch hold is active, so the
+  click of the extra finger reaches `touch::extra` and can be swallowed; any other click is replayed at its
+  release (`pending_basic` in `tap/linux.rs`). The grabs are kept while a kept or swallowed click is still down.
+- **Typing guard.** `XI_RawKeyPress` is selected only while `touch_trigger` is on, and only calls `touch::note_key`.
+- **Not verified:** the thread, the `EVIOCGABS` ioctl, permissions and the grab timing on real hardware. The parser,
+  the repeat-frame logic, the device detection and the grab arithmetic are unit tested.
+- **Not covered:** Wayland (the mouse layer is X11 only), touchscreens, tablets.
