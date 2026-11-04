@@ -138,9 +138,13 @@ extra buttons may be handled by the maker's own software.
 
 ## Settings
 
-Open it from the menu bar or tray icon, or by holding the trigger in the center of the pie. **Save** applies
-and stores your changes. **Cancel**, **Esc** and **Cmd+W** (Ctrl+W elsewhere) discard them. **Undo** and
-**Redo** step through your edits.
+Open it from the menu bar or tray icon, or by holding the trigger in the center of the pie. The top right
+corner has two small round buttons, like the dots of a window: the green one (the accent color) **saves** and
+closes, applying and storing your changes; the red one **cancels**. **Cmd+S** (Ctrl+S elsewhere) saves and
+keeps Settings open. **Cancel**, **Esc** and **Cmd+W** (Ctrl+W elsewhere) close Settings without saving. While
+something is not saved, a yellow dot shows between the two buttons, and Cancel, Esc and Cmd+W first ask
+"Discard changes?": **Enter** discards the changes, **Esc** or a click outside keeps you editing. There are
+no Undo and Redo buttons; use their keys (see [Undo, redo and backups](#undo-redo-and-backups)).
 
 **Quitting.** **Quit CursorPie** (in the sidebar, in **General**, or in the tray / menu bar icon while Settings
 is open) always asks first:
@@ -159,7 +163,8 @@ from behind other windows or minimized) and its footer says to Save or Cancel to
 **Menu** is where you build pies.
 
 - Choose, create, rename and delete profiles, list the apps each one applies to (type an id or use **Pick
-  app...**), and **Share** a profile.
+  app...**), and **Share** a profile. The **...** button unfolds Rename, Export, Import and Delete as a row of
+  icons (hover for their names) and turns into an **x** that folds them again; **+** is hidden meanwhile.
 - An interactive pie shows the ring you are editing. Click a slice to edit it, a selected
   submenu slice again to step into it, and the center to go back. Two round buttons under the pie add a slice
   (**+**) and delete the selected one (the trash); you can also drag a slice onto the trash.
@@ -189,7 +194,8 @@ from behind other windows or minimized) and its footer says to Save or Cancel to
 **Reveal in Finder** (Explorer, or the file manager on Linux), **Export...**, **Import...** (a file over
 4 MiB is refused), **Reset to defaults** and **Backups**. On Linux it also has Pause and Quit.
 
-**About** shows the version, author, project links, privacy note and credits.
+**About** shows the version, author, privacy note and credits. Website, GitHub, Report an issue and Downloads
+are the four round icon buttons in the corner of the top card.
 
 ## Undo, redo and backups
 
@@ -198,12 +204,13 @@ Deleting a slice or a profile by accident is easy to fix.
 **While Settings is open**, every change is recorded: adding, deleting or moving slices and profiles, editing
 actions and apps, changing options, importing a file and **Reset to defaults**.
 
-- **Undo** and **Redo** are in the top bar. Use **Cmd+Z** and **Cmd+Shift+Z** (**Cmd+Y** also redoes; Ctrl
+- **Undo** and **Redo** are on the keyboard: **Cmd+Z** and **Cmd+Shift+Z** (**Cmd+Y** also redoes; Ctrl
   instead of Cmd on Windows and Linux).
 - Typing and dragging a slider count as **one** step: a step ends when you pause for a moment.
 - Up to 50 steps are kept. A new change after an undo discards the steps you undid.
 - In a text field, **Cmd+Z** undoes the text first. While you record a shortcut, the keys go to the recorder.
-- The history lives only as long as the Settings window. **Save**, **Cancel** and **Esc** close it and forget it.
+- The history lives only as long as the Settings window. Closing it, with Save or Cancel, forgets it. **Cmd+S**
+  keeps it, so you can still undo after saving.
 
 **After you have saved**, use backups. Every **Save** first stores the version it replaces as
 `config.backup.1.json` (the newest) next to `config.json` and keeps the last five. Open **Settings > General >
@@ -223,7 +230,7 @@ temporary one, so a crash or a full disk cannot leave half a file. Where the fil
   text and emoji need nothing embedded. Missing or oversized images show up as `?` for the receiver.
 - **Import a profile...** adds the file as a **new** profile (nothing is overwritten) and selects it. The
   embedded images are copied into the `icons` folder next to `config.json`: an identical file is reused, a
-  different one with the same name gets a number. Press **Save** to apply it, or **Undo** to take it back.
+  different one with the same name gets a number. Press **Save** to apply it, or **Undo** (Cmd+Z) to take it back.
 - A profile must list at least one app. A name already taken gets ` (2)`, ` (3)`...
 - Only PNG, JPEG and WebP data is written, whatever the file claims, and nothing outside the icons folder.
 

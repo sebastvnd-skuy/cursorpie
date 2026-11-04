@@ -12,6 +12,22 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 impl App {
+    /// Applies the edited config and writes it to disk (with a backup), without closing Settings:
+    /// the config is sanitized and stored, and the launch-at-login setting is applied.
+    pub fn persist_edit(&mut self) {
+        let new = self.edit.clone().sanitize();
+        let login = new.launch_at_login;
+        *cfg() = new.clone();
+        side::forget_all(); // a changed default should apply at once
+        config::save_config_with_backup(&new);
+        if let Err(e) = platform::set_launch_at_login(login) {
+            eprintln!("CursorPie: could not update launch-at-login: {e}");
+        }
+        if let Some(t) = &self.tray {
+            t.set_login_checked(login);
+        }
+    }
+
     /// Closes Settings and turns the window back into the hidden, click-through pie window.
     /// With `save`, the edited config is sanitized, stored, saved to disk and the launch-at-login setting is applied.
     pub fn close_settings(&mut self, ctx: &egui::Context, save: bool) {
@@ -20,18 +36,9 @@ impl App {
         self.ed.stop_recording();
         self.ed.scan = None;
         self.confirm_quit = false;
+        self.confirm_discard = false;
         if save {
-            let new = self.edit.clone().sanitize();
-            let login = new.launch_at_login;
-            *cfg() = new.clone();
-            side::forget_all(); // a changed default should apply at once
-            config::save_config_with_backup(&new);
-            if let Err(e) = platform::set_launch_at_login(login) {
-                eprintln!("CursorPie: could not update launch-at-login: {e}");
-            }
-            if let Some(t) = &self.tray {
-                t.set_login_checked(login);
-            }
+            self.persist_edit();
         }
         self.ed.icons.revalidate(); // re-read only the images that changed on disk
         self.release_editor(); // the next open copies the config again

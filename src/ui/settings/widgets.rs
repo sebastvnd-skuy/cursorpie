@@ -1235,6 +1235,10 @@ pub(in crate::ui::settings) fn sheet<R>(
 /// list is one of these: a title, the content, a close button; it stays open while you click and
 /// type inside and closes on a click outside, on its button again, on Esc, or when `add_contents`
 /// calls `ui.close()`.
+///
+/// Nothing uses it at the moment (the profile actions unfold in a row instead); it stays for the
+/// next small form that belongs under its button.
+#[allow(dead_code)]
 pub(in crate::ui::settings) fn popover<R>(
     trigger: &egui::Response,
     title: &str,

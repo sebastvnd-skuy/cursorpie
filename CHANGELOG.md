@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.7.7
+
+- **A quieter top bar in Settings.** Undo and Redo buttons are gone (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z still
+  work). Cancel and Save are two small round dots in the corner, in the sage theme: red (the theme's "bad"
+  color) cancels and the accent color saves and closes. A third, ochre dot shows between them while there are
+  unsaved changes. Their icons appear on hover.
+
+- **Ask before throwing changes away.** Cancel, Esc and the window's close button now open a "Discard changes?"
+  sheet when something is not saved. Enter discards, Esc or a click outside keeps editing. With nothing unsaved
+  they close at once as before.
+
+- **Ctrl+S / Cmd+S saves.** It writes the config (with its backup) and keeps Settings open; the unsaved dot
+  goes away and the footer says "Saved.". The saving code moved to `App::persist_edit`, shared with the
+  Save dot.
+
+- **Profile actions as a row of icons.** In Menu, "..." now unfolds Rename, Export, Import and Delete as icons
+  to its left, hides "+" meanwhile and turns into an X that folds them again. The text menu is gone; names
+  are tooltips.
+
+- **A tidier About card.** Website, GitHub, Report an issue and Downloads are round icon buttons in the top
+  right corner of the card instead of a row of text buttons, and the tagline has room below it.
+
 - **A plan for trackpad and haptic support on macOS.** `docs/TRACKPAD_HAPTICS_PLAN.md` describes how a hold on a
   trackpad can open the pie, how an extra finger can switch the mode, how haptic feedback can be added and how
   mouse and trackpad stay one input. It is a plan: nothing in it is implemented yet.

@@ -103,6 +103,8 @@ pub struct App {
     /// The quit confirmation sheet is showing: Settings has unsaved changes and the user asked to
     /// quit. See [`crate::ui::settings`] (`quit_dialog`).
     pub confirm_quit: bool,
+    /// The "discard unsaved changes?" sheet is showing (Cancel or Esc with edits not saved).
+    pub confirm_discard: bool,
     pub edit: Config,
     /// What `edit` was when Settings opened, to tell whether there is anything unsaved. Dropped
     /// with the rest of the editor (`App::release_editor`).
@@ -155,6 +157,7 @@ impl App {
             settings_open: false,
             quitting: false,
             confirm_quit: false,
+            confirm_discard: false,
             opened: None,
             history: History::new(&edit, HISTORY_LIMIT),
             edit,
@@ -228,7 +231,7 @@ impl eframe::App for App {
             && ctx.input(|i| i.viewport().close_requested())
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.closing = Some(false);
+            self.request_cancel();
         }
 
         self.sleep_step(ctx);
