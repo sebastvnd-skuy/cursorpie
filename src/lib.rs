@@ -48,8 +48,11 @@
 //! When published, docs.rs builds them for the Apple targets listed in `Cargo.toml`.
 
 // The stub (targets without a backend) has no hook, so the gesture machinery is only exercised by
-// tests there.
-#![cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
+// tests there. macOS, Windows and Linux have a backend, so dead code is reported on them.
+#![cfg_attr(
+    not(any(target_os = "macos", windows, target_os = "linux")),
+    allow(dead_code)
+)]
 
 pub mod about;
 pub mod actions;
@@ -114,11 +117,17 @@ pub fn run() -> eframe::Result<()> {
         .with_active(false)
         .with_visible(false);
     // no taskbar button for the hidden pie window (Windows only; macOS hides the Dock icon instead)
-    #[cfg(windows)]
-    let viewport = viewport.with_taskbar(false);
+    let viewport = if platform::OS == platform::Os::Windows {
+        viewport.with_taskbar(false)
+    } else {
+        viewport
+    };
     // the X11 window class: lets a window manager rule or a launcher recognize CursorPie
-    #[cfg(target_os = "linux")]
-    let viewport = viewport.with_app_id("cursorpie");
+    let viewport = if platform::OS == platform::Os::Linux {
+        viewport.with_app_id("cursorpie")
+    } else {
+        viewport
+    };
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()

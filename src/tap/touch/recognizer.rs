@@ -265,6 +265,7 @@ impl Recognizer {
     }
 
     /// Whether a gesture that was armed is running (nothing is running for a plain touch).
+    #[cfg(test)]
     pub fn active(&self) -> bool {
         self.owner.is_some()
     }

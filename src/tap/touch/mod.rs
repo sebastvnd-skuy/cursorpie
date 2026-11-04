@@ -257,12 +257,20 @@ impl Bridge {
 
 /// A [`Bridge`] with what it needs to reach the rest of the program, shared by the threads of a
 /// native source (one reader per device on Linux, the framework's callback thread on macOS).
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", test)),
+    allow(dead_code)
+)]
 pub(crate) struct Sink {
     bridge: Mutex<Bridge>,
     state: Arc<Mutex<Gesture>>,
     notifier: Notifier,
 }
 
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", test)),
+    allow(dead_code)
+)]
 impl Sink {
     pub(crate) fn new(state: Arc<Mutex<Gesture>>, notifier: Notifier) -> Self {
         Self {

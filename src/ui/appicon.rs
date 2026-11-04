@@ -116,7 +116,7 @@ pub fn app_id_for_action(app: &str, installed: &[InstalledApp]) -> Option<String
         return Some(a.id.clone());
     }
     let mut tries = vec![app.to_string()];
-    if cfg!(windows) && !app.to_ascii_lowercase().ends_with(".exe") {
+    if platform::OS == platform::Os::Windows && !app.to_ascii_lowercase().ends_with(".exe") {
         tries.push(format!("{app}.exe"));
     }
     tries

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Linux touchpad reader builds on Windows and macOS again, and platform checks follow the project rules.** The
+  Linux reader's kernel calls (`ioctl`, `poll`, opening `/dev/input` nodes) moved from `tap/touch/evdev.rs` to
+  `platform/linux/evdev_io.rs`, so `cargo clippy --all-targets` and `cargo test` no longer fail on Windows. Code
+  outside the platform layer asks `platform::OS` instead of using `cfg!` (app icon names, settings window resize,
+  icon worker count, the hidden pie window's taskbar button and window class). Dead code is reported on Linux
+  again. No change in behavior for users.
+
 ## 0.8.0
 
 - **README, website and docs now say that the trackpad works on all three systems.** The README (tagline,

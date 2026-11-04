@@ -45,7 +45,11 @@ const UPLOADS_PER_FRAME: usize = 8;
 /// cost, so one thread is enough (more would only pile up memory). On Windows and Linux the wait
 /// is for the system instead: a scan of the running processes and the executable's file, or the
 /// icon theme folders and, for an SVG, a `rsvg-convert` process. Two threads overlap those waits.
-const WORKERS: usize = if cfg!(target_os = "macos") { 1 } else { 2 };
+const WORKERS: usize = if matches!(crate::platform::OS, crate::platform::Os::Mac) {
+    1
+} else {
+    2
+};
 
 /// Where an app icon asked for with [`IconCache::get_app_async`] stands.
 pub enum IconState {

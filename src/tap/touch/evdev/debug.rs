@@ -14,10 +14,11 @@
 //! The finger positions are printed to this terminal only, on request; the app never logs them.
 
 use super::{
-    ABS_MT_POSITION_X, ABS_MT_POSITION_Y, EVENT_SIZE, Geometry, MAX_SLOTS, POLLIN, Parser, PollFd,
-    REPEAT_MS, decode, device_id, open_node, poll, read_axis,
+    ABS_MT_POSITION_X, ABS_MT_POSITION_Y, EVENT_SIZE, Geometry, MAX_SLOTS, Parser, REPEAT_MS,
+    decode, device_id, read_axis,
 };
 use crate::config::cfg;
+use crate::platform::linux::evdev_io::{POLLIN, PollFd, open_node, poll_fds, raw_fd};
 use crate::platform::linux::inputdev;
 use crate::tap::touch::params_from_config;
 use crate::tap::touch::recognizer::{Finger, Frame, Recognizer, TouchEvent};
@@ -240,8 +241,7 @@ fn run(live: Duration) {
                 let path = format!("/dev/input/{}", cand.node);
                 match open_node(&path) {
                     Ok(file) => {
-                        use std::os::fd::AsRawFd;
-                        let fd = file.as_raw_fd();
+                        let fd = raw_fd(&file);
                         match (
                             read_axis(fd, ABS_MT_POSITION_X),
                             read_axis(fd, ABS_MT_POSITION_Y),
@@ -331,7 +331,6 @@ fn finish(facts: &Facts) {
 /// Reads the pads for `live` and prints what the fingers and the recognizer do.
 fn watch(pads: &mut [Pad], live: Duration, facts: &mut Facts) {
     use std::io::Read;
-    use std::os::fd::AsRawFd;
     let start = Instant::now();
     let mut rec = Recognizer::new(params_from_config());
     let mut fingers: Vec<Finger> = Vec::with_capacity(MAX_SLOTS);
@@ -341,13 +340,12 @@ fn watch(pads: &mut [Pad], live: Duration, facts: &mut Facts) {
         let mut fds: Vec<PollFd> = pads
             .iter()
             .map(|p| PollFd {
-                fd: p.file.as_raw_fd(),
+                fd: raw_fd(&p.file),
                 events: POLLIN,
                 revents: 0,
             })
             .collect();
-        // SAFETY: `fds` is a valid array of `fds.len()` pollfds.
-        let ready = unsafe { poll(fds.as_mut_ptr(), fds.len() as std::ffi::c_ulong, REPEAT_MS) };
+        let ready = poll_fds(&mut fds, REPEAT_MS);
         let now = start.elapsed();
         for (i, pad) in pads.iter_mut().enumerate() {
             let mut frame = false;

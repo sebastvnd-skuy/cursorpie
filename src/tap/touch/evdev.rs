@@ -27,9 +27,10 @@ use super::recognizer::{Finger, PALM_SIZE};
 use super::{Sink, Status, set_status};
 use crate::config::{cfg, lock};
 use crate::msg::Notifier;
+use crate::platform::linux::evdev_io::{self, POLLIN, PollFd, open_node, poll_fds, raw_fd};
 use crate::platform::linux::inputdev;
 use crate::tap::gesture::Gesture;
-use std::ffi::{c_int, c_ulong, c_void};
+use std::ffi::c_int;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -210,60 +211,13 @@ pub fn decode(buf: &[u8]) -> impl Iterator<Item = (u16, u16, i32)> + '_ {
 
 // ------------------------------------------------------------------ the kernel
 
-unsafe extern "C" {
-    fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
-    fn poll(fds: *mut PollFd, nfds: c_ulong, timeout: c_int) -> c_int;
-}
-
-#[repr(C)]
-struct PollFd {
-    fd: c_int,
-    events: i16,
-    revents: i16,
-}
-
-const POLLIN: i16 = 1;
-const O_NONBLOCK: i32 = 0o4000;
-
-/// `struct input_absinfo`
-#[repr(C)]
-#[derive(Default)]
-struct AbsInfo {
-    value: i32,
-    minimum: i32,
-    maximum: i32,
-    fuzz: i32,
-    flat: i32,
-    resolution: i32,
-}
-
-/// `EVIOCGABS(abs)`: `_IOR('E', 0x40 + abs, struct input_absinfo)`. The numbers of this layout are
-/// those of x86, ARM and RISC-V; other architectures lay the direction bits out differently and
-/// are not supported (the touchpad is then not used).
-fn eviocgabs(abs: u16) -> Option<c_ulong> {
-    if cfg!(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "arm",
-        target_arch = "aarch64",
-        target_arch = "riscv64"
-    )) {
-        let size = std::mem::size_of::<AbsInfo>() as c_ulong;
-        Some((2 << 30) | (size << 16) | (0x45 << 8) | (0x40 + c_ulong::from(abs)))
-    } else {
-        None
-    }
-}
-
+/// The range of an absolute axis of an open evdev node (the OS side: `platform::linux::evdev_io`).
 fn read_axis(fd: c_int, abs: u16) -> Option<Axis> {
-    let req = eviocgabs(abs)?;
-    let mut info = AbsInfo::default();
-    // SAFETY: `info` is the structure the request fills; `fd` is an open evdev node.
-    let ok = unsafe { ioctl(fd, req, &mut info as *mut AbsInfo as *mut c_void) } == 0;
-    ok.then_some(Axis {
-        min: info.minimum,
-        max: info.maximum,
-        resolution: info.resolution,
+    let r = evdev_io::read_abs(fd, abs)?;
+    Some(Axis {
+        min: r.min,
+        max: r.max,
+        resolution: r.resolution,
     })
 }
 
@@ -289,8 +243,7 @@ fn device_id(node: &str) -> u64 {
 /// Reads one touchpad until it goes away or the generation changes.
 fn read_device(hub: &'static Hub, file: std::fs::File, id: u64, generation: u64) {
     use std::io::Read;
-    use std::os::fd::AsRawFd;
-    let fd = file.as_raw_fd();
+    let fd = raw_fd(&file);
     let (Some(x), Some(y)) = (
         read_axis(fd, ABS_MT_POSITION_X),
         read_axis(fd, ABS_MT_POSITION_Y),
@@ -315,8 +268,7 @@ fn read_device(hub: &'static Hub, file: std::fs::File, id: u64, generation: u64)
             events: POLLIN,
             revents: 0,
         };
-        // SAFETY: one valid pollfd.
-        let ready = unsafe { poll(&mut p, 1, REPEAT_MS) };
+        let ready = poll_fds(std::slice::from_mut(&mut p), REPEAT_MS);
         if ready > 0 {
             loop {
                 match reader.read(&mut buf) {
@@ -440,14 +392,6 @@ fn scan(hub: &'static Hub) {
     } else {
         Status::NoDevice
     });
-}
-
-fn open_node(path: &str) -> std::io::Result<std::fs::File> {
-    use std::os::unix::fs::OpenOptionsExt;
-    std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(O_NONBLOCK)
-        .open(path)
 }
 
 #[cfg(test)]
@@ -625,14 +569,6 @@ mod tests {
             got,
             vec![(EV_ABS, ABS_MT_POSITION_X, -5), (EV_SYN, SYN_REPORT, 0)]
         );
-    }
-
-    #[test]
-    fn the_ioctl_request_for_an_axis_is_the_kernels() {
-        if cfg!(target_arch = "x86_64") {
-            // EVIOCGABS(ABS_MT_POSITION_X) as printed by the kernel headers on x86-64
-            assert_eq!(eviocgabs(ABS_MT_POSITION_X), Some(0x8018_4575));
-        }
     }
 
     #[test]

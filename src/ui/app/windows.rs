@@ -110,7 +110,10 @@ impl App {
             return false;
         };
         let size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
-        if !cfg!(target_os = "macos") || has_size(size, want) || since.elapsed() >= SETTLE_MAX {
+        if platform::OS != platform::Os::Mac
+            || has_size(size, want)
+            || since.elapsed() >= SETTLE_MAX
+        {
             diag::log!(
                 "ui",
                 "window_settled",
