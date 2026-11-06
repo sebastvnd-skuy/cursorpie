@@ -48,6 +48,7 @@ mod precision;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod ptp;
 pub(crate) mod recognizer;
+pub(crate) mod scroll;
 
 use super::gesture::Gesture;
 use super::trigger;
@@ -68,6 +69,57 @@ pub(crate) static FINGERS: AtomicUsize = AtomicUsize::new(0);
 static LAST_KEY_MS: AtomicU64 = AtomicU64::new(0);
 
 static EPOCH: OnceLock<Instant> = OnceLock::new();
+
+/// Which pointer watcher is the current one (see [`watch_pointer`]): a watcher of an older
+/// gesture sees another number and stops.
+#[cfg(not(test))]
+static WATCH_GEN: AtomicU64 = AtomicU64::new(0);
+/// How often the watcher looks at the pointer while a trackpad hold runs.
+#[cfg(not(test))]
+const WATCH_EVERY: Duration = Duration::from_millis(10);
+
+/// While a trackpad hold runs, a mouse that moves the pointer must aim the pie as well as the
+/// finger does. A mouse press has its drag events for that; a trackpad hold has none, and the
+/// finger reports nothing when it keeps still, so the pointer is looked at here, on its own
+/// thread, until the gesture ends. Reading the pointer costs a few microseconds; nothing is added
+/// to the event taps (`MouseMoved` is deliberately not listened to).
+fn watch_pointer(state: &Arc<Mutex<Gesture>>, notifier: &Notifier) {
+    #[cfg(not(test))]
+    {
+        let id = WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+        let (state, notifier) = (Arc::clone(state), notifier.clone());
+        let spawned = std::thread::Builder::new()
+            .name("touch-pointer".into())
+            .spawn(move || {
+                let mut last = crate::platform::pointer_pos();
+                while ACTIVE.load(Ordering::SeqCst) && WATCH_GEN.load(Ordering::SeqCst) == id {
+                    std::thread::sleep(WATCH_EVERY);
+                    let now = crate::platform::pointer_pos();
+                    if let Some((x, y)) = now
+                        && now != last
+                    {
+                        trigger::touch_move(&state, &notifier, Point::new(x, y));
+                    }
+                    last = now;
+                }
+            });
+        if spawned.is_err() {
+            diag::log!("touch", "pointer_watch_failed");
+        }
+    }
+    #[cfg(test)]
+    let _ = (state, notifier);
+}
+
+/// Whether the scroll wheel (and a touchpad's scrolling) is swallowed right now: while a trackpad
+/// hold runs, and for the tail of a scroll that the pie began to swallow (see [`scroll`]). The finger
+/// that makes the extra click is a second finger on the surface, and the system scrolls with two
+/// fingers: that scroll, and the glide it leaves behind, must not reach the app under the pie. Two
+/// atomic reads while nothing runs, asked for every wheel event.
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
+pub(crate) fn swallows_scroll() -> bool {
+    scroll::swallows()
+}
 
 /// Time on the clock of this module: frames, key presses and the haptic limiter all use it.
 pub(crate) fn now() -> Duration {
@@ -113,7 +165,6 @@ pub(crate) fn set_status(s: Status) {
 pub(crate) fn params_from_config() -> Params {
     let c = cfg();
     Params {
-        fingers: c.touch_fingers as usize,
         still_mm: c.touch_still_mm,
         hold: Duration::from_millis(c.pie_hold_ms),
         typing_guard: Duration::from_millis(c.touch_typing_guard_ms),
@@ -135,6 +186,8 @@ pub(crate) struct Bridge {
     events: Vec<TouchEvent>,
     /// The gesture that is running was started by this source.
     ours: bool,
+    /// The pie of that gesture opened (a hold that never opened leaves no scroll tail, see [`scroll`]).
+    opened: bool,
 }
 
 impl Bridge {
@@ -143,6 +196,7 @@ impl Bridge {
             rec: Recognizer::new(params_from_config()),
             events: Vec::new(),
             ours: false,
+            opened: false,
         }
     }
 
@@ -162,8 +216,11 @@ impl Bridge {
         let mut events = std::mem::take(&mut self.events);
         events.clear();
         self.rec.frame(frame, &mut events);
-        FINGERS.store(self.rec.count(), Ordering::SeqCst);
+        let fingers = self.rec.count();
+        FINGERS.store(fingers, Ordering::SeqCst);
         self.apply(env, &events);
+        // a finger that lands after a pie closed is a scroll of the person's own: the tail ends
+        scroll::on_fingers(fingers);
         self.events = events;
     }
 
@@ -194,9 +251,11 @@ impl Bridge {
         self.apply(env, &events);
         self.events = events;
         self.ours = false;
+        self.opened = false;
         ACTIVE.store(false, Ordering::SeqCst);
         FINGERS.store(0, Ordering::SeqCst);
         extra::clear();
+        scroll::clear();
     }
 
     fn apply(&mut self, env: &Env<'_>, events: &[TouchEvent]) {
@@ -210,7 +269,15 @@ impl Bridge {
                         None => false,
                     };
                     self.ours = started;
+                    self.opened = false;
+                    if started {
+                        // the wheel is ours from now on; a tail of the last pie ends here
+                        scroll::on_next_gesture();
+                    }
                     ACTIVE.store(started, Ordering::SeqCst);
+                    if started {
+                        watch_pointer(env.state, env.notifier);
+                    }
                     diag::log!(
                         "touch",
                         "arm",
@@ -220,6 +287,7 @@ impl Bridge {
                     );
                 }
                 TouchEvent::HoldOpen => {
+                    self.opened = self.ours;
                     diag::log!("touch", "open", ours = self.ours);
                 }
                 TouchEvent::Move => {
@@ -239,19 +307,35 @@ impl Bridge {
                         trigger::touch_release(env.state, env.notifier, (env.cursor)());
                     }
                     diag::log!("touch", "release", ours = self.ours);
-                    self.ours = false;
-                    ACTIVE.store(false, Ordering::SeqCst);
+                    self.end_gesture(true);
                 }
                 TouchEvent::Cancel(why) => {
                     if self.ours {
                         trigger::touch_cancel(env.state, env.notifier);
                     }
                     diag::log!("touch", "cancel", why = why.name(), ours = self.ours);
-                    self.ours = false;
-                    ACTIVE.store(false, Ordering::SeqCst);
+                    // a device that went quiet or away leaves no scroll behind; too many fingers does
+                    self.end_gesture(matches!(why, recognizer::Why::TooManyFingers));
                 }
             }
         }
+    }
+
+    /// The gesture is over (a release or a cancel). The wheel stops being swallowed at once only
+    /// when nothing was scrolled away: after a pie that opened, the scroll its fingers started is
+    /// swallowed to its end ([`scroll`]).
+    fn end_gesture(&mut self, scrolling_may_follow: bool) {
+        let tail = self.ours && self.opened && scrolling_may_follow;
+        // the tail is armed before the flag drops, so no wheel event falls between the two
+        if tail {
+            scroll::begin_tail(FINGERS.load(Ordering::SeqCst));
+        }
+        ACTIVE.store(false, Ordering::SeqCst);
+        if !tail {
+            scroll::end_without_tail();
+        }
+        self.ours = false;
+        self.opened = false;
     }
 }
 
@@ -265,6 +349,13 @@ pub(crate) struct Sink {
     bridge: Mutex<Bridge>,
     state: Arc<Mutex<Gesture>>,
     notifier: Notifier,
+    /// Where the pointer is. The system's, except in tests.
+    cursor: fn() -> Option<Point>,
+}
+
+/// Where the system's pointer is.
+fn system_cursor() -> Option<Point> {
+    crate::platform::pointer_pos().map(|(x, y)| Point::new(x, y))
 }
 
 #[cfg_attr(
@@ -277,11 +368,12 @@ impl Sink {
             bridge: Mutex::new(Bridge::new()),
             state,
             notifier,
+            cursor: system_cursor,
         }
     }
 
     fn with<R>(&self, f: impl FnOnce(&mut Bridge, &Env<'_>) -> R) -> R {
-        let cursor = || crate::platform::cursor_pos().map(|(x, y)| Point::new(x, y));
+        let cursor = || (self.cursor)();
         let env = Env {
             state: &self.state,
             notifier: &self.notifier,
@@ -321,6 +413,48 @@ impl Sink {
     }
 }
 
+/// The sink of the virtual trackpad (the floating one of the Tools tab): a source of frames like
+/// the native ones, fed by the UI instead of by a device. It shares the gesture of the tap, so a
+/// hold on it opens the pie, a drag aims it and a release runs the slice, exactly as on a real
+/// trackpad. Set once, when the tap starts.
+static VIRTUAL: OnceLock<Sink> = OnceLock::new();
+
+/// The device id of the virtual trackpad on the recognizer's frames ("VIRT").
+const VIRTUAL_DEVICE: u64 = 0x5649_5254;
+
+/// Called by the native tap right after it creates the gesture, so the UI can feed it.
+pub(crate) fn register_virtual(state: Arc<Mutex<Gesture>>, notifier: Notifier) {
+    let _ = VIRTUAL.set(Sink::new(state, notifier));
+}
+
+/// Whether the tap has started, i.e. whether the virtual trackpad has a gesture to feed.
+pub(crate) fn virtual_ready() -> bool {
+    VIRTUAL.get().is_some()
+}
+
+/// One frame of the virtual trackpad. No fingers = all lifted. False when the tap has not started.
+pub(crate) fn virtual_feed(size_mm: (f32, f32), fingers: &[recognizer::Finger]) -> bool {
+    VIRTUAL.get().is_some_and(|s| {
+        s.feed(VIRTUAL_DEVICE, size_mm, fingers);
+        true
+    })
+}
+
+/// Time passes while a finger rests on the virtual trackpad (a resting finger sends no frames, and
+/// the hold time is counted here).
+pub(crate) fn virtual_poll() {
+    if let Some(s) = VIRTUAL.get() {
+        s.poll();
+    }
+}
+
+/// The virtual trackpad went away (closed, or Settings opened): a running gesture is cancelled.
+pub(crate) fn virtual_reset() {
+    if let Some(s) = VIRTUAL.get() {
+        s.reset();
+    }
+}
+
 /// Starts the touch source on its own thread. It idles until the setting `touch_trigger` is on:
 /// only then is anything loaded (macOS: the private framework) or opened (Linux: `/dev/input`).
 #[cfg(target_os = "macos")]
@@ -357,11 +491,12 @@ mod tests {
     use crate::tap::gesture::Source;
     use crate::tap::{Ev, Kind, Verdict, dispatch};
     use std::cell::Cell;
+    use std::sync::MutexGuard;
     use std::sync::mpsc;
-    use std::sync::{Mutex as StdMutex, MutexGuard};
 
-    /// These tests share the live config and the statics of this module: one at a time.
-    static SERIAL: StdMutex<()> = StdMutex::new(());
+    /// These tests share the live config and the statics of this module (and of `tap`): one at a
+    /// time, behind the same lock as the tests of `tap`.
+    use crate::tap::TEST_SERIAL as SERIAL;
 
     /// Sets the live config for a test and puts it back afterwards.
     struct Cfg {
@@ -376,9 +511,12 @@ mod tests {
             let saved = c.clone();
             edit(&mut c);
             crate::tap::PAUSED.store(false, Ordering::SeqCst);
+            crate::tap::SETTINGS_OPEN.store(false, Ordering::SeqCst);
             ACTIVE.store(false, Ordering::SeqCst);
             FINGERS.store(0, Ordering::SeqCst);
             extra::clear();
+            scroll::clear();
+            crate::tap::pie_clicks::clear();
             Self {
                 _serial: serial,
                 saved,
@@ -392,6 +530,8 @@ mod tests {
             ACTIVE.store(false, Ordering::SeqCst);
             FINGERS.store(0, Ordering::SeqCst);
             extra::clear();
+            scroll::clear();
+            crate::tap::pie_clicks::clear();
         }
     }
 
@@ -407,10 +547,9 @@ mod tests {
     }
 
     fn fast(c: &mut Config) {
-        c.pie_hold_ms = 150; // the smallest the config allows: the hold timer really sleeps
+        c.pie_hold_ms = 150; // short, but the hold timer really sleeps
         c.settings_hold_ms = 30_000;
         c.touch_trigger = true;
-        c.touch_fingers = 1;
         c.touch_typing_guard_ms = 0;
         c.app_gesture = crate::config::AppGesture::Merged;
         c.haptics = true;
@@ -541,6 +680,140 @@ mod tests {
         assert!(matches!(*crate::config::lock(&rig.state), Gesture::Idle));
     }
 
+    fn second(x: f32) -> Finger {
+        Finger {
+            id: 2,
+            x,
+            y: 0.5,
+            size: 1.0,
+        }
+    }
+
+    /// A sink whose pointer stays put (there is no display to ask in a test).
+    fn test_sink(state: &Arc<Mutex<Gesture>>, n: Notifier) -> Sink {
+        let mut sink = Sink::new(Arc::clone(state), n);
+        sink.cursor = || Some(Point::new(500.0, 500.0));
+        sink
+    }
+
+    /// Holds one finger still on a virtual trackpad sink for `ms`, in real time (the sink stamps
+    /// its frames with the clock, like the window does).
+    fn hold_virtual(sink: &Sink, ms: u64) {
+        let f = [finger(0.5)];
+        for _ in 0..ms / 10 {
+            sink.feed(VIRTUAL_DEVICE, (160.0, 100.0), &f);
+            std::thread::sleep(Duration::from_millis(10));
+            sink.poll();
+        }
+    }
+
+    #[test]
+    fn the_scroll_of_the_fingers_is_swallowed_to_its_end_after_the_pie_closes() {
+        let _c = Cfg::set(fast);
+        let mut rig = Rig::new();
+        rig.frames(200, &[finger(0.5)]); // the pie is open
+        assert!(swallows_scroll(), "while the hold runs");
+        rig.frames(40, &[finger(0.5), second(0.7)]); // the extra finger lands (two fingers scroll)
+        assert!(swallows_scroll());
+        // both lift: the hold is over, but the glide the system makes of the scroll is not
+        rig.frames(20, &[]);
+        assert!(!ACTIVE.load(Ordering::SeqCst));
+        assert!(scroll::tail_open());
+        assert!(
+            swallows_scroll(),
+            "the glide must not reach the app under the pie"
+        );
+        // nothing more comes: the tail runs out and the scroll wheel is the person's again
+        std::thread::sleep(Duration::from_millis(
+            scroll::TAIL_MS + scroll::TAIL_GAP_MS + 80,
+        ));
+        assert!(!swallows_scroll());
+        assert!(!scroll::tail_open());
+    }
+
+    #[test]
+    fn a_scroll_the_person_starts_after_the_pie_closed_is_never_swallowed() {
+        let _c = Cfg::set(fast);
+        let mut rig = Rig::new();
+        rig.frames(200, &[finger(0.5)]);
+        rig.frames(20, &[]);
+        assert!(swallows_scroll(), "the tail is open");
+        // two fingers land on a surface that was empty: the person scrolls on purpose
+        rig.frames(20, &[finger(0.4), second(0.6)]);
+        assert!(!scroll::tail_open());
+        assert!(!swallows_scroll());
+    }
+
+    #[test]
+    fn a_hold_that_never_opened_leaves_the_scrolling_alone() {
+        let _c = Cfg::set(fast);
+        let mut rig = Rig::new();
+        rig.frames(120, &[finger(0.5)]); // armed, not open
+        assert!(swallows_scroll());
+        rig.frames(20, &[]); // lifted: a tap, not a pie
+        assert!(!scroll::tail_open());
+        assert!(
+            !swallows_scroll(),
+            "nothing was scrolled away, nothing is swallowed"
+        );
+        // a second finger before the pie opened is the start of a scroll: it passes at once
+        rig.frames(120, &[finger(0.5)]);
+        rig.frames(20, &[finger(0.5), second(0.7)]);
+        assert!(!swallows_scroll());
+    }
+
+    #[test]
+    fn a_virtual_trackpad_hold_opens_the_pie_like_a_real_one() {
+        let _c = Cfg::set(fast);
+        let (n, rx) = notifier();
+        let state = Arc::new(Mutex::new(Gesture::Idle));
+        let sink = test_sink(&state, n);
+
+        hold_virtual(&sink, 450);
+        let opened = drain(&rx, Duration::from_millis(60));
+        assert!(opened.iter().any(|s| s.starts_with("show")), "{opened:?}");
+        assert!(
+            opened.iter().any(|s| s == "haptic LevelChange"),
+            "{opened:?}"
+        );
+        assert!(matches!(
+            *crate::config::lock(&state),
+            Gesture::ActivePie { .. }
+        ));
+
+        // lifting the finger closes it
+        sink.feed(VIRTUAL_DEVICE, (160.0, 100.0), &[]);
+        let closed = drain(&rx, Duration::from_millis(60));
+        assert!(closed.iter().any(|s| s == "hide"), "{closed:?}");
+        assert!(matches!(*crate::config::lock(&state), Gesture::Idle));
+    }
+
+    #[test]
+    fn a_virtual_trackpad_hold_opens_nothing_while_settings_is_open() {
+        let _c = Cfg::set(fast);
+        crate::tap::SETTINGS_OPEN.store(true, Ordering::SeqCst);
+        let (n, rx) = notifier();
+        let state = Arc::new(Mutex::new(Gesture::Idle));
+        let sink = test_sink(&state, n);
+
+        hold_virtual(&sink, 450);
+        sink.feed(VIRTUAL_DEVICE, (160.0, 100.0), &[]);
+        let seen = drain(&rx, Duration::from_millis(60));
+        crate::tap::SETTINGS_OPEN.store(false, Ordering::SeqCst);
+        // Settings is brought forward (a `PieBlocked`), but no pie shows, hovers or runs
+        assert!(!seen.iter().any(|s| s.starts_with("show")), "{seen:?}");
+        // the same hold, with Settings closed, does open the pie: the absence above is the guard's
+        let (n, rx) = notifier();
+        let state = Arc::new(Mutex::new(Gesture::Idle));
+        let sink = test_sink(&state, n);
+        hold_virtual(&sink, 450);
+        sink.feed(VIRTUAL_DEVICE, (160.0, 100.0), &[]);
+        let open = drain(&rx, Duration::from_millis(60));
+        assert!(open.iter().any(|s| s.starts_with("show")), "{open:?}");
+        let _ = &rx;
+        assert!(matches!(*crate::config::lock(&state), Gesture::Idle));
+    }
+
     #[test]
     fn a_hold_that_slides_before_the_pie_opens_leaves_no_trace() {
         let _c = Cfg::set(fast);
@@ -643,6 +916,27 @@ mod tests {
         assert!(!ACTIVE.load(Ordering::SeqCst));
     }
 
+    #[test]
+    fn a_trackpad_hold_while_settings_is_open_brings_settings_forward_like_the_mouse() {
+        let _c = Cfg::set(fast);
+        crate::tap::SETTINGS_OPEN.store(true, Ordering::SeqCst);
+        let mut rig = Rig::new();
+        rig.frames(400, &[finger(0.5)]);
+        crate::tap::SETTINGS_OPEN.store(false, Ordering::SeqCst);
+        let mut blocked = 0;
+        while let Ok(m) = rig.rx.recv_timeout(Duration::from_millis(100)) {
+            match m {
+                Msg::PieBlocked { .. } => blocked += 1,
+                Msg::ShowPie { .. } => panic!("the pie opened while Settings was open"),
+                _ => {}
+            }
+        }
+        // Settings was told, and no gesture was started
+        assert!(blocked >= 1, "no PieBlocked was sent");
+        assert!(matches!(*crate::config::lock(&rig.state), Gesture::Idle));
+        assert!(!ACTIVE.load(Ordering::SeqCst));
+    }
+
     /// Opens a trackpad pie in `rig` and waits until it is open.
     fn open_pie(rig: &mut Rig) {
         rig.frames(180, &[finger(0.5)]);
@@ -711,8 +1005,13 @@ mod tests {
             );
             // the release ended it: the next click is judged afresh (fingers still two: swallowed again)
         }
-        // the extra finger lifts: an ordinary click goes through
+        // the extra finger lifts, the pie is still open: a click of any kind is still not the
+        // app's (it used to go through and click the page under the pie)
         rig.frames(30, &[finger(0.5)]);
+        assert_eq!(click(&rig, Kind::Down, 0), Verdict::Drop);
+        assert_eq!(click(&rig, Kind::Up, 0), Verdict::Drop);
+        // the pie closes: the next click is the app's again
+        rig.frames(30, &[]);
         assert_eq!(click(&rig, Kind::Down, 0), Verdict::Keep);
         assert_eq!(click(&rig, Kind::Up, 0), Verdict::Keep);
     }
@@ -790,12 +1089,14 @@ mod tests {
         // the system's tap-to-click arrives with the old count
         assert_eq!(click(&rig, Kind::Down, 0), Verdict::Drop);
         assert_eq!(click(&rig, Kind::Up, 0), Verdict::Drop);
-        // and it counted once
-        assert_eq!(
-            click(&rig, Kind::Down, 0),
-            Verdict::Keep,
-            "the window is spent"
-        );
+        // and it counted once: the window is spent, so a further click does not run the action
+        // again (the pie is still open, so it is swallowed all the same)
+        let again = rig.rx.try_iter().count();
+        assert_eq!(click(&rig, Kind::Down, 0), Verdict::Drop);
+        assert_eq!(click(&rig, Kind::Up, 0), Verdict::Drop);
+        assert_eq!(rig.rx.try_iter().count(), again, "no second action");
+        rig.frames(30, &[]); // the pie closes
+        assert_eq!(click(&rig, Kind::Down, 0), Verdict::Keep);
         assert_eq!(click(&rig, Kind::Up, 0), Verdict::Keep);
     }
 

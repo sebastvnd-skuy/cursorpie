@@ -167,7 +167,7 @@
 //! **2. Warming up on press.** [`tap::trigger`](crate::tap) sends [`Msg::Warm`](crate::msg::Msg::Warm)
 //! as soon as the trigger goes down, carrying the profiles that may open. The UI loads their icons
 //! ([`icons_to_warm`](crate::ui::icons::icons_to_warm)) while the hold timer runs, which is
-//! `pie_hold_ms` (500 ms by default) before the first pie frame. A warm cache costs only hash
+//! `pie_hold_ms` (150 ms by default) before the first pie frame. A warm cache costs only hash
 //! lookups, so this is free in the common case. Sending the message follows the tap rules below:
 //! it never blocks.
 //!

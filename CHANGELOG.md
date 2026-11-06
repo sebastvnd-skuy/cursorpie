@@ -2,6 +2,100 @@
 
 ## Unreleased
 
+## 0.8.2
+
+- **Settings comes forward with the trackpad trigger too.** With Settings open behind another window, a press of the
+  mouse trigger brought it back but a trackpad hold did nothing. The hold now does the same as the press.
+
+- **Windows: the install step asks first.** The first start of an unzipped copy no longer copies itself, registers
+  a startup entry and starts the copy without a word (which behavior-based antivirus engines judge as a dropper);
+  it asks once. "No" is remembered. Updating an app that is already installed stays silent.
+  `scripts/sign-local.ps1` signs a build with a self-made certificate for your own PCs.
+
+- **The app icon is the same artwork on every system.** macOS had the Windows icon as a hard-edged full-bleed square
+  with only four sizes; `app-icon.icns` now has every size from 16 to 1024 px (with the @2x ones) in Apple's rounded
+  shape with its margin and shadow. Linux had no window icon at all and a single 512 px file: the window now carries
+  its icon (taskbar, Alt+Tab), and the package installs 16 to 512 px into `hicolor` and refreshes the icon cache.
+  Windows is unchanged.
+
+- **Login start and antivirus.** Windows: the startup entry now passes `--autostart`, and such a start waits for the
+  taskbar (at most 90 s) before it creates the tray icon and the hooks, so the tray icon is no longer lost at login;
+  the program no longer rewrites its registry entries at every start; the `.exe` has version information and a
+  manifest (`asInvoker`); the Setup wizard has version information too. macOS: the LaunchAgent starts the app with
+  `open -a` instead of the bare binary and refuses a path Gatekeeper copied temporarily (App Translocation); the
+  ad-hoc signature is tied to the bundle id so Accessibility is not forgotten after a rebuild. Linux: the autostart
+  entry waits 5 s so the display is ready. Antivirus programs can still object to an unsigned build: see
+  KNOWN_ISSUES.md.
+
+- **Virtual trackpad (developer tool: `cargo tools trackpad`).** Starts the app with a trackpad that floats exactly in
+  the middle of the screen, to try the trackpad gestures with a plain mouse. Your real pointer is the finger: while it
+  is over the glass it touches, leaving the glass lifts it. A virtual pointer, drawn as an arrow on the screen outside
+  the trackpad, is what the finger moves, relatively and with acceleration like a real trackpad (the surface counts as
+  160 x 100 mm, so a slide of so many millimeters moves it so far). The pie opens at the virtual pointer, aims with it
+  and acts on the app under it; a hold opens it, lifting the finger runs the slice, and a click of the mouse is the
+  extra click. It feeds the same recognizer as a real trackpad (macOS, Windows and Linux alike). Its feel stands in
+  for the haptic click a mouse cannot give: the surface sinks at a click, a ring spreads, the frame glows and a short
+  click sounds; the ticks of the pie are shown the same way and are also sent to the haptic engine, which a finger on
+  a real trackpad feels. A slider in the lower frame sets the size and a switch the click sound. Options:
+  `--width POINTS`, `--silent`, `--release`. Nothing is written to the settings. While the trackpad is open the main
+  window is parked (1 x 1 point, click-through) instead of hidden, which keeps the trackpad's own windows alive.
+- **Fix: messages from the tap could wait for the wrong window.** The tap woke the UI with a plain
+  `request_repaint`, which means "the window drawn last". With a second window (the virtual trackpad) that could be
+  the wrong one, and a pie that had been released stayed on the screen. The wake-up now asks for the root window.
+
+- **Fix: the pie ran actions behind an open Settings window.** The gesture state machine of the tap did not know
+  that Settings was open: a pie that was not drawn still opened, hovered and, on release, ran the slice under the
+  pointer (opening apps and so on), and the side buttons ran their actions too. While Settings is open a press of the
+  trigger now starts no gesture (it only brings Settings forward and says why), the side buttons are left to the app,
+  and a pie that was open when Settings opened runs nothing when it closes.
+- **While a pie is open, no click reaches the app under it, for the mouse and the trackpad, on all three systems.**
+  Each path handled its own buttons (the trigger, the right-click switch, mapped side buttons, the extra finger) and
+  every other press fell through: a left click, a right click with the switch off, a middle or extra button no mode
+  uses. The app under the pie got a click that was aimed at the pie (on Linux a kept press was even sent again at its
+  release). Now, as the last step of the state machine, a press while a pie is open is swallowed with its drags and
+  its release, even when the pie closed in between; the wheel is swallowed too while a mouse pie is open. Every press
+  decides afresh, so a lost release never leaves the next click stuck. New `tap` log event `pie_click_swallowed`
+  (`button`). The macOS and Windows taps read the left button and the wheel for this only while a pie is open.
+
+- **A trackpad pie no longer lets the pointer's movement through to the page below.** A mouse hold has a button down,
+  so the apps under the pie hear no motion. A trackpad hold has none: the finger moves the real pointer, and the pie
+  window was click-through, so every move reached the app under it (a video player showed its controls, links
+  highlighted). The pie window now takes the pointer while a trackpad hold runs, and is click-through again when the
+  pie closes; a mouse pie is unchanged. New `ui` log event `pie_input` (`takes_pointer`).
+
+- **No more scrolling leaks under a trackpad pie, and the pie stays smooth (macOS, Windows, Linux).** The two-finger
+  scroll that the holding finger and the extra finger make was swallowed only while the hold ran. The gesture ends
+  the moment a finger lifts, but the scroll does not: its last deltas and its glide (momentum on macOS and on Windows
+  precision touchpads) arrived after that and reached the app under the pie, which then scrolled by itself, and an app
+  that sees the middle of a scroll it never saw begin jumps and stutters. Now a scroll that the pie began to swallow is
+  swallowed to its end: after a pie that opened closes, wheel events keep being swallowed for 300 ms, each one extends
+  that by 120 ms (a glide is eaten to its last event), and never beyond 1.2 s. The tail ends at once when a new finger
+  lands, so a scroll of your own is never eaten, and a hold that never opened (a tap, a slide, a second finger that came
+  early) starts none. On Linux the wheel is grabbed for the same time, on its own (clicks pass during the tail), and a
+  wheel press no longer asks the X server where the pointer is. New `touch` log events: `scroll_tail`,
+  `scroll_tail_end`, `scroll_swallowed` and, with `trace`, `scroll_drop` (counts and reasons only).
+
+- **Faster, quieter defaults.** The pie opens after a hold of 150 ms by default (was 500 ms) and the hold can be as
+  short as 50 ms (was 150 ms; the Settings slider and the file limit both go down to 50). The default pie shows
+  icons only, without the name under each icon (`show_labels` is `false` for a new config; a saved config keeps its
+  value, and a file that does not have the field keeps the names). The welcome guide says "150 ms" instead of a
+  rounded "0.1 s". The website demo pie shows icons only too, and its text says 150 ms.
+
+- **A mouse now aims a pie that a trackpad hold opened.** Moving the pointer with a mouse while the finger kept
+  still did nothing, because the pie only heard the finger move (a mouse press has drag events, a trackpad hold has
+  none). While a trackpad hold runs, the pointer is now watched every 10 ms on its own thread, so the mouse, the
+  trackpad and a mix of both hover the slices, and lifting the finger runs the slice under the pointer. Nothing runs
+  while no hold is running.
+
+- **The two-finger trackpad hold is gone, on macOS, Windows and Linux.** Two fingers on a trackpad are what the
+  system scrolls with, so the pointer did not move and the pie had to be aimed by the fingers themselves, which was
+  never reliable. A hold is now always one finger, with one more finger for the extra click. Removed: the *Fingers to
+  hold* setting, the config field `touch_fingers` (an old file that has it still loads; the field is ignored and
+  dropped at the next save), the code that aimed the pie by finger travel, and on Linux the X11 pointer grab that
+  went with it. Scrolling is still swallowed while a hold runs, because the extra finger makes two.
+
+## 0.8.1
+
 - **Linux touchpad reader builds on Windows and macOS again, and platform checks follow the project rules.** The
   Linux reader's kernel calls (`ioctl`, `poll`, opening `/dev/input` nodes) moved from `tap/touch/evdev.rs` to
   `platform/linux/evdev_io.rs`, so `cargo clippy --all-targets` and `cargo test` no longer fail on Windows. Code

@@ -7,7 +7,7 @@
 use super::gesture::{Gesture, Source};
 use super::resolve::{eval, resolve_profiles, select};
 use super::touch::haptic::{self, Tick};
-use super::{DRAG_TOLERANCE, FLICK_DISTANCE, Kind, NEXT_ID, PAUSED, Verdict};
+use super::{DRAG_TOLERANCE, FLICK_DISTANCE, Kind, NEXT_ID, PAUSED, Verdict, settings_open};
 use crate::actions::post_mouse;
 use crate::config::{cfg, lock};
 use crate::geometry::Point;
@@ -95,6 +95,16 @@ fn on_press<'a>(
     press: Press,
 ) -> Verdict {
     let source = press.source;
+    // The pie is off while Settings is open. The press is still swallowed with the rest of its
+    // gesture (`InSettings`: its drags and its release are dropped), but nothing opens, hovers or
+    // runs, and no timer starts. The UI only says why nothing happened.
+    if settings_open() {
+        diag::log!("tap", "press_blocked", reason = "settings_open");
+        *g = Gesture::InSettings(source);
+        drop(g);
+        notifier.send(Msg::PieBlocked { x: p.x, y: p.y });
+        return Verdict::Drop;
+    }
     let (hold_profile, app) = resolve_profiles(p);
     diag::log!(
         "tap",
@@ -220,6 +230,13 @@ fn spawn_hold_timer(st: Arc<Mutex<Gesture>>, n: Notifier, id: u64, already: Dura
                 } if *cur == id => Some((*pos, *profile, *source)),
                 _ => None,
             };
+            if let Some((_, _, source)) = found
+                && settings_open()
+            {
+                // Settings opened (menu bar) while the button was held: the pie never opens
+                *gg = Gesture::InSettings(source);
+                return;
+            }
             if let Some((pos, profile, source)) = found {
                 *gg = Gesture::ActivePie {
                     id,
@@ -476,7 +493,12 @@ fn on_release_in_pie(notifier: &Notifier, mut g: MutexGuard<'_, Gesture>, p: Poi
         slice = hover.is_some()
     );
     if let Some(h) = hover {
-        select(profile, &path, h);
+        if settings_open() {
+            // the pie was open when Settings opened (menu bar): closing it must not run anything
+            diag::log!("tap", "select_blocked", reason = "settings_open");
+        } else {
+            select(profile, &path, h);
+        }
     }
     notifier.send(Msg::HidePie);
     Verdict::Drop
@@ -500,6 +522,18 @@ pub(super) fn touch_press(
     double: bool,
 ) -> bool {
     if PAUSED.load(Ordering::SeqCst) {
+        return false;
+    }
+    // The pie is off while Settings is open. A mouse press says so (`on_press`: the UI brings
+    // Settings forward); a trackpad hold has to do the same, or the two triggers behave
+    // differently: with Settings behind another window, the mouse brings it back and the
+    // trackpad does nothing. Nothing is swallowed here: the fingers only move the pointer.
+    if settings_open() {
+        let idle = matches!(&*lock(state), Gesture::Idle);
+        if idle {
+            diag::log!("tap", "touch_blocked", reason = "settings_open");
+            notifier.send(Msg::PieBlocked { x: p.x, y: p.y });
+        }
         return false;
     }
     let g = lock(state);

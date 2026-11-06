@@ -48,9 +48,9 @@ feature on.
    open-source tools use, so it is the recommended source, loaded at run time and failing soft (see
    [Capturing the touches](#capturing-the-touches)).
 3. **The extra finger is classified by finger count, not by what macOS decides the click is.** One finger holding
-   plus one finger clicking is two fingers at the moment of the click, which macOS may treat as a secondary click;
-   two holding plus one clicking is three, which may mean Look up, three-finger drag or nothing. CursorPie counts
-   the fingers itself, swallows the click and runs one action, whatever the system mapping is.
+   plus one finger clicking is two fingers at the moment of the click, which macOS may treat as a secondary click.
+   CursorPie counts the fingers itself, swallows the click and runs one action, whatever the system mapping is.
+   (A hold with two fingers was dropped: the system scrolls with two fingers, so it was never reliable.)
 4. **Haptics use the public `NSHapticFeedbackManager`.** It needs no private call, is ignored by the system when
    no finger touches the trackpad, and so is harmless with a mouse. A private actuator API exists for richer
    waveforms; it is a later, optional step.
@@ -91,15 +91,17 @@ feature on.
 | Open the app's own pie | Double-click the trigger (default mode) | Tap, then touch and hold again within the double-click window (to be confirmed in S5) |
 
 The hold time, the dead zone of the center, the flick distance, the pie size, the colors and the sounds are the
-same settings for both. The only trackpad settings are the ones that have no mouse counterpart (fingers, how
+same settings for both. The only trackpad settings are the ones that have no mouse counterpart (how
 still the finger must stay, haptics).
 
-Fingers and what they do (**N** is *Fingers to hold*):
+Fingers and what they do:
 
-| N | Hold | Extra click | Fingers at the click | Conflict to expect |
-|---|---|---|---|---|
-| 1 (default) | one finger resting | a second finger clicks | 2 | macOS maps a two-finger click to a secondary click by default |
-| 2 | two fingers resting | a third finger clicks | 3 | the three-finger tap (Look up) and three-finger drag of the system settings |
+| Hold | Extra click | Fingers at the click | Conflict to expect |
+|---|---|---|---|
+| one finger resting | a second finger clicks | 2 | macOS maps a two-finger click to a secondary click by default |
+
+There is no two-finger hold: the system turns the movement of two fingers into scrolling, so the pointer would not
+move and the pie would have to be aimed by the fingers themselves. That mode was removed from every OS.
 
 ## How the code works today
 
@@ -238,14 +240,13 @@ The click itself must be recognized whatever macOS thinks it is:
 - The event tap must also see `LeftMouseDown` and `LeftMouseUp` (it already sees the right ones), but only act on
   them while a **touch pie is active**; in every other state the callback returns `Keep` after one atomic read,
   so ordinary clicking costs nothing.
-- While a touch pie is active, a click event of any kind that arrives while *N + 1* fingers are on the surface is
+- While a touch pie is active, a click event of any kind that arrives while two fingers are on the surface is
   the extra click. It is swallowed (press and release), like `RIGHT_SWALLOWED` does for the right button.
 - A **tap** (touching without pressing, with *tap to click* on) produces the click when the finger lifts; the
-  recognizer sees the third finger come and go quickly with no travel and reports `ExtraClick` itself, and the
+  recognizer sees the second finger come and go quickly with no travel and reports `ExtraClick` itself, and the
   system click that follows is swallowed by the same rule. A **press** (a physical click) is recognized from the
   click event plus the finger count.
-- If the setting *Fingers to hold* is 2, the system may turn the third finger into a Look up or the start of a
-  three-finger drag. The Settings panel says which system settings to turn off (see
+- The system may turn the second finger into a secondary click. The Settings panel says so (see
   [Obstacles](#obstacles-and-solutions)).
 
 ### Hand-over and arbitration between touch and mouse
@@ -330,7 +331,6 @@ the config version stays 2 because the struct is `#[serde(default)]`; an older f
 | Field | Type | Default | Range / values | Meaning |
 |---|---|---|---|---|
 | `touch_trigger` | bool | `false` | | Master switch. Off: the private framework is never loaded |
-| `touch_fingers` | u8 | `1` | 1 or 2 | Fingers to hold; the extra click is one more |
 | `touch_still_mm` | f32 | `2.0` | 0.5 to 6.0 | How little the holding finger may move before the hold counts |
 | `touch_click_action` | enum | `SwitchPie` | `SwitchPie`, `PickHovered`, `Nothing` | What the extra click does |
 | `touch_typing_guard_ms` | u64 | `400` | 0 to 2000 (0 = off) | No arming this soon after a key press |
@@ -342,11 +342,11 @@ finger resting on a trackpad is the most common thing a person does with it; ope
 bug, not a feature (see [Obstacles](#obstacles-and-solutions)).
 
 **Settings UI.** A new panel **Trackpad** at the end of **Behavior** (`ui/settings/tabs/behavior.rs`), shown
-only on macOS (`Os::has_trackpad()`, a new capability next to `has_tray()`). It holds: the switch, *Fingers to
-hold* (a segmented control: 1 / 2), *How still* (a slider with anchors, like the other sliders), *Extra click*
+only on macOS (`Os::has_trackpad()`, a new capability next to `has_tray()`). It holds: the switch,
+*How still* (a slider with anchors, like the other sliders), *Extra click*
 (a drop-down), *Haptic feedback* and *Tick when the slice changes* (toggles), and a **status line**:
 "Trackpad: Built-in trackpad (haptics available)", "No trackpad found", or "Not available on this macOS". A
-short hint under *Fingers to hold = 2* names the system settings that conflict. A live demo, like
+short hint under the switch says that the system may call the second finger a click of its own. A live demo, like
 `demo::hold_demo`, shows the hold with fingers instead of a button. The pie in **Menu** is unchanged.
 
 ## Obstacles and solutions
@@ -355,7 +355,7 @@ short hint under *Fingers to hold = 2* names the system settings that conflict. 
 |---|---|
 | A resting finger opens the pie by accident | Off by default; exact finger count; millimeter still-test; typing guard; palm and size filter; a separate, longer default for the touch hold may be needed (S6 measures false opens in a day of normal use) |
 | Holding still is also how a click or scroll starts | If the finger moves before the hold time, the hold is cancelled and the system's movement is untouched; nothing is swallowed before the pie opens, so scrolling, tapping and dragging keep working |
-| macOS reads the second finger's click as something else (secondary click, Look up, three-finger drag) | Classify by finger count and swallow the click while a touch pie is open; the panel lists the system settings to change for N = 2 (three-finger Look up and tap, three-finger drag). Whether the tap can drop the system gesture itself is S3 |
+| macOS reads the second finger's click as something else (secondary click, Look up, three-finger drag) | Classify by finger count and swallow the click while a touch pie is open; the panel says that CursorPie swallows it. Whether the tap can drop the system gesture itself is S3 |
 | The private framework changes or disappears | `dlopen` with soft failure, the layout self-check, one file for the layout, an on/off setting, and the mouse always working |
 | The tap cost grows with `MouseMoved` | Do not add it: read the cursor in the touch callback, only while a touch pie is open |
 | Haptics from the wrong thread | Message to the UI thread; S4 |
@@ -413,7 +413,7 @@ Throwaway programs that answer one question each. None is merged.
 ## Test strategy
 
 - **Recognizer (every OS).** Frames as data in test fixtures: a hold that opens, a hold broken by a slide, a hold
-  broken by a palm, a hold with an extra click (N = 1 and N = 2, press and tap), a third finger too early, a key
+  broken by a palm, a hold with an extra click (press and tap), a second finger too early, a key
   press just before, two devices, a device that disappears. Assertions on `TouchEvent` and on the time of each.
 - **Translation (every OS).** A test double for `dispatch` checks that a touch hold and a mouse hold produce the
   same `Msg` sequence (`ShowPie`, `Hover`, the release result) for the same pointer path, which is the proof of
@@ -436,16 +436,15 @@ without. Nothing is signed off yet.
 4. Lifting over a slice runs it; the same slice with the middle button does the same thing.
 5. A finger that slides before the hold time moves the cursor normally and opens nothing.
 6. Typing, then resting a hand: no pie.
-7. N = 1: a second finger's press switches the pie (ring color changes); the same with tap-to-click.
-8. N = 2: the same with a third finger; Look up does not appear (after the documented settings are applied).
-9. The extra click never reaches the app under the pie (no stray click in a text field).
-10. Haptics: a tick when the pie opens, soft ticks between slices, a distinct one on the mode switch; none with
+7. A second finger's press switches the pie (ring color changes); the same with tap-to-click.
+8. The extra click never reaches the app under the pie (no stray click in a text field).
+9. Haptics: a tick when the pie opens, soft ticks between slices, a distinct one on the mode switch; none with
     the mouse; none when the system haptic setting is off.
-11. Use the mouse and the trackpad alternately for five minutes: no stuck state, no lost click.
-12. Connect and disconnect a Magic Trackpad while running.
-13. Sleep and wake; lock and unlock.
-14. Switch the touch trigger off: the pie stops responding to fingers at once, the mouse still works.
-15. Settings: Undo and Redo, Save, Cancel, Reset to defaults, import of a config that has the new fields and of one that
+10. Use the mouse and the trackpad alternately for five minutes: no stuck state, no lost click.
+11. Connect and disconnect a Magic Trackpad while running.
+12. Sleep and wake; lock and unlock.
+13. Switch the touch trigger off: the pie stops responding to fingers at once, the mouse still works.
+14. Settings: Undo and Redo, Save, Cancel, Reset to defaults, import of a config that has the new fields and of one that
     does not.
 
 ## Security and privacy
@@ -530,7 +529,6 @@ width and height are not used. The surface size in millimeters comes from the ph
 - [ ] Sliding a finger before the hold time moves the pointer as usual and opens nothing; scrolling and tapping are unchanged.
 - [ ] A palm resting on the pad opens nothing; a hand resting while typing opens nothing.
 - [ ] With the pie open, a second finger tapped or pressed switches the mode once, and the app under the pie gets no click or right-click.
-- [ ] Fingers to hold = 2 with the three-finger gestures set to *Nothing* behaves the same.
 - [ ] The middle button of a mouse still works at any time, and a mouse right-click still switches the mode during a touch hold.
 - [ ] Switching the feature off and Saving stops the source (`touch/source stopped` in the log); no `WM_INPUT` work happens afterwards.
 - [ ] Unplugging or disabling the touchpad mid-hold ends the gesture; sleep and wake keep working.
@@ -539,8 +537,8 @@ width and height are not used. The surface size in millimeters comes from the ph
 
 1. **What does "switch the mode" mean?** This plan proposes `SwitchPie` (like the right-click) as the default and
    `PickHovered` as an option. Is that right, or should the click cycle through the Mode slices of the ring?
-2. **Fingers.** Is "hold with 1 or 2 fingers, click with one more" the intended meaning of "2 fingers and 1 click
-   makes 3"? Should 3 holding fingers be allowed (it collides with the system's three-finger gestures)?
+2. **Fingers.** Decided: hold with one finger, click with one more. A hold with two or more fingers is not supported
+   (the system scrolls with two fingers and takes three for its own gestures).
 3. **Is a private framework acceptable** for the first trackpad release, given it is off by default, loaded at run
    time and fails soft?
 4. **Default hold time for touch:** the same 500 ms as the mouse, or a longer one (S6 decides)?

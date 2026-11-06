@@ -32,12 +32,39 @@
 //! | `haptic` | one haptic tick on a trackpad (macOS only, no-op elsewhere), see [`HapticKind`] |
 //! | `launch_at_login_enabled`, `set_launch_at_login` | start with the user session |
 //! | `ensure_installed`, `handle_command_line`, `single_instance` | Windows install step, `--uninstall`, one running copy (no-ops elsewhere) |
+//! | `wait_for_login_ready` | after a login start (`--autostart`) wait for the desktop (Windows only, no-op elsewhere) |
 //! | `release_unused_memory` | give freed pages back to the OS |
 //! | [`layout`] | keyboard-layout snapshot |
 //!
 //! The **app id** is the key of per-app profiles: the bundle identifier on macOS
 //! (`com.apple.Safari`), the lower-case executable name on Windows (`chrome.exe`) and the lower-case
 //! desktop-entry id on Linux (`firefox`, `org.mozilla.firefox`).
+
+/// The pointer a developer tool stands in for the real one (the virtual trackpad's), in logical
+/// points. `None` almost always.
+static VIRTUAL_POINTER: std::sync::Mutex<Option<(f64, f64)>> = std::sync::Mutex::new(None);
+
+/// Puts a virtual pointer in place of the system's (`Some`) or takes it away (`None`). See
+/// [`pointer_pos`].
+pub fn set_virtual_pointer(p: Option<(f64, f64)>) {
+    *VIRTUAL_POINTER.lock().unwrap_or_else(|e| e.into_inner()) = p;
+}
+
+/// Whether a virtual pointer is standing in for the system's.
+pub fn virtual_pointer_active() -> bool {
+    VIRTUAL_POINTER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_some()
+}
+
+/// Where the pointer *the pie follows* is: the virtual one while the virtual trackpad is open (the
+/// real pointer is then the finger on it), the system's otherwise. The pie, the trackpad source and
+/// the lookup of the app under the pointer all ask this, never [`cursor_pos`] directly.
+pub fn pointer_pos() -> Option<(f64, f64)> {
+    let v = *VIRTUAL_POINTER.lock().unwrap_or_else(|e| e.into_inner());
+    v.or_else(cursor_pos)
+}
 
 pub mod desktops;
 pub mod installed;

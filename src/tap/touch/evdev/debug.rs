@@ -192,12 +192,8 @@ fn run(live: Duration) {
     say(
         if facts.switch_on { "ok" } else { "!!" },
         format!(
-            "config: touch_trigger={} fingers={} still={} mm hold={} ms typing_guard={} ms",
-            c.touch_trigger,
-            c.touch_fingers,
-            c.touch_still_mm,
-            c.pie_hold_ms,
-            c.touch_typing_guard_ms
+            "config: touch_trigger={} still={} mm hold={} ms typing_guard={} ms",
+            c.touch_trigger, c.touch_still_mm, c.pie_hold_ms, c.touch_typing_guard_ms
         ),
     );
     drop(c);

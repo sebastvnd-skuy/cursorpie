@@ -363,6 +363,9 @@ unsafe fn bitmap_bgra(
     };
     let mut px = vec![0u8; (w * h * 4) as usize];
     let dc = unsafe { GetDC(std::ptr::null_mut()) };
+    if dc.is_null() || bmp.is_null() {
+        return None;
+    }
     let lines = unsafe {
         GetDIBits(
             dc,
@@ -433,7 +436,9 @@ pub fn app_icon(exe: &str) -> Option<NativeIcon> {
             std::mem::size_of::<BITMAP>() as i32,
             (&mut bm as *mut BITMAP).cast(),
         );
-        let result = (ok != 0 && bm.bmWidth > 0 && bm.bmHeight > 0)
+        // a sane icon: positive and not absurdly big (the buffers below are `w * h * 4` bytes)
+        let sane = ok != 0 && (1..=4096).contains(&bm.bmWidth) && (1..=4096).contains(&bm.bmHeight);
+        let result = sane
             .then(|| {
                 let (w, h) = (bm.bmWidth, bm.bmHeight);
                 let mut color = bitmap_bgra(ii.hbmColor, w, h)?;

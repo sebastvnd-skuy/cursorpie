@@ -4,7 +4,8 @@
 # --user).
 # Usage:  scripts/package-linux.sh
 # Needs the development files of libx11, libxi, libxtst and libxrandr (see CONTRIBUTING.md).
-# The square application icon is included in assets/app-icon.png; no image-conversion tool is needed.
+# The icons (16 to 512 px, same artwork as the Windows and macOS icons) are in assets/icons; no
+# image-conversion tool is needed.
 # Build on an older distribution if the program must start on older ones (glibc is not backwards
 # compatible).
 set -euo pipefail
@@ -23,7 +24,8 @@ cp packaging/linux/cursorpie.desktop "$OUT/cursorpie.desktop"
 cp LICENSE README.md "$OUT/"
 
 # Keep the white mark on the sage background square; do not use the horizontal wordmark here.
-cp assets/app-icon.png "$OUT/cursorpie.png"
+mkdir -p "$OUT/icons"
+cp assets/icons/cursorpie-*.png "$OUT/icons/"
 
 cat > "$OUT/install.sh" <<'INSTALL'
 #!/usr/bin/env sh
@@ -39,8 +41,17 @@ case "${1:-}" in
 esac
 install -Dm755 "$here/cursorpie" "$prefix/bin/cursorpie"
 install -Dm644 "$here/cursorpie.desktop" "$prefix/share/applications/cursorpie.desktop"
-if [ -f "$here/cursorpie.png" ]; then
-    install -Dm644 "$here/cursorpie.png" "$prefix/share/icons/hicolor/512x512/apps/cursorpie.png"
+for f in "$here"/icons/cursorpie-*.png; do
+    [ -f "$f" ] || continue
+    size=$(basename "$f" .png); size=${size#cursorpie-}
+    install -Dm644 "$f" "$prefix/share/icons/hicolor/${size}x${size}/apps/cursorpie.png"
+done
+# make the desktop pick up the new icon and entry without a logout (each tool is optional)
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -t -f "$prefix/share/icons/hicolor" 2>/dev/null || true
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q "$prefix/share/applications" 2>/dev/null || true
 fi
 echo "Installed under $prefix. Start CursorPie from your applications menu or run: cursorpie"
 INSTALL

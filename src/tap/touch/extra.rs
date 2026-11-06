@@ -1,9 +1,9 @@
 //! The extra click: while a pie opened by a trackpad hold is open, one more finger clicks.
 //!
-//! macOS decides what a click with a finger resting on the trackpad *is* (a secondary click for two
-//! fingers, Look up or three-finger drag for three, or nothing), so CursorPie does not look at what
-//! the system made of it. It counts the fingers itself: while a trackpad pie is open, a click of
-//! any kind that arrives while *fingers + 1* fingers touch the surface is the extra click. It is
+//! The system decides what a click with a finger resting on the trackpad *is* (a secondary click
+//! for two fingers, or nothing), so CursorPie does not look at what the system made of it. It
+//! counts the fingers itself: while a trackpad pie is open, a click of any kind that arrives while
+//! two fingers touch the surface (the holding one and the one that clicks) is the extra click. It is
 //! swallowed (its press, its drags and its release) and runs one action, whatever the system mapping is
 //! ([`TouchClickAction`]).
 //!
@@ -27,6 +27,8 @@ use crate::tap::{Kind, Verdict, right_click};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Fingers on the surface at the extra click: the holding one and the one that clicks.
+const EXTRA_CLICK_FINGERS: usize = 2;
 /// Button number of the left button.
 pub const LEFT_BUTTON: i64 = 0;
 /// The click the system makes of a tap of the extra finger is swallowed for this long (ms).
@@ -83,8 +85,7 @@ pub(crate) fn handle(
             if !ACTIVE.load(Ordering::SeqCst) {
                 return None;
             }
-            let wanted = cfg().touch_fingers as usize + 1;
-            let physical = FINGERS.load(Ordering::SeqCst) == wanted;
+            let physical = FINGERS.load(Ordering::SeqCst) == EXTRA_CLICK_FINGERS;
             let t = now_ms();
             let from_tap = {
                 let until = SWALLOW_UNTIL.load(Ordering::SeqCst);
@@ -136,6 +137,9 @@ pub(crate) fn tap(state: &Arc<Mutex<Gesture>>, notifier: &Notifier) {
 
 /// Carries out [`TouchClickAction`] once (two reports within [`DEDUP_MS`] are one click).
 fn fire(state: &Arc<Mutex<Gesture>>, notifier: &Notifier) {
+    if crate::tap::settings_open() {
+        return; // the pie is off while Settings is open
+    }
     let t = now_ms();
     let last = LAST_FIRED.swap(t, Ordering::SeqCst);
     if last != 0 && t.saturating_sub(last) < DEDUP_MS {

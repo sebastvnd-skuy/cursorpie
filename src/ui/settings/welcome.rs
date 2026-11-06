@@ -159,9 +159,13 @@ pub fn gesture_steps(hold_ms: u64) -> [(&'static str, String); 3] {
     ]
 }
 
-/// `ms` as seconds with one decimal: "0.5 s".
+/// `ms` as a short time: "150 ms" below one second, "1.2 s" from one second on.
 fn seconds(ms: u64) -> String {
-    format!("{:.1} s", ms as f64 / 1000.0)
+    if ms < 1000 {
+        format!("{ms} ms")
+    } else {
+        format!("{:.1} s", ms as f64 / 1000.0)
+    }
 }
 
 /// Short tips of the last page.
@@ -842,8 +846,8 @@ mod tests {
 
     #[test]
     fn the_gesture_uses_the_configured_hold_time() {
-        let steps = gesture_steps(500);
-        assert!(steps[0].1.contains("0.5 s"), "{}", steps[0].1);
+        let steps = gesture_steps(150);
+        assert!(steps[0].1.contains("150 ms"), "{}", steps[0].1);
         assert!(gesture_steps(1200)[0].1.contains("1.2 s"));
         assert_eq!(steps.len(), 3);
     }

@@ -662,7 +662,7 @@ scaling, and move the item to "verified" here only when it passed on more than o
 Items 1 to 11 are the ones in `WINDOWS_MIGRATION.md`, run on Linux. Items 12 and later are specific to
 Linux. Record the distribution, desktop, session type, GPU and scaling with each result.
 
-1. Hold the middle button 500 ms: pie opens under the cursor; release over a slice runs it.
+1. Hold the middle button for the hold time (150 ms by default): pie opens under the cursor; release over a slice runs it.
 2. Quick middle click passes through, and in a browser the click does **not** paste the primary
    selection twice; middle-drag still pans.
 3. Double-click opens the app's own pie.

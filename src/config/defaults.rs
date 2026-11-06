@@ -322,7 +322,7 @@ impl Config {
                     active: vec![0],
                 },
             ],
-            pie_hold_ms: 500,
+            pie_hold_ms: 150,
             settings_hold_ms: 1200,
             pie_size: 200.0,
             accent: [90, 120, 94],
@@ -345,7 +345,7 @@ impl Config {
             center_app_icon: true,
             app_icon_style: AppIconStyle::Glyph,
             app_icon_shadow: IconShadow::Auto,
-            show_labels: true,
+            show_labels: false,
             sleep_after_s: 60,
             appearance: Appearance::System,
             pie_style: PieStyle::Solid,
@@ -353,7 +353,6 @@ impl Config {
             glass_frost: 45,
             glass_shine: 60,
             touch_trigger: false,
-            touch_fingers: 1,
             touch_still_mm: 2.0,
             touch_click_action: TouchClickAction::SwitchPie,
             touch_typing_guard_ms: 400,
@@ -467,7 +466,7 @@ mod tests {
             c.profiles[2].apps,
             ["com.microsoft.VSCode", "com.apple.dt.Xcode"]
         );
-        assert_eq!(c.pie_hold_ms, 500);
+        assert_eq!(c.pie_hold_ms, 150);
         assert_eq!(c.settings_hold_ms, 1200);
         assert_eq!(c.pie_size, 200.0);
         assert_eq!(c.accent, [90, 120, 94]);

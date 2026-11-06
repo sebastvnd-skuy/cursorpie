@@ -229,6 +229,17 @@ impl Ed {
 
     /// Cached texture for an image icon. None for text icons or images that fail to load.
     pub fn icon_for(&mut self, ctx: &egui::Context, icon: &str) -> Option<egui::TextureHandle> {
+        // The icon of an app comes from the system (on Windows: a scan of the running processes and
+        // a read of the executable), which can be slow or even stall for an odd file. It is read on
+        // a worker thread, so a click on "Full color" never freezes the window; the icon appears
+        // as soon as it is ready (`get_app_async` repaints then). Warming up (`Msg::Warm`) fills
+        // the cache ahead of the pie, so the pie itself finds the texture already there.
+        if crate::ui::appicon::is_app_icon(icon) {
+            return match self.icons.get_app_async(ctx, icon) {
+                IconState::Ready(tex) => Some(tex),
+                IconState::Pending | IconState::Missing => None,
+            };
+        }
         self.icons.get(ctx, icon)
     }
 

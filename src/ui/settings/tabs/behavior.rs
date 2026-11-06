@@ -81,7 +81,7 @@ impl App {
                 ui,
                 "Hold to open the pie",
                 &mut cfg.pie_hold_ms,
-                150..=1500,
+                50..=1500,
                 " ms",
                 accent,
             );
@@ -553,14 +553,7 @@ fn trackpad_panel(
         );
         note(ui, &trackpad_status_text(cfg.touch_trigger, status));
         ui.add_enabled_ui(cfg.touch_trigger, |ui| {
-            row_wide(ui, "Fingers to hold", "The extra click is one more finger.", 140.0, |ui| {
-                let items: [(Option<char>, &str); 2] = [(None, "1"), (None, "2")];
-                let at = usize::from(cfg.touch_fingers == 2);
-                if let Some(i) = segmented(ui, &items, at) {
-                    cfg.touch_fingers = i as u8 + 1;
-                }
-            });
-            note(ui, fingers_hint(os, cfg.touch_fingers));
+            note(ui, extra_finger_hint(os));
             slider_row(
                 ui,
                 "How still the finger must stay",
@@ -619,33 +612,20 @@ fn trackpad_panel(
     });
 }
 
-/// The note under *Fingers to hold*: how the extra click is made, and which system gesture may take
-/// that finger instead.
-fn fingers_hint(os: Os, fingers: u8) -> &'static str {
-    if os == Os::Linux {
-        return if fingers == 2 {
-            "Two fingers hold, a third clicks. Turn off the three-finger gestures of your desktop, \
-             or it may take the third finger."
-        } else {
+/// The note under the trackpad switch: one finger holds, a second one clicks, and which system
+/// gesture may take that second finger instead.
+fn extra_finger_hint(os: Os) -> &'static str {
+    match os {
+        Os::Linux => {
             "One finger holds, a second clicks. The system may call that a right-click; CursorPie \
              swallows it while the pie is open."
-        };
-    }
-    match (os == Os::Windows, fingers == 2) {
-        (true, true) => {
-            "Two fingers hold, a third clicks. In Settings > Bluetooth & devices > Touchpad, set the \
-             three-finger gestures to Nothing, or Windows may take the third finger."
         }
-        (true, false) => {
+        Os::Windows => {
             "One finger holds, a second clicks. Windows may call that a right-click; CursorPie \
              swallows it while the pie is open. If a tap and hold clicks the app under the pie, turn \
-             off \"Tap twice and drag to multi-select\" in the same page."
+             off \"Tap twice and drag to multi-select\" in Settings > Bluetooth & devices > Touchpad."
         }
-        (false, true) => {
-            "Two fingers hold, a third clicks. In System Settings > Trackpad, turn off \
-             \"Look up & data detectors\" and three-finger drag, or macOS may take the third finger."
-        }
-        (false, false) => {
+        Os::Mac => {
             "One finger holds, a second clicks. macOS may call that a secondary click; CursorPie \
              swallows it while the pie is open."
         }
@@ -716,31 +696,28 @@ mod tests {
         let ctx = egui::Context::default();
         crate::ui::fonts::install(&ctx);
         for on in [false, true] {
-            for fingers in [1, 2] {
-                for st in [
-                    Off,
-                    Unavailable,
-                    NoDevice,
-                    NoPermission { devices: 1 },
-                    Ready {
-                        devices: 1,
-                        built_in: true,
-                    },
-                    Ready {
-                        devices: 2,
-                        built_in: false,
-                    },
-                ] {
-                    let mut cfg = Config {
-                        touch_trigger: on,
-                        touch_fingers: fingers,
-                        ..Config::default()
-                    };
-                    ctx.run_ui(Default::default(), |ui| {
-                        trackpad_panel(ui, &mut cfg, Color32::GRAY, st);
-                    })
-                    .drop_without_applying_deltas();
-                }
+            for st in [
+                Off,
+                Unavailable,
+                NoDevice,
+                NoPermission { devices: 1 },
+                Ready {
+                    devices: 1,
+                    built_in: true,
+                },
+                Ready {
+                    devices: 2,
+                    built_in: false,
+                },
+            ] {
+                let mut cfg = Config {
+                    touch_trigger: on,
+                    ..Config::default()
+                };
+                ctx.run_ui(Default::default(), |ui| {
+                    trackpad_panel(ui, &mut cfg, Color32::GRAY, st);
+                })
+                .drop_without_applying_deltas();
             }
         }
         assert!(trackpad_status_text_for(Os::Mac, true, Unavailable).contains("not available"));
@@ -793,11 +770,9 @@ mod tests {
         let denied = lin(true, NoPermission { devices: 1 });
         assert!(denied.contains("input") && denied.contains("usermod"));
         assert!(lin(false, Off).starts_with("Off"));
-        for fingers in [1, 2] {
-            assert!(!fingers_hint(Os::Linux, fingers).contains("macOS"));
-            assert!(fingers_hint(Os::Windows, fingers).contains("Windows"));
-            assert!(fingers_hint(Os::Mac, fingers).contains("macOS"));
-        }
+        assert!(!extra_finger_hint(Os::Linux).contains("macOS"));
+        assert!(extra_finger_hint(Os::Windows).contains("Windows"));
+        assert!(extra_finger_hint(Os::Mac).contains("macOS"));
         let labels: Vec<_> = [
             TouchClickAction::SwitchPie,
             TouchClickAction::PickHovered,

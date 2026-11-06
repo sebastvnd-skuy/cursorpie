@@ -271,6 +271,12 @@ impl Profile {
     }
 }
 
+/// The value of `show_labels` for a file that does not have the field: before the setting existed
+/// the pie always showed the names.
+fn names_on() -> bool {
+    true
+}
+
 /// The whole configuration. `#[serde(default)]` keeps older files loadable: every field
 /// missing from a file takes its value from [`Config::default`].
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -316,7 +322,9 @@ pub struct Config {
     pub app_icon_style: AppIconStyle,
     /// With `center_app_icon`: when the icon gets a shadow (see [`IconShadow`]).
     pub app_icon_shadow: IconShadow,
-    /// Each slice shows its name under its icon. Off: the pie shows icons only.
+    /// Each slice shows its name under its icon. Off (the default): the pie shows icons only. A
+    /// file saved before this setting existed keeps the names.
+    #[serde(default = "names_on")]
     pub show_labels: bool,
     /// Seconds without a pie or Settings on screen before the UI frees its caches and Settings
     /// state (0 = never). See [`ui::sleep`](crate::ui::sleep).
@@ -336,8 +344,6 @@ pub struct Config {
     /// the touch source never starts (on macOS the private touch framework is never loaded, on
     /// Windows nothing is registered with Raw Input).
     pub touch_trigger: bool,
-    /// Trackpad: how many fingers hold (1 or 2); the extra click is one more finger.
-    pub touch_fingers: u8,
     /// Trackpad: how little the holding finger may move, in millimeters on the surface, before the
     /// hold stops counting.
     pub touch_still_mm: f32,

@@ -52,7 +52,7 @@ impl App {
         self.ed.icons.revalidate(); // re-read only the images that changed on disk
         self.release_editor(); // the next open copies the config again
         self.win = cfg().pie_size;
-        self.settings_open = false;
+        self.set_settings_open(false);
         self.welcome = None;
         self.closing = None;
         self.settings_anim = 0.0;
@@ -67,7 +67,7 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
             egui::WindowLevel::AlwaysOnTop,
         ));
-        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        self.hide_root(ctx);
         self.sleep_step(ctx); // the idle clock starts now
     }
 
@@ -144,7 +144,7 @@ impl App {
             return;
         }
         self.pie_open = false;
-        self.settings_open = true;
+        self.set_settings_open(true);
         self.visible = true;
         self.closing = None;
         self.settings_anim = 0.0;
@@ -172,7 +172,7 @@ impl App {
             return;
         }
         self.pie_open = false;
-        self.settings_open = true;
+        self.set_settings_open(true);
         self.visible = true;
         self.closing = None;
         self.settings_anim = 0.0;
@@ -247,13 +247,34 @@ impl App {
         if open_settings {
             // straight into Settings, without hiding the window in between
             self.welcome = None;
-            self.settings_open = false;
+            self.set_settings_open(false);
             self.closing = None;
             let at = self.cursor_or_default();
             self.open_settings(ctx, at, false);
         } else {
             self.close_settings(ctx, false);
         }
+    }
+
+    /// Mirrors `settings_open` into [`tap::SETTINGS_OPEN`](crate::tap::SETTINGS_OPEN), which the
+    /// tap thread reads to keep the pie off. Every change of `settings_open` goes through here.
+    pub(super) fn set_settings_open(&mut self, open: bool) {
+        self.settings_open = open;
+        crate::tap::SETTINGS_OPEN.store(open, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// The trigger was pressed while Settings is open, so the pie did not open. Settings may be
+    /// behind other windows, minimized or on another desktop: without a sign the press looks like it
+    /// did nothing. Brings the window forward and says why.
+    pub(super) fn pie_blocked(&mut self, ctx: &egui::Context, _x: f64, _y: f64) {
+        // (not while a file chooser is open: it would end up under Settings)
+        if !crate::ui::settings::choosing() {
+            self.raise_settings(ctx, "pie_press");
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
+                egui::UserAttentionType::Informational,
+            ));
+        }
+        self.say("The pie is off while Settings is open  \u{b7}  Save or Cancel to use it again");
     }
 
     /// Opens the pie window for `profile` at (x, y). Submenus call this again to re-center.
@@ -266,6 +287,7 @@ impl App {
         path: Vec<usize>,
     ) {
         if self.settings_open {
+            // defense in depth: the tap does not ask for a pie while Settings is open
             diag::log!(
                 "ui",
                 "show_pie_ignored",
@@ -273,19 +295,7 @@ impl App {
                 x = x,
                 y = y
             );
-            // Settings may be behind other windows, minimized or on another desktop: without a
-            // sign the press looks like it did nothing. Bring the window forward and say why the
-            // pie did not open.
-            // (not while a file chooser is open: it would end up under Settings)
-            if !crate::ui::settings::choosing() {
-                self.raise_settings(ctx, "pie_press");
-                ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
-                    egui::UserAttentionType::Informational,
-                ));
-            }
-            self.say(
-                "The pie is off while Settings is open  \u{b7}  Save or Cancel to use it again",
-            );
+            self.pie_blocked(ctx, x, y);
             return;
         }
         self.win = cfg().pie_size;
@@ -302,7 +312,14 @@ impl App {
         let w = self.win;
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize([w, w].into()));
         ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
-        ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(true));
+        // A mouse hold has a button down, so the apps under the pie hear no pointer motion. A
+        // trackpad hold has none: the finger moves the real pointer, and a click-through pie lets
+        // every move reach the page below (a video player shows its controls, links highlight).
+        // So the pie of a trackpad hold takes the pointer; the pie follows the cursor, so the
+        // pointer stays inside it. Clicks are swallowed by the taps as before.
+        let takes_pointer = crate::tap::touch_pie_active();
+        diag::log!("ui", "pie_input", takes_pointer = takes_pointer);
+        ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!takes_pointer));
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
             egui::WindowLevel::AlwaysOnTop,
         ));
@@ -393,8 +410,8 @@ impl App {
     }
 
     /// Current cursor position, or a fixed fallback if the OS cannot tell.
-    fn cursor_or_default(&self) -> Pos2 {
-        let raw = platform::cursor_pos();
+    pub(super) fn cursor_or_default(&self) -> Pos2 {
+        let raw = platform::pointer_pos();
         diag::log!(
             "ui",
             "cursor_or_default",

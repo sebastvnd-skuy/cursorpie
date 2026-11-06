@@ -61,7 +61,7 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
 ```json
 {
   "version": 2,
-  "pie_hold_ms": 500,
+  "pie_hold_ms": 150,
   "settings_hold_ms": 1200,
   "pie_size": 200.0,
   "accent": [90, 120, 94],
@@ -84,7 +84,7 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
   "center_app_icon": true,
   "app_icon_style": "Glyph",
   "app_icon_shadow": "Auto",
-  "show_labels": true,
+  "show_labels": false,
   "sleep_after_s": 60,
   "appearance": "System",
   "pie_style": "Solid",
@@ -92,7 +92,6 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
   "glass_frost": 45,
   "glass_shine": 60,
   "touch_trigger": false,
-  "touch_fingers": 1,
   "touch_still_mm": 2.0,
   "touch_click_action": "SwitchPie",
   "touch_typing_guard_ms": 400,
@@ -146,7 +145,7 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
 |---|---|
 | `trigger_button` | `2` = middle, `5` / `6` / `7` = extra buttons (shown as "Extra button 6/7/8"). Only the middle button works on Windows and Linux |
 | `accent` | Accent color as `[r, g, b]`. The default is `[90, 120, 94]`; the old default blue `[64, 156, 255]` is replaced by the new default when a file is loaded |
-| `pie_hold_ms` | Hold time before the pie opens (150 to 2000 in the file; the Settings slider goes from 150 to 1500) |
+| `pie_hold_ms` | Hold time before the pie opens (50 to 2000 in the file; the Settings slider goes from 50 to 1500; default 150) |
 | `settings_hold_ms` | Hold time before Settings opens (always at least `pie_hold_ms` + 300; the Settings slider goes from 500 to 4000) |
 | `pie_size` | Pie window size in px (140 to 360) |
 | `app_gesture` | `"DoubleClick"` (hold = general pie, double-click = app pie) or `"Merged"` (classic) |
@@ -163,12 +162,11 @@ An `icon` that ends in `.png`, `.jpg`, `.jpeg` or `.webp` is an image file (a pa
 | `center_app_icon` | Show the app's icon in the center of an app's own pie instead of the active mode's icon |
 | `app_icon_style` | `"Glyph"` or `"Color"`: that icon as a one-color silhouette in the pie's ink (default), or in the app's own colors |
 | `app_icon_shadow` | `"Auto"` (default), `"Soft"`, `"Strong"` or `"Off"`: the shadow under the app's icon in the center of the pie. `Auto` adds it only on a plain light center |
-| `show_labels` | Show each slice's name under its icon (`false` = icons only) |
+| `show_labels` | Show each slice's name under its icon (default `false` = icons only; a file that lacks the field keeps the names) |
 | `appearance` | `"System"` (default), `"Light"` or `"Dark"`: the look of Settings and the pie |
 | `pie_style` | `"Solid"` (default) or `"Glass"`: opaque slices, or see-through frosted ones (always smoked dark) |
 | `glass_clear`, `glass_frost`, `glass_shine` | Glass style only, in percent (0 to 100, larger values are clamped): how see-through the slices are (default 60), how frosted (default 45) and how bright the rim and sheen are (default 60) |
 | `touch_trigger` | macOS trackpad, Windows precision touchpad and Linux (X11) touchpad: a hold opens the pie (default `false`; while it is off the system's touch library is never loaded on macOS, nothing is registered with Windows and `/dev/input` is never opened on Linux). See [the user guide](USER_GUIDE.md#trackpad-macos-windows-and-linux-x11) |
-| `touch_fingers` | `1` (default) or `2`: how many fingers hold; the extra click is one more. Other values become `1` |
 | `touch_still_mm` | 0.5 to 6.0 (default `2.0`): how far, in millimeters on the trackpad, the holding finger may move before the hold counts |
 | `touch_click_action` | `"SwitchPie"` (default, like the right-click), `"PickHovered"` (the hovered Mode slice becomes the active mode) or `"Nothing"`: what the extra click does |
 | `touch_typing_guard_ms` | 0 to 2000 (default `400`, `0` = off): no hold is armed this soon after a key press |

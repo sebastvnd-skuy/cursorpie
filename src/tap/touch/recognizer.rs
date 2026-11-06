@@ -20,8 +20,8 @@
 //!
 //! What it decides (every number is a setting in [`Params`] or a named constant):
 //!
-//! - **Exactly `fingers` fingers** must touch together. A different count never arms; it blocks the
-//!   touch until every finger has lifted.
+//! - **Exactly one finger** must touch. A different count never arms; it blocks the touch until every
+//!   finger has lifted. Two fingers are not a hold: the system scrolls with them.
 //! - **Still means still on the surface, in millimeters**, from the size of the device, not in
 //!   screen pixels (pointer acceleration makes a few pixels a poor measure).
 //! - **Palms and edges are ignored**: a contact far larger than a fingertip, and a thin border of the
@@ -43,8 +43,6 @@ use std::time::Duration;
 pub const ARM_DELAY: Duration = Duration::from_millis(100);
 /// A touch shorter than this, that did not move, is a tap.
 pub const TAP_MAX: Duration = Duration::from_millis(200);
-/// When N fingers are wanted, they may land one after the other within this time.
-pub const SETTLE: Duration = Duration::from_millis(150);
 /// No frame for this long while a gesture is running: the device is gone or stopped sending.
 pub const STALE_AFTER: Duration = Duration::from_millis(500);
 /// A contact larger than this (in the units of the framework's `size`) is a palm. **Design
@@ -85,8 +83,6 @@ pub struct Frame<'a> {
 /// The settings the recognizer needs (from [`Config`](crate::config::Config)).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Params {
-    /// Fingers that hold: 1 or 2. The extra click is one more.
-    pub fingers: usize,
     /// How far (mm) the holding fingers may move before the hold counts.
     pub still_mm: f32,
     /// The hold time (`pie_hold_ms`), counted from the touch-down.
@@ -101,7 +97,6 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
-            fingers: 1,
             still_mm: 2.0,
             hold: Duration::from_millis(500),
             typing_guard: Duration::from_millis(400),
@@ -182,6 +177,7 @@ struct Hold {
     armed: bool,
     opened: bool,
     double: bool,
+    /// Where the holding finger was at the last `Move` (or when the pie opened).
     last: Mm,
     extra: Option<Extra>,
 }
@@ -189,10 +185,6 @@ struct Hold {
 #[derive(Clone, Debug)]
 enum Phase {
     Idle,
-    /// Some fingers are down but fewer than wanted; they may still be landing.
-    Settling {
-        since: Duration,
-    },
     /// This touch can never become a hold (wrong count, typing, it slid). Wait until all lift.
     Blocked,
     Holding(Hold),
@@ -402,32 +394,14 @@ impl Recognizer {
         now: &[Contact],
         out: &mut Vec<TouchEvent>,
     ) -> Phase {
-        let want = self.params.fingers;
         match phase {
             Phase::Idle => {
                 if now.is_empty() {
                     Phase::Idle
-                } else if now.len() < want {
-                    Phase::Settling { since: time }
-                } else if now.len() > want || self.typing_blocked(time) {
+                } else if now.len() > 1 || self.typing_blocked(time) {
                     Phase::Blocked
                 } else {
                     self.begin(time, now)
-                }
-            }
-            Phase::Settling { since } => {
-                if now.is_empty() {
-                    Phase::Idle
-                } else if now.len() == want {
-                    if self.typing_blocked(time) {
-                        Phase::Blocked
-                    } else {
-                        self.begin(time, now)
-                    }
-                } else if now.len() > want || time - since > SETTLE {
-                    Phase::Blocked
-                } else {
-                    Phase::Settling { since }
                 }
             }
             Phase::Blocked => {
@@ -441,7 +415,7 @@ impl Recognizer {
         }
     }
 
-    /// The right number of fingers just landed.
+    /// Exactly one finger just landed.
     fn begin(&mut self, time: Duration, now: &[Contact]) -> Phase {
         let double = self
             .last_tap_end
@@ -605,10 +579,9 @@ mod tests {
     }
 
     impl Sim {
-        fn new(fingers: usize) -> Self {
+        fn new() -> Self {
             Self {
                 r: Recognizer::new(Params {
-                    fingers,
                     typing_guard: Duration::ZERO,
                     ..Params::default()
                 }),
@@ -652,7 +625,7 @@ mod tests {
 
     #[test]
     fn a_still_finger_arms_after_the_delay_and_opens_after_the_hold_time() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         let k = s.kinds();
         assert!(armed(&k[0]), "{k:?}");
@@ -671,7 +644,7 @@ mod tests {
 
     #[test]
     fn lifting_after_the_pie_opened_is_a_release() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]).hold(20, &[]);
         assert_eq!(s.kinds().last(), Some(&TouchEvent::Release));
         assert!(s.r.idle());
@@ -679,7 +652,7 @@ mod tests {
 
     #[test]
     fn lifting_before_the_pie_opens_is_a_release_too() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(300, &[f(1, 0.5, 0.5)]).hold(20, &[]);
         let k = s.kinds();
         assert!(
@@ -690,7 +663,7 @@ mod tests {
 
     #[test]
     fn a_slide_before_the_hold_time_breaks_the_hold() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         // 2 mm of travel is allowed (100 mm surface: 0.02); 5 mm is a slide
         s.hold(200, &[f(1, 0.5, 0.5)])
             .hold(100, &[f(1, 0.51, 0.5)])
@@ -709,7 +682,7 @@ mod tests {
 
     #[test]
     fn a_slide_before_arming_reports_nothing() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(50, &[f(1, 0.5, 0.5)])
             .hold(500, &[f(1, 0.7, 0.5)])
             .hold(20, &[]);
@@ -750,15 +723,15 @@ mod tests {
     }
 
     #[test]
-    fn two_fingers_scrolling_never_arms_a_one_finger_hold() {
-        let mut s = Sim::new(1);
+    fn two_fingers_scrolling_never_arm_a_hold() {
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.4, 0.5), f(2, 0.6, 0.5)]).hold(20, &[]);
         assert!(s.kinds().is_empty());
     }
 
     #[test]
     fn a_second_finger_that_lands_late_cancels_a_one_finger_hold_that_started() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(200, &[f(1, 0.5, 0.5)])
             .hold(100, &[f(1, 0.5, 0.5), f(2, 0.7, 0.5)]);
         let k = s.kinds();
@@ -772,48 +745,15 @@ mod tests {
 
     #[test]
     fn a_second_finger_that_lands_at_once_never_arms_anything_for_one_finger() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(30, &[f(1, 0.5, 0.5)])
             .hold(600, &[f(1, 0.5, 0.5), f(2, 0.7, 0.5)]);
         assert!(s.kinds().is_empty(), "{:?}", s.kinds());
     }
 
     #[test]
-    fn two_fingers_that_land_one_after_the_other_still_arm_a_two_finger_hold() {
-        let mut s = Sim::new(2);
-        s.hold(40, &[f(1, 0.4, 0.5)])
-            .hold(700, &[f(1, 0.4, 0.5), f(2, 0.6, 0.5)]);
-        let k = s.kinds();
-        assert!(armed(&k[0]), "{k:?}");
-        assert_eq!(k[1], TouchEvent::HoldOpen);
-    }
-
-    #[test]
-    fn two_fingers_that_land_too_far_apart_in_time_are_blocked() {
-        let mut s = Sim::new(2);
-        s.hold(400, &[f(1, 0.4, 0.5)])
-            .hold(700, &[f(1, 0.4, 0.5), f(2, 0.6, 0.5)]);
-        assert!(s.kinds().is_empty());
-    }
-
-    #[test]
-    fn three_fingers_never_arm_a_two_finger_hold() {
-        let mut s = Sim::new(2);
-        s.hold(700, &[f(1, 0.3, 0.5), f(2, 0.5, 0.5), f(3, 0.7, 0.5)]);
-        assert!(s.kinds().is_empty());
-    }
-
-    #[test]
-    fn lifting_one_of_two_holding_fingers_releases() {
-        let mut s = Sim::new(2);
-        let both = [f(1, 0.4, 0.5), f(2, 0.6, 0.5)];
-        s.hold(700, &both).hold(20, &[f(1, 0.4, 0.5)]);
-        assert_eq!(s.kinds().last(), Some(&TouchEvent::Release));
-    }
-
-    #[test]
     fn a_palm_is_not_a_finger_and_does_not_count() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         let palm = Finger {
             id: 9,
             x: 0.5,
@@ -824,21 +764,21 @@ mod tests {
         let k = s.kinds();
         assert!(armed(&k[0]) && k[1] == TouchEvent::HoldOpen, "{k:?}");
         // a palm alone arms nothing
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(700, &[palm]);
         assert!(s.kinds().is_empty());
     }
 
     #[test]
     fn the_border_of_the_surface_is_ignored() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(700, &[f(1, 0.005, 0.5)]);
         assert!(s.kinds().is_empty());
     }
 
     #[test]
     fn a_key_press_just_before_blocks_the_hold() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.r.set_params(Params {
             typing_guard: MS(400),
             ..s.r.params()
@@ -854,7 +794,7 @@ mod tests {
 
     #[test]
     fn a_key_pressed_while_the_finger_is_down_but_before_arming_blocks_too() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.r.set_params(Params {
             typing_guard: MS(400),
             ..s.r.params()
@@ -867,7 +807,7 @@ mod tests {
 
     #[test]
     fn the_pie_follows_the_finger_and_only_when_it_moved() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         s.clear();
         s.hold(100, &[f(1, 0.5, 0.5)]);
@@ -878,7 +818,7 @@ mod tests {
 
     #[test]
     fn a_quick_tap_of_the_extra_finger_is_an_extra_click() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         s.clear();
         s.hold(80, &[f(1, 0.5, 0.5), f(2, 0.7, 0.6)])
@@ -889,7 +829,7 @@ mod tests {
 
     #[test]
     fn a_long_press_of_the_extra_finger_is_left_to_the_click_path() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         s.clear();
         s.hold(400, &[f(1, 0.5, 0.5), f(2, 0.7, 0.6)]);
@@ -900,7 +840,7 @@ mod tests {
 
     #[test]
     fn an_extra_finger_that_slides_is_not_a_tap() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         s.clear();
         s.hold(30, &[f(1, 0.5, 0.5), f(2, 0.7, 0.6)])
@@ -910,18 +850,8 @@ mod tests {
     }
 
     #[test]
-    fn the_extra_click_works_with_two_holding_fingers() {
-        let mut s = Sim::new(2);
-        let two = [f(1, 0.3, 0.5), f(2, 0.5, 0.5)];
-        s.hold(700, &two);
-        s.clear();
-        s.hold(80, &[two[0], two[1], f(3, 0.8, 0.5)]).hold(20, &two);
-        assert_eq!(s.kinds(), vec![TouchEvent::ExtraClick]);
-    }
-
-    #[test]
     fn two_extra_fingers_cancel_the_open_pie() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         s.clear();
         s.hold(20, &[f(1, 0.5, 0.5), f(2, 0.7, 0.5), f(3, 0.8, 0.5)]);
@@ -930,7 +860,7 @@ mod tests {
 
     #[test]
     fn lifting_the_holding_finger_while_the_extra_one_is_down_releases() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         s.clear();
         s.hold(100, &[f(1, 0.5, 0.5), f(2, 0.7, 0.5)])
@@ -940,7 +870,7 @@ mod tests {
 
     #[test]
     fn a_tap_then_a_hold_inside_the_double_click_window_is_flagged_double() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(60, &[f(1, 0.5, 0.5)]).hold(10, &[]);
         assert!(s.kinds().is_empty(), "a tap alone says nothing");
         s.hold(100, &[]); // 110 ms gap < 260 ms
@@ -953,7 +883,7 @@ mod tests {
 
     #[test]
     fn a_hold_after_the_window_is_not_double() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(60, &[f(1, 0.5, 0.5)]).hold(10, &[]);
         s.hold(400, &[]); // longer than the 260 ms window
         s.hold(300, &[f(1, 0.5, 0.5)]);
@@ -965,7 +895,7 @@ mod tests {
 
     #[test]
     fn a_long_touch_is_not_a_tap() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(350, &[f(1, 0.5, 0.5)]).hold(10, &[]);
         s.clear();
         s.hold(50, &[]);
@@ -1029,7 +959,7 @@ mod tests {
 
     #[test]
     fn a_device_that_disappears_cancels_its_gesture() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(300, &[f(1, 0.5, 0.5)]);
         s.clear();
         let mut ev = Vec::new();
@@ -1040,7 +970,7 @@ mod tests {
 
     #[test]
     fn a_device_that_stops_sending_cancels_after_a_while() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(300, &[f(1, 0.5, 0.5)]);
         let mut ev = Vec::new();
         s.r.poll(MS(s.t + 100), &mut ev);
@@ -1052,7 +982,7 @@ mod tests {
 
     #[test]
     fn reset_cancels_a_running_gesture_and_forgets_the_taps() {
-        let mut s = Sim::new(1);
+        let mut s = Sim::new();
         s.hold(600, &[f(1, 0.5, 0.5)]);
         let mut ev = Vec::new();
         s.r.reset(&mut ev);

@@ -34,8 +34,7 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 - Ad-hoc signed builds may need the Accessibility permission again after each rebuild. Sign with a stable
   identity (`SIGN_ID`) to avoid that.
 - **Trackpad** (off by default): it uses Apple's private `MultitouchSupport` framework, which Apple may change in any
-  release (the feature turns itself off and says so), so it cannot be in a Mac App Store build. With *Fingers to hold*
-  = 2, macOS may take the third finger for Look up or three-finger drag unless you turn those off. The surface of a
+  release (the feature turns itself off and says so), so it cannot be in a Mac App Store build. The surface of a
   Magic Mouse is not used. Haptic ticks need a Force Touch trackpad and the system's haptic setting on. **Not yet
   verified on a Mac:** see the manual checklist in [TRACKPAD_HAPTICS_PLAN.md](TRACKPAD_HAPTICS_PLAN.md#manual-verification-checklist).
 - **Trackpad on Linux (X11)** (off by default): the touchpad is read from `/dev/input`, so the user must be in the
@@ -64,10 +63,22 @@ CursorPie, the trigger button and the output of `cargo run --release` from a ter
 
 ## Windows
 
+- **Antivirus stops CursorPie or it does not start at login.** CursorPie watches the mouse and keyboard with
+  low-level hooks and sends shortcuts, which is also what a keylogger does, so some antivirus programs
+  are wary of an unsigned `cursorpie.exe`. What the program does about it: the `.exe` carries version information
+  and a manifest, it only writes to the registry when it installs or updates (not at every start), and a start from
+  the login entry (`--autostart`) waits for the taskbar before it creates its tray icon and hooks. What it cannot do
+  by itself: a code signing certificate (`SIGN_CERT_THUMBPRINT` in `scripts/package-windows.ps1`) is the one fix
+  that lasts. Until then, add an exclusion for `%LOCALAPPDATA%\Programs\CursorPie` (Windows Security > Virus & threat
+  protection > Manage settings > Exclusions) or report the file as a false positive at
+  <https://www.microsoft.com/wdsi/filesubmission> (other products have a similar form).
+  Without any outside party: the first start no longer installs itself silently (it asks once), and
+  `scripts\sign-local.ps1` signs your own build with a certificate you create and trusts it on your PC. That
+  helps only the PCs that trust the certificate; it does not help other people's PCs. Building from source
+  (`cargo build --release`) on the PC that will run it also avoids most "new file" detections.
+
 - **Touchpad** (off by default): only a Windows *precision* touchpad can open the pie; an older touchpad that Windows
-  treats as a plain mouse cannot be read. It is read through Raw Input, so no driver and no permission is needed. With
-  *Fingers to hold* = 2, Windows may take the third finger for its three-finger gestures unless you set them to
-  *Nothing*. A tap followed by a hold may start a Windows tap-and-drag and click the app under the pie unless *Tap
+  treats as a plain mouse cannot be read. It is read through Raw Input, so no driver and no permission is needed. A tap followed by a hold may start a Windows tap-and-drag and click the app under the pie unless *Tap
   twice and drag to multi-select* is off. No haptic ticks. **Not yet verified on Windows:** see the manual checklist
   in [TRACKPAD_HAPTICS_PLAN.md](TRACKPAD_HAPTICS_PLAN.md#windows-precision-touchpad).
 - Only the middle button can be the trigger. Windows reports only the middle, back and forward buttons, so a

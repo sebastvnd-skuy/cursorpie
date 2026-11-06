@@ -33,8 +33,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, MSG, MSLLHOOKSTRUCT,
     SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN,
+    WM_XBUTTONUP,
 };
 
 /// What the hook callbacks need. Hooks have no user-data pointer, so it lives in a static.
@@ -65,6 +66,11 @@ pub(super) fn classify_mouse(msg: u32, mouse_data: u32) -> Option<(Kind, i64)> {
         WM_MOUSEMOVE => Some((Kind::Drag, 0)),
         _ => None,
     }
+}
+
+/// Whether a mouse message is the wheel (vertical or horizontal): the scrolling of a touchpad too.
+pub(super) fn is_wheel(msg: u32) -> bool {
+    matches!(msg, WM_MOUSEWHEEL | WM_MOUSEHWHEEL)
 }
 
 /// The left button, which `classify_mouse` leaves out: `Some` for its press and release. It is only
@@ -115,11 +121,21 @@ fn on_mouse(ctx: &Ctx, msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
     if info.dwExtraInfo == SYNTH_TAG as usize {
         return false; // our own replay
     }
+    // the holding finger and the extra one are two fingers, which scroll: while a trackpad hold
+    // runs that must not reach the app under the pie
+    if is_wheel(msg) {
+        return super::touch::swallows_scroll() || super::pie_clicks::swallows_wheel(&ctx.state);
+    }
     let (kind, mut button) = match classify_mouse(msg, info.mouseData) {
         Some(c) => c,
         // a left click is none of our business unless a touchpad pie is open: one atomic read
         None => match classify_left(msg) {
-            Some(kind) if super::touch::extra::interested(kind) => (kind, super::LEFT_BUTTON),
+            Some(kind)
+                if super::touch::extra::interested(kind)
+                    || super::pie_clicks::interested(&ctx.state, kind) =>
+            {
+                (kind, super::LEFT_BUTTON)
+            }
             _ => return false,
         },
     };
@@ -213,6 +229,7 @@ pub fn spawn(notifier: Notifier) {
         notifier: notifier.clone(),
     });
     // the precision touchpad is a second source of the same gesture (idle until `touch_trigger` is on)
+    super::touch::register_virtual(state.clone(), notifier.clone());
     super::touch::start(state, notifier.clone());
     std::thread::Builder::new()
         .name("cursorpie-tap".into())
@@ -246,11 +263,11 @@ pub fn spawn(notifier: Notifier) {
                                 std::io::Error::last_os_error()
                             );
                         }
-                        notifier.ctx.request_repaint();
+                        notifier.wake();
                     } else {
                         super::TAP_ACTIVE.store(true, Ordering::SeqCst);
                         diag::log!("tap", "hook", backend = "windows", state = "running");
-                        notifier.ctx.request_repaint();
+                        notifier.wake();
                         let mut msg: MSG = std::mem::zeroed();
                         while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {}
                         super::TAP_ACTIVE.store(false, Ordering::SeqCst);
@@ -296,6 +313,14 @@ mod tests {
             None,
             "the low word is not the button"
         );
+    }
+
+    #[test]
+    fn both_wheels_are_recognized() {
+        assert!(is_wheel(0x020A), "WM_MOUSEWHEEL");
+        assert!(is_wheel(0x020E), "WM_MOUSEHWHEEL");
+        assert!(!is_wheel(WM_MOUSEMOVE));
+        assert!(!is_wheel(WM_LBUTTONDOWN));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "cursorpie"
-version = "0.8.0"
+version = "0.8.2"
 edition = "2024"
 rust-version = "1.88"
 description = "Hold-to-open pie menu for macOS, Windows and Linux (X11): per-app profiles, shortcuts, launchers and submenus."
@@ -34,6 +34,8 @@ exclude = [
     "/assets/site.js",
     "/assets/og-image.png",
     "/assets/cursorpie-logo.png",
+    "/assets/icons",
+    "/assets/app-icon-macos.png",
     "/icon",
     "/installer",
     "/packaging",

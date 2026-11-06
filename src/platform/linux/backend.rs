@@ -584,6 +584,9 @@ pub fn handle_command_line() -> bool {
     crate::tap::touchpad_debug_from_args()
 }
 
+/// Nothing to wait for: the login entry already starts the app when the session is ready.
+pub fn wait_for_login_ready() {}
+
 /// Takes a lock file in the runtime directory. `false` if another copy holds it.
 pub fn single_instance() -> bool {
     static HELD: OnceLock<std::fs::File> = OnceLock::new();

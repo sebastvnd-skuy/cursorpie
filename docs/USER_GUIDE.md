@@ -19,7 +19,7 @@ Everything about using CursorPie once it is installed. New here? Read [The gestu
 
 ## The gesture
 
-1. **Hold** the trigger (the middle mouse button by default) for 500 ms. The pie opens under the cursor.
+1. **Hold** the trigger (the middle mouse button by default) for 150 ms. The pie opens under the cursor.
 2. **Move** toward a slice. It highlights as you hover.
 3. **Release** to run it. Release in the center dead zone to cancel.
 
@@ -27,7 +27,7 @@ What else the trigger does:
 
 | You do this | CursorPie does this |
 |---|---|
-| **Hold** for 500 ms | Opens your general pie under the cursor |
+| **Hold** for 150 ms | Opens your general pie under the cursor |
 | **Double-click** (default mode) | Opens the pie of the app under the pointer, instantly, if that app has its own profile |
 | **Right-click** while the pie is open | Switches which pie the side buttons follow, and the ring changes color at once |
 | **Click** quickly | Passes the click through to the app. If the app has its own profile, the click is delivered after the double-click window (260 ms) |
@@ -124,9 +124,8 @@ a mouse and a trackpad can be used in any order, with the same pie, hold time, d
 | Switch the mode | Right-click | Click (or tap) with one more finger |
 | Open the app's own pie | Double-click the trigger | Tap, then touch and hold again within the double-click speed |
 
-- **Fingers to hold** is 1 or 2; the extra click is one more finger. With 2, macOS may use a third finger for
-  *Look up & data detectors* or three-finger drag: turn those off in System Settings > Trackpad. On Windows set the
-  three-finger gestures to *Nothing* in Settings > Bluetooth & devices > Touchpad.
+- One finger holds and one more finger clicks. A hold with two fingers is not supported: the system scrolls with
+  two fingers, so the pointer would not move.
 - **How still the finger must stay** is measured in millimeters on the trackpad. A finger that slides before the hold
   time ran out just moves the pointer, as always; scrolling, tapping and dragging are not affected.
 - Palms and the thin border of the trackpad are ignored, and a hold does not start within the **typing guard** time
@@ -156,7 +155,6 @@ pie, turn off *Tap twice and drag to multi-select* in Settings > Bluetooth & dev
 - While a hold is running, the left and right buttons are grabbed so the click of the extra finger never reaches the
   app; a click that is not the extra one is sent again when it is released, a moment late.
 - *Ignore holds after typing* hears that a key was pressed (not which key) while the switch is on.
-- Your desktop may use three-finger gestures: with *Fingers to hold* = 2, turn them off.
 - Nothing happens? Run `cursorpie --touchpad-debug` in a terminal: it says which step fails (switch not saved, no
   `input` group, device not recognized, the hold not still enough) and shows your fingers live.
 - Wayland is not covered: the evdev reading would work there, but CursorPie's mouse layer is X11 only for now.

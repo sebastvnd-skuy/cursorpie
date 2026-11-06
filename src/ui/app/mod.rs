@@ -5,6 +5,7 @@
 //! | `messages` | `App::handle_msg`: applies each [`Msg`] |
 //! | `windows` | showing the pie, opening/closing Settings, quitting, menu bar actions |
 //! | `lifecycle` | idle sleep, freeing the Settings copy, warming up icons before the pie opens |
+//! | `vtrackpad` | the virtual trackpad developer tool's windows, and parking the main window while it is open |
 //!
 //! The same native window shows the pie and Settings (see
 //! [`guides::architecture`](crate::guides::architecture#one-window-for-everything)). `App::logic`
@@ -13,6 +14,7 @@
 
 mod lifecycle;
 mod messages;
+mod vtrackpad;
 mod windows;
 
 use crate::config::{Config, MAX_ITEMS, cfg};
@@ -22,9 +24,10 @@ use crate::platform;
 use crate::ui::settings::{Ed, Welcome};
 use crate::ui::sleep::Sleeper;
 use crate::ui::tray::TrayHandles;
+use crate::ui::vtrackpad::draw::Shared as VtShared;
 use eframe::egui::{self, Pos2, Vec2};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 /// Settings card size. The window is larger by WIN_MARGIN on each side for the drop shadow.
@@ -129,6 +132,24 @@ pub struct App {
     pub sleeper: Sleeper,
 
     pub tray: Option<TrayHandles>,
+
+    /// The virtual trackpad: what its window shares with the app (see `vtrackpad`).
+    pub vt: Arc<Mutex<VtShared>>,
+    /// The tool is open (`cargo tools trackpad` started the app with it, closing it turns it off).
+    pub vt_open: bool,
+    /// The trackpad was wanted when `vt_logic` last looked.
+    pub vt_shown: bool,
+    /// The main window is parked (1 x 1, click-through) instead of hidden, to keep the trackpad's
+    /// window alive.
+    pub vt_parked: bool,
+    /// The display the trackpad is in the middle of, chosen when it opened.
+    pub vt_display: Option<egui::Rect>,
+    /// Where the virtual pointer began (its window is declared there; it moves by command).
+    pub vt_pointer_start: Option<(f64, f64)>,
+    /// The width the trackpad's window was last declared with.
+    pub vt_width: f32,
+    /// The level the trackpad's window was last given.
+    pub vt_level: egui::WindowLevel,
 }
 
 impl App {
@@ -140,6 +161,9 @@ impl App {
         tray: Option<TrayHandles>,
     ) -> Self {
         let edit = cfg().clone();
+        let opts = crate::ui::vtrackpad::options();
+        let width = opts.map_or(crate::ui::vtrackpad::DEFAULT_WIDTH, |o| o.width);
+        let vt = VtShared::new(width, opts.is_none_or(|o| o.sound));
         Self {
             rx,
             tx,
@@ -174,6 +198,14 @@ impl App {
             welcome: None,
             sleeper: Sleeper::new(Instant::now()),
             tray,
+            vt: Arc::new(Mutex::new(vt)),
+            vt_open: opts.is_some(),
+            vt_shown: false,
+            vt_parked: false,
+            vt_display: None,
+            vt_pointer_start: None,
+            vt_width: width,
+            vt_level: egui::WindowLevel::AlwaysOnTop,
         }
     }
 
@@ -239,6 +271,7 @@ impl eframe::App for App {
             self.request_cancel();
         }
 
+        self.vt_logic(ctx);
         self.sleep_step(ctx);
     }
 
@@ -257,6 +290,8 @@ impl eframe::App for App {
         } else {
             self.pie_ui(ui);
         }
+        // the virtual trackpad's window is declared by the frames of this one
+        self.vt_ui(&ui.ctx().clone());
         // the pie may just have hidden the window: start the idle clock
         self.sleep_step(&ui.ctx().clone());
     }

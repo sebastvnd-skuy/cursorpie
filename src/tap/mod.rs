@@ -25,6 +25,7 @@
 
 mod gesture;
 mod keyboard;
+mod pie_clicks;
 mod resolve;
 mod right_click;
 mod side_buttons;
@@ -37,6 +38,15 @@ mod trigger;
 mod touch;
 
 pub use touch::Status as TouchStatus;
+
+/// Whether a pie that a trackpad hold opened is wanted right now (a hold is armed or open). The
+/// pie window asks when it is shown: such a pie takes the pointer instead of letting it through.
+/// Never for the virtual trackpad's: its pie is nowhere near the real pointer, which is the finger
+/// on the trackpad's window and must stay there.
+pub(crate) fn touch_pie_active() -> bool {
+    touch::ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+        && !crate::platform::virtual_pointer_active()
+}
 
 /// What the touch source is doing, for the Trackpad panel of Settings.
 pub fn touch_status() -> TouchStatus {
@@ -98,6 +108,48 @@ pub static SWALLOW_KEY: AtomicI32 = AtomicI32::new(-1);
 pub static PAUSED: AtomicBool = AtomicBool::new(false);
 /// true while the tap is installed and running.
 pub static TAP_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// true while Settings (or the welcome window) is open. The UI keeps it in step with
+/// `App::settings_open` (see `App::set_settings_open`). While it is true the pie is off: a press of
+/// the trigger starts no gesture, so nothing can open, hover or run, and the side buttons are left
+/// to the app. Without it the gesture state machine, which lives on the tap thread and knows
+/// nothing of the UI, kept running behind the Settings window and released slices ran their actions.
+pub static SETTINGS_OPEN: AtomicBool = AtomicBool::new(false);
+
+/// The statics above are process-wide, so the tests of `tap` and `tap::touch` that touch them run
+/// one at a time, all behind this one lock.
+#[cfg(test)]
+pub(crate) static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// One finger on a trackpad, as the virtual trackpad reports it (see [`virtual_feed`]).
+pub use touch::recognizer::Finger as TouchFinger;
+/// A contact larger than this is a palm, not a finger.
+pub const TOUCH_PALM_SIZE: f32 = touch::recognizer::PALM_SIZE;
+
+/// Whether the virtual trackpad can be used: the tap, whose gesture it feeds, has started.
+pub fn virtual_ready() -> bool {
+    touch::virtual_ready()
+}
+
+/// One frame of the virtual trackpad: where its fingers are (`size_mm` is the surface it stands
+/// for). An empty slice lifts every finger. False when the tap has not started.
+pub fn virtual_feed(size_mm: (f32, f32), fingers: &[TouchFinger]) -> bool {
+    touch::virtual_feed(size_mm, fingers)
+}
+
+/// Lets time pass for the virtual trackpad (the hold time of a finger that keeps still).
+pub fn virtual_poll() {
+    touch::virtual_poll();
+}
+
+/// Cancels the gesture the virtual trackpad is running, if any.
+pub fn virtual_reset() {
+    touch::virtual_reset();
+}
+
+/// Whether Settings is open, i.e. whether the pie must stay off. See [`SETTINGS_OPEN`].
+pub(crate) fn settings_open() -> bool {
+    SETTINGS_OPEN.load(Ordering::SeqCst)
+}
 
 /// Source of gesture ids; each press gets a new one so stale timers can recognise themselves.
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -168,38 +220,52 @@ pub(crate) fn dispatch(
             keyboard::handle_key(notifier, down, code, mods)
         }
         Ev::Mouse { kind, button, pos } => {
-            // a click while a trackpad pie is open may be the extra click (one more finger)
-            if (button == LEFT_BUTTON || button == RIGHT_BUTTON)
-                && let Some(v) = touch::extra::handle(state, notifier, kind)
-            {
-                return v;
-            }
-            if button == RIGHT_BUTTON {
-                return right_click::handle_right(state, notifier, kind);
-            }
-            // Settings is scanning the mouse: say which button it was and let nothing else happen
-            if crate::mouse::is_extra(button) && crate::mouse::scanning() {
-                if kind == Kind::Down {
-                    notifier.send(Msg::ButtonScanned(button));
-                }
-                return Verdict::Drop;
-            }
-            if button == SIDE_BACK || button == SIDE_FORWARD {
-                return side_buttons::handle_side(state, kind, button, pos);
-            }
-            let (trigger, flick) = {
-                let c = cfg();
-                (c.trigger_button, c.flick)
-            };
-            if button != trigger {
-                if side_buttons::is_mapped(button) {
-                    return side_buttons::handle_side(state, kind, button, pos);
-                }
-                return Verdict::Keep;
-            }
-            trigger::handle(state, notifier, kind, pos, button, flick, replay_drag)
+            let verdict = mouse_verdict(state, notifier, kind, button, pos, replay_drag);
+            // the last word: while a pie is open nothing it did not take reaches the app under it
+            pie_clicks::filter(state, kind, button, verdict)
         }
     }
+}
+
+/// What the paths of the state machine decide for one mouse button event.
+fn mouse_verdict(
+    state: &Arc<Mutex<Gesture>>,
+    notifier: &Notifier,
+    kind: Kind,
+    button: i64,
+    pos: Point,
+    replay_drag: &dyn Fn(),
+) -> Verdict {
+    // a click while a trackpad pie is open may be the extra click (one more finger)
+    if (button == LEFT_BUTTON || button == RIGHT_BUTTON)
+        && let Some(v) = touch::extra::handle(state, notifier, kind)
+    {
+        return v;
+    }
+    if button == RIGHT_BUTTON {
+        return right_click::handle_right(state, notifier, kind);
+    }
+    // Settings is scanning the mouse: say which button it was and let nothing else happen
+    if crate::mouse::is_extra(button) && crate::mouse::scanning() {
+        if kind == Kind::Down {
+            notifier.send(Msg::ButtonScanned(button));
+        }
+        return Verdict::Drop;
+    }
+    if button == SIDE_BACK || button == SIDE_FORWARD {
+        return side_buttons::handle_side(state, kind, button, pos);
+    }
+    let (trigger, flick) = {
+        let c = cfg();
+        (c.trigger_button, c.flick)
+    };
+    if button != trigger {
+        if side_buttons::is_mapped(button) {
+            return side_buttons::handle_side(state, kind, button, pos);
+        }
+        return Verdict::Keep;
+    }
+    trigger::handle(state, notifier, kind, pos, button, flick, replay_drag)
 }
 
 /// Resets everything after the OS disabled the hook (a timeout, or the user): no gesture is in
@@ -209,6 +275,7 @@ pub(crate) fn dispatch(
 pub(crate) fn reset(state: &Arc<Mutex<Gesture>>, notifier: &Notifier) {
     *lock(state) = Gesture::Idle;
     touch::extra::clear();
+    pie_clicks::clear();
     touch::ACTIVE.store(false, Ordering::SeqCst);
     SWALLOW_KEY.store(-1, Ordering::SeqCst);
     notifier.send(Msg::HidePie);
@@ -218,14 +285,28 @@ pub(crate) fn reset(state: &Arc<Mutex<Gesture>>, notifier: &Notifier) {
 mod tests {
     use super::*;
     use crate::keys::MOD_CMD;
+    use std::sync::MutexGuard;
     use std::sync::mpsc;
-    use std::sync::{Mutex as StdMutex, MutexGuard};
 
     /// The statics above are process-wide, so tests that touch them run one at a time.
-    static SERIAL: StdMutex<()> = StdMutex::new(());
-
     fn serial() -> MutexGuard<'static, ()> {
-        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+        TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Sets [`SETTINGS_OPEN`] for one test and clears it afterwards, even if the test panics.
+    struct SettingsOpen;
+
+    impl SettingsOpen {
+        fn set() -> Self {
+            SETTINGS_OPEN.store(true, Ordering::SeqCst);
+            SettingsOpen
+        }
+    }
+
+    impl Drop for SettingsOpen {
+        fn drop(&mut self) {
+            SETTINGS_OPEN.store(false, Ordering::SeqCst);
+        }
     }
 
     fn notifier() -> (Notifier, mpsc::Receiver<Msg>) {
@@ -402,5 +483,146 @@ mod tests {
         assert!(matches!(*lock(&st), Gesture::Idle));
         assert_eq!(SWALLOW_KEY.load(Ordering::SeqCst), -1);
         assert!(matches!(rx.try_recv(), Ok(Msg::HidePie)));
+    }
+
+    fn trigger_event(kind: Kind) -> Ev {
+        let button = cfg().trigger_button;
+        Ev::Mouse {
+            kind,
+            button,
+            pos: Point::new(10.0, 10.0),
+        }
+    }
+
+    #[test]
+    fn a_press_while_settings_is_open_starts_no_gesture_and_runs_nothing() {
+        let _s = serial();
+        PAUSED.store(false, Ordering::SeqCst);
+        let _open = SettingsOpen::set();
+        let (n, rx) = notifier();
+        let st = idle();
+
+        // the press is swallowed with its whole gesture, but only says why nothing happens
+        assert_eq!(
+            dispatch(&st, &n, trigger_event(Kind::Down), &|| {}),
+            Verdict::Drop
+        );
+        assert!(matches!(*lock(&st), Gesture::InSettings(_)));
+        assert!(matches!(rx.try_recv(), Ok(Msg::PieBlocked { .. })));
+        assert_eq!(
+            dispatch(&st, &n, trigger_event(Kind::Drag), &|| {}),
+            Verdict::Drop
+        );
+        // no hold timer was started: wait past the default pie hold and check nothing opened
+        let hold_ms = cfg().pie_hold_ms;
+        std::thread::sleep(std::time::Duration::from_millis(hold_ms + 100));
+        assert!(matches!(*lock(&st), Gesture::InSettings(_)));
+        assert!(rx.try_recv().is_err(), "no Warm, no ShowPie, nothing");
+        assert_eq!(
+            dispatch(&st, &n, trigger_event(Kind::Up), &|| {}),
+            Verdict::Drop
+        );
+        assert!(matches!(*lock(&st), Gesture::Idle));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn the_pie_works_again_once_settings_is_closed() {
+        let _s = serial();
+        PAUSED.store(false, Ordering::SeqCst);
+        {
+            let _open = SettingsOpen::set();
+            let (n, _rx) = notifier();
+            let st = idle();
+            dispatch(&st, &n, trigger_event(Kind::Down), &|| {});
+            dispatch(&st, &n, trigger_event(Kind::Up), &|| {});
+        }
+        let (n, rx) = notifier();
+        let st = idle();
+        assert_eq!(
+            dispatch(&st, &n, trigger_event(Kind::Down), &|| {}),
+            Verdict::Drop
+        );
+        assert!(matches!(*lock(&st), Gesture::Pending { .. }));
+        assert!(matches!(rx.try_recv(), Ok(Msg::Warm { .. })));
+    }
+
+    #[test]
+    fn side_buttons_send_no_action_while_settings_is_open() {
+        let _s = serial();
+        PAUSED.store(false, Ordering::SeqCst);
+        let _open = SettingsOpen::set();
+        let (n, rx) = notifier();
+        let st = idle();
+        for button in [SIDE_BACK, SIDE_FORWARD] {
+            for kind in [Kind::Down, Kind::Drag, Kind::Up] {
+                let ev = Ev::Mouse {
+                    kind,
+                    button,
+                    pos: Point::new(0.0, 0.0),
+                };
+                assert_eq!(
+                    dispatch(&st, &n, ev, &|| {}),
+                    Verdict::Keep,
+                    "{button} {kind:?}"
+                );
+            }
+        }
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_pie_that_was_open_when_settings_opened_runs_nothing_on_release() {
+        let _s = serial();
+        PAUSED.store(false, Ordering::SeqCst);
+        // one lock at a time: the config mutex is not reentrant
+        let (button, size, count, before) = {
+            let c = cfg();
+            (
+                c.trigger_button,
+                c.pie_size,
+                c.profiles[0].items.len(),
+                c.profiles[0].active.clone(),
+            )
+        };
+        // a point over a Mode slice other than the active one: picking it would change the mode
+        let pick = (0..count)
+            .find(|&i| resolve::is_mode(0, &[], i) && before != vec![i])
+            .expect("a mode slice that is not the active one");
+        let center = Point::new(100.0, 100.0);
+        let inner = crate::geometry::pie_inner(size);
+        let target = (0..360)
+            .map(|deg| {
+                let a = f64::from(deg).to_radians();
+                let r = f64::from(inner) + 20.0;
+                Point::new(center.x + r * a.cos(), center.y + r * a.sin())
+            })
+            .find(|&p| crate::geometry::slice_at(center, p, count, inner) == Some(pick))
+            .expect("a point over that slice");
+
+        let _open = SettingsOpen::set();
+        let (n, rx) = notifier();
+        let st = Arc::new(Mutex::new(Gesture::ActivePie {
+            id: 1,
+            center,
+            profile: 0,
+            path: Vec::new(),
+            hover: None,
+            source: gesture::Source::Mouse,
+        }));
+        let up = Ev::Mouse {
+            kind: Kind::Up,
+            button,
+            pos: target,
+        };
+        assert_eq!(dispatch(&st, &n, up, &|| {}), Verdict::Drop);
+        assert!(matches!(*lock(&st), Gesture::Idle));
+        assert!(matches!(rx.try_recv(), Ok(Msg::HidePie)));
+        let after = cfg().profiles[0].active.clone();
+        cfg().profiles[0].active = before.clone(); // put the live config back either way (in memory only)
+        assert_eq!(
+            after, before,
+            "the slice must not be applied while Settings is open"
+        );
     }
 }

@@ -118,6 +118,7 @@ package (standard library only, never part of the app) and behave the same on ma
 | `cargo tools clean-logs` | deletes old debug logs, keeping the newest 3 by default (`--keep N`, `--older-than DAYS`, `--all`, `--dir PATH`, `--dry-run`) |
 | `cargo tools zip` | packs the project into a `.zip` without `target/` and `.git/` (`-o FILE`, `--list`, `--no-git`) |
 | `cargo tools info` | prints the facts a bug report needs: OS, desktop session, tool versions |
+| `cargo tools trackpad` | starts the app with the virtual trackpad, to try trackpad gestures with a mouse (`--width POINTS`, `--silent`, `--release`; see `docs/DEBUGGING.md`) |
 
 ### The loop
 
@@ -279,7 +280,7 @@ map at the top of the crate docs (`src/lib.rs`) instead of a copy here.
 Outside `src/`, the repository is laid out like this:
 
 ```text
-tools/         the repository tools, run as `cargo tools ...`: ci, check, bump, hooks, commit-msg, diag, log, diag-lint, clean-logs, zip, info
+tools/         the repository tools, run as `cargo tools ...`: ci, check, bump, hooks, commit-msg, diag, log, diag-lint, clean-logs, zip, info, trackpad
 diag/          the diagnostic log (`CURSORPIE_DEBUG=1`): a crate of its own, no dependencies, see docs/DEBUGGING.md
 .githooks/     Git hooks that call the tools (turned on with `cargo tools hooks install`)
 .github/       the CI workflow and the pull request template

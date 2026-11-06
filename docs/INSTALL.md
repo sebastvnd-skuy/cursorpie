@@ -166,8 +166,8 @@ cd cursorpie-*-linux-*
 ```
 
 Start CursorPie from your applications menu or run `cursorpie`. It needs no permission and can start at login
-from **Settings > Behavior**. The icon in the package needs ImageMagick at build time; without it the package is
-built without an icon. Build on an older distribution if the binary must also start on older ones.
+from **Settings > Behavior**. The package carries the icon in every size (16 to 512 px) and `install.sh` refreshes
+the icon cache, so no image tool is needed. Build on an older distribution if the binary must also start on older ones.
 
 Good to know:
 
